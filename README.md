@@ -8,7 +8,9 @@ QFiles ist durchgehend Unicode-fähig. Dateinamen mit beliebigen Zeichen (Umlaut
 Surrogatpaare) werden korrekt angezeigt, umbenannt, kopiert und durchsucht. Lange Pfade über 260 Zeichen werden
 ebenfalls unterstützt.
 
-![Programmsymbol](res/QFiles.ico)
+![QFiles unter Windows: Liste 1 links, rechts geteilt (Split) in Liste 2 mit Dateianzeige und Liste 4](docs/screenshot.png)
+
+*Bildschirmfoto aus dem automatischen Starttest unter Windows Server 2025: links Verzeichnisbaum und Lesezeichen, Liste 1 mit Unicode-Verzeichnisnamen, rechts geteilte Spalte – oben die Dateianzeige der in Liste 1 gewählten Datei, unten Liste 4.*
 
 ---
 
