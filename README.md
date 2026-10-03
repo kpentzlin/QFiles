@@ -247,7 +247,7 @@ cmake --build build
 
 GitHub Actions (`.github/workflows/build.yml`) baut bei jedem Push mit MSVC und MinGW. Auf Windows laufen dabei die
 automatischen Tests (Kodierungen, Einstellungsdatei, Dateioperationen mit Unicode-Namen und langen Pfaden) und ein
-Starttest mit Bildschirmfoto. Bei einem Tag `v*` wird ein Release mit `QFiles.exe` veröffentlicht.
+Starttest mit Bildschirmfoto. Wird auf GitHub ein Release veröffentlicht, hängt der Workflow `QFiles.exe` und `QFiles-x64.zip` an.
 
 ### Aufbau des Quelltexts
 
