@@ -54,6 +54,23 @@ jobs:
           $g = [System.Drawing.Graphics]::FromImage($bmp)
           $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
           $bmp.Save("$PWD\screenshot.png")
+          # Zweites Bild: rechte Liste teilen (Strg+T), links Datei wählen, Dateianzeige im anderen Fenster (Strg+Q)
+          $ws = New-Object -ComObject WScript.Shell
+          $null = $ws.AppActivate($p.Id)
+          Start-Sleep -Milliseconds 800
+          [System.Windows.Forms.SendKeys]::SendWait("^2")
+          Start-Sleep -Milliseconds 500
+          [System.Windows.Forms.SendKeys]::SendWait("^t")
+          Start-Sleep -Milliseconds 800
+          [System.Windows.Forms.SendKeys]::SendWait("^1")
+          Start-Sleep -Milliseconds 300
+          [System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}{DOWN}")
+          Start-Sleep -Milliseconds 300
+          [System.Windows.Forms.SendKeys]::SendWait("^q")
+          Start-Sleep -Seconds 2
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD\screenshot2.png")
+          if ($p.HasExited) { "QFiles hat sich nach Tastatureingaben beendet (Exitcode $($p.ExitCode))" | Tee-Object -FilePath smoke-log.txt; exit 1 }
           $p.CloseMainWindow() | Out-Null
           Start-Sleep -Seconds 3
           if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
@@ -92,7 +109,7 @@ jobs:
         if: always()
         with:
           name: screenshot
-          path: screenshot.png
+          path: screenshot*.png
           if-no-files-found: ignore
 
       - name: Bildschirmfoto in Zweig ci-screenshot
@@ -100,11 +117,11 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          Copy-Item screenshot.png $env:RUNNER_TEMP\screenshot.png
+          Copy-Item screenshot*.png $env:RUNNER_TEMP\
           git checkout --orphan ci-screenshot
           git rm -rf --cached . | Out-Null
-          Copy-Item $env:RUNNER_TEMP\screenshot.png screenshot.png
-          git add screenshot.png
+          Copy-Item $env:RUNNER_TEMP\screenshot*.png .
+          git add screenshot*.png
           git commit -m "CI-Bildschirmfoto"
           git push -f origin ci-screenshot
 

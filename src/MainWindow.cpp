@@ -123,10 +123,34 @@ bool MainWindow::Create(int nCmdShow) {
     int y = c.GetInt(L"Fenster", L"Y", CW_USEDEFAULT);
     int w = c.GetInt(L"Fenster", L"B", 1280);
     int h = c.GetInt(L"Fenster", L"H", 800);
-    // Fenster muss auf einem Monitor liegen
-    if (x != CW_USEDEFAULT) {
-        RECT r{x, y, x + w, y + h};
-        if (!MonitorFromRect(&r, MONITOR_DEFAULTTONULL)) x = y = CW_USEDEFAULT;
+    // Fenster muss auf einem Monitor liegen und in dessen Arbeitsbereich passen
+    {
+        RECT r{x == CW_USEDEFAULT ? 0 : x, y == CW_USEDEFAULT ? 0 : y, 0, 0};
+        r.right = r.left + w;
+        r.bottom = r.top + h;
+        HMONITOR mon = MonitorFromRect(&r, MONITOR_DEFAULTTONULL);
+        if (!mon) {
+            x = y = CW_USEDEFAULT;
+            mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+        }
+        MONITORINFO mi{sizeof(mi)};
+        if (GetMonitorInfoW(mon, &mi)) {
+            const RECT& wa = mi.rcWork;
+            int waW = wa.right - wa.left, waH = wa.bottom - wa.top;
+            if (!c.Has(L"Fenster", L"B")) {
+                w = std::min(w, waW * 92 / 100);
+                h = std::min(h, waH * 92 / 100);
+                x = wa.left + (waW - w) / 2;
+                y = wa.top + (waH - h) / 2;
+            } else {
+                w = std::min(w, waW);
+                h = std::min(h, waH);
+                if (x != CW_USEDEFAULT) {
+                    x = std::clamp(x, (int)wa.left, (int)wa.right - w);
+                    y = std::clamp(y, (int)wa.top, (int)wa.bottom - h);
+                }
+            }
+        }
     }
     hwnd_ = CreateWindowExW(0, kMainClass, L"QFiles", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, x, y, w, h, nullptr, nullptr,
                             App::Instance(), this);
