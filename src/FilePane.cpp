@@ -335,6 +335,11 @@ void FilePane::Layout() {
     GetWindowRect(pathCombo_, &cr);
     int ch = cr.bottom - cr.top;
     SetWindowPos(pathCombo_, nullptr, ToPx(2), rcPath_.top + (ph - ch) / 2, comboW, ToPx(300), SWP_NOZORDER | SWP_NOACTIVATE);
+    // Eine Combobox markiert beim Größenändern ihren Text – Markierung wieder aufheben
+    if (pathEdit_ && GetFocus() != pathEdit_) {
+        int len = GetWindowTextLengthW(pathEdit_);
+        SendMessageW(pathEdit_, EM_SETSEL, len, len);
+    }
     HWND content = quickView_ && viewer_ ? viewer_ : list_;
     SetWindowPos(content, nullptr, rcList_.left, rcList_.top, rcList_.right - rcList_.left, rcList_.bottom - rcList_.top,
                  SWP_NOZORDER | SWP_NOACTIVATE);

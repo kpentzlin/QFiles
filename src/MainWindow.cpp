@@ -776,6 +776,10 @@ void MainWindow::Layout() {
         int ch = cr.bottom - cr.top;
         SetWindowPos(cmdCombo_, nullptr, S(8) + labelW, rcCmd_.top + (h - ch) / 2, rc.right - labelW - S(12), S(300),
                      SWP_NOZORDER | SWP_SHOWWINDOW);
+        if (cmdEdit_ && GetFocus() != cmdEdit_) {
+            int len = GetWindowTextLengthW(cmdEdit_);
+            SendMessageW(cmdEdit_, EM_SETSEL, len, len);
+        }
     } else {
         rcCmd_ = {};
         ShowWindow(cmdLabel_, SW_HIDE);
