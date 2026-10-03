@@ -54,7 +54,22 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
     if (renameRequested) *renameRequested = false;
     ShellItems si;
     IContextMenu* cm = nullptr;
-    if (si.Init(owner, dir, names)) {
+    if (names.empty() && IsRootPath(dir)) {
+        // Laufwerk: Menü des Laufwerks selbst (Auswerfen, Formatieren, Eigenschaften …) über "Dieser PC"
+        std::wstring d = dir;
+        if (d.size() == 2) d += L'\\';
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        if (SUCCEEDED(SHParseDisplayName(d.c_str(), nullptr, &pidl, 0, nullptr))) {
+            IShellFolder* parent = nullptr;
+            PCUITEMID_CHILD child = nullptr;
+            if (SUCCEEDED(SHBindToParent(pidl, IID_PPV_ARGS(&parent), &child))) {
+                parent->GetUIObjectOf(owner, 1, &child, IID_IContextMenu, nullptr, (void**)&cm);
+                parent->Release();
+            }
+            CoTaskMemFree(pidl);
+        }
+    }
+    if (!cm && si.Init(owner, dir, names)) {
         if (names.empty())
             si.folder->CreateViewObject(owner, IID_PPV_ARGS(&cm));
         else

@@ -65,6 +65,10 @@ public:
     bool IsTop(const std::wstring& p) const {
         for (auto& s : topSources)
             if (EqualsI(s, p)) return true;
+        // Shell liefert Langnamen; Quellen evtl. als 8.3-Kurzname angegeben
+        std::wstring c = CanonicalPath(p);
+        for (auto& s : topSources)
+            if (EqualsI(s, c)) return true;
         return false;
     }
 
@@ -93,13 +97,13 @@ public:
     IFACEMETHODIMP PreRenameItem(DWORD, IShellItem*, LPCWSTR) override { return S_OK; }
     IFACEMETHODIMP PostRenameItem(DWORD, IShellItem*, LPCWSTR, HRESULT, IShellItem*) override { return S_OK; }
     IFACEMETHODIMP PreMoveItem(DWORD, IShellItem*, IShellItem*, LPCWSTR) override { return S_OK; }
-    IFACEMETHODIMP PostMoveItem(DWORD, IShellItem* src, IShellItem*, LPCWSTR, HRESULT hr, IShellItem* created) override {
-        Record(src, hr, created);
+    IFACEMETHODIMP PostMoveItem(DWORD, IShellItem* src, IShellItem*, LPCWSTR, HRESULT hr, IShellItem* newItem) override {
+        Record(src, hr, newItem);
         return S_OK;
     }
     IFACEMETHODIMP PreCopyItem(DWORD, IShellItem*, IShellItem*, LPCWSTR) override { return S_OK; }
-    IFACEMETHODIMP PostCopyItem(DWORD, IShellItem* src, IShellItem*, LPCWSTR, HRESULT hr, IShellItem* created) override {
-        Record(src, hr, created);
+    IFACEMETHODIMP PostCopyItem(DWORD, IShellItem* src, IShellItem*, LPCWSTR, HRESULT hr, IShellItem* newItem) override {
+        Record(src, hr, newItem);
         return S_OK;
     }
     IFACEMETHODIMP PreDeleteItem(DWORD, IShellItem*) override { return S_OK; }
@@ -170,7 +174,7 @@ bool RunTransfer(HWND owner, const std::vector<CopyJob>& jobs, bool move, unsign
             MsgError(owner, L"Element nicht gefunden:\n" + (src ? j.destDir : j.source));
             continue;
         }
-        sink->topSources.push_back(j.source);
+        sink->topSources.push_back(CanonicalPath(j.source));
         const wchar_t* newName = j.newName.empty() ? nullptr : j.newName.c_str();
         HRESULT hr = move ? op->MoveItem(src, dst, newName, nullptr) : op->CopyItem(src, dst, newName, nullptr);
         if (SUCCEEDED(hr)) ++queued;
@@ -178,10 +182,13 @@ bool RunTransfer(HWND owner, const std::vector<CopyJob>& jobs, bool move, unsign
         dst->Release();
     }
     // Ziele, die schon vorher existierten (Zusammenführen/Überschreiben), nicht rückgängig machen
+    // Alle Vergleiche mit kanonischen Pfaden (Langnamen), da die Shell Langnamen meldet
     std::vector<std::wstring> preExisting;
+    std::vector<std::pair<std::wstring, std::wstring>> canonJobs; // (Quelle, Zielverzeichnis)
     for (auto& j : jobs) {
         std::wstring target = PathCombine(j.destDir, j.newName.empty() ? PathFileName(j.source) : j.newName);
-        if (PathExists(target)) preExisting.push_back(target);
+        if (PathExists(target)) preExisting.push_back(CanonicalPath(target));
+        canonJobs.emplace_back(CanonicalPath(j.source), NormalizeDir(CanonicalPath(j.destDir)));
     }
 
     HRESULT hr = queued ? op->PerformOperations() : E_FAIL;
@@ -199,8 +206,9 @@ bool RunTransfer(HWND owner, const std::vector<CopyJob>& jobs, bool move, unsign
         // Sicherheit: Rückgängig nur für Elemente, die wirklich im Zielverzeichnis eines Auftrags neu entstanden
         // sind und nicht mit der Quelle identisch sind – nie etwas anderes löschen oder verschieben.
         bool inTarget = false;
-        for (auto& j : jobs)
-            if (EqualsI(j.source, src) && EqualsI(NormalizeDir(PathParent(created)), NormalizeDir(j.destDir))) inTarget = true;
+        std::wstring createdParent = NormalizeDir(CanonicalPath(PathParent(created)));
+        for (auto& [cs, cd] : canonJobs)
+            if (EqualsI(cs, src) && EqualsI(createdParent, cd)) inTarget = true;
         if (!inTarget || EqualsI(created, src)) continue;
         bool pre = false;
         for (auto& p : preExisting)
@@ -271,7 +279,7 @@ bool DeleteItems(HWND owner, const std::vector<std::wstring>& paths, bool recycl
     for (auto& p : paths) {
         IShellItem* item = CreateItem(p);
         if (!item) continue;
-        sink->topSources.push_back(p);
+        sink->topSources.push_back(CanonicalPath(p));
         op->DeleteItem(item, nullptr);
         item->Release();
     }

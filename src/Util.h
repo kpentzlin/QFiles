@@ -45,6 +45,8 @@ std::wstring PathRoot(const std::wstring& path);           // "C:\" bzw. "\\serv
 std::wstring NormalizeDir(const std::wstring& path);       // vollständiger Pfad ohne abschließenden '\' (außer Wurzel)
 bool IsRootPath(const std::wstring& path);
 std::wstring LongPath(const std::wstring& path);           // \\?\-Präfix für lange Pfade (für Win32-Datei-APIs)
+// Vollständiger Pfad mit Langnamen statt 8.3-Kurznamen (z. B. RUNNER~1 -> runneradmin); nur für vorhandene Pfade.
+std::wstring CanonicalPath(const std::wstring& path);
 bool DirExists(const std::wstring& path);
 bool FileExists(const std::wstring& path);
 bool PathExists(const std::wstring& path);

@@ -57,6 +57,7 @@ static void TestStrings() {
     CHECK(PathParent(L"\\\\server\\share\\dir") == L"\\\\server\\share");
     CHECK(IsRootPath(L"\\\\server\\share"));
     CHECK(Utf8ToWide(WideToUtf8(L"Grüße 😀 ✓")) == L"Grüße 😀 ✓");
+    CHECK(CanonicalPath(L"C:\\") == L"C:\\");
 }
 
 static void TestEncoding(const std::wstring& dir) {

@@ -115,7 +115,7 @@ std::wstring Format(const wchar_t* fmt, ...) {
     std::wstring r;
     if (n > 0) {
         r.resize(n + 1);
-        _vsnwprintf(r.data(), n + 1, fmt, args);
+        _vsnwprintf_s(r.data(), n + 1, _TRUNCATE, fmt, args);
         r.resize(n);
     }
     va_end(args);
@@ -273,6 +273,34 @@ std::wstring LongPath(const std::wstring& path) {
     if (StartsWithI(path, L"\\\\?\\")) return path;
     if (StartsWithI(path, L"\\\\")) return L"\\\\?\\UNC\\" + path.substr(2);
     return L"\\\\?\\" + path;
+}
+
+std::wstring CanonicalPath(const std::wstring& path) {
+    if (path.empty()) return path;
+    std::wstring full = path;
+    DWORD n = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
+    if (n) {
+        std::wstring buf(n, L'\0');
+        DWORD m = GetFullPathNameW(path.c_str(), n, buf.data(), nullptr);
+        if (m && m < n) {
+            buf.resize(m);
+            full = buf;
+        }
+    }
+    if (full.find(L'~') == std::wstring::npos) return full;
+    std::wstring lp = LongPath(full);
+    bool prefixed = lp.size() != full.size();
+    DWORD len = GetLongPathNameW(lp.c_str(), nullptr, 0);
+    if (!len) return full;
+    std::wstring out(len, L'\0');
+    DWORD got = GetLongPathNameW(lp.c_str(), out.data(), len);
+    if (!got || got >= len) return full;
+    out.resize(got);
+    if (prefixed) {
+        if (StartsWithI(out, L"\\\\?\\UNC\\")) out = L"\\\\" + out.substr(8);
+        else if (StartsWithI(out, L"\\\\?\\")) out = out.substr(4);
+    }
+    return out;
 }
 
 bool DirExists(const std::wstring& path) {
