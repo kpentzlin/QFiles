@@ -1,0 +1,90 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  msvc:
+    name: Windows x64 (MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Konfigurieren
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Bauen
+        run: cmake --build build --config Release --parallel
+
+      - name: Tests ausführen
+        run: build\Release\QFilesTests.exe
+
+      - name: Starttest mit Bildschirmfoto
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\QFilesDemo\Ünïcödé 日本語 ✓" | Out-Null
+          Set-Content -Path "C:\QFilesDemo\Ünïcödé 日本語 ✓\Grüße €.txt" -Value "Hallo Welt – äöü 日本語" -Encoding UTF8
+          Set-Content -Path "C:\QFilesDemo\liesmich.txt" -Value "QFiles Starttest" -Encoding UTF8
+          $p = Start-Process -FilePath "build\Release\QFiles.exe" -ArgumentList '"C:\QFilesDemo"','"C:\Windows"' -PassThru
+          Start-Sleep -Seconds 10
+          if ($p.HasExited) { throw "QFiles hat sich unerwartet beendet (Exitcode $($p.ExitCode))" }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD\screenshot.png")
+          $p.CloseMainWindow() | Out-Null
+          Start-Sleep -Seconds 3
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          if (Test-Path "C:\ProgramData\QFiles\QFiles.ini") { Write-Host "Einstellungsdatei angelegt: C:\ProgramData\QFiles\QFiles.ini" }
+          else { throw "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" }
+
+      - name: Paket erstellen
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build\Release\QFiles.exe dist\
+          Copy-Item README.md dist\
+          Compress-Archive -Path dist\* -DestinationPath QFiles-x64.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QFiles-x64
+          path: |
+            build/Release/QFiles.exe
+            QFiles-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshot
+          path: screenshot.png
+          if-no-files-found: ignore
+
+      - name: Release veröffentlichen
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            QFiles-x64.zip
+            build/Release/QFiles.exe
+
+  mingw:
+    name: Windows x64 (MinGW-w64, Cross-Build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: MinGW installieren
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64 cmake
+      - name: Bauen
+        run: |
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
