@@ -829,6 +829,11 @@ void FilePane::UpdatePathCombo() {
     SendMessageW(pathCombo_, CB_RESETCONTENT, 0, 0);
     for (auto& r : recent_) SendMessageW(pathCombo_, CB_ADDSTRING, 0, (LPARAM)r.c_str());
     SetWindowTextW(pathCombo_, dir_.c_str());
+    // Keine Markierung im Textfeld, Schreibmarke ans Ende (zeigt das letzte Glied des Pfads)
+    if (pathEdit_ && GetFocus() != pathEdit_) {
+        int len = GetWindowTextLengthW(pathEdit_);
+        SendMessageW(pathEdit_, EM_SETSEL, len, len);
+    }
 }
 
 std::wstring FilePane::ItemFullPath(const Item& it) const {
