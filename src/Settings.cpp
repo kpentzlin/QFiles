@@ -70,7 +70,9 @@ bool Config::Load(const std::wstring& path) {
         size_t eq = line.find(L'=');
         if (eq == std::wstring::npos || !current) continue;
         std::wstring key = Trim(line.substr(0, eq));
-        std::wstring value = UnescapeValue(line.substr(eq + 1));
+        // Leerraum um unquotierte Werte ignorieren ("Schlüssel = Wert" von Hand bearbeitet); Werte mit
+        // bedeutsamem Leerraum am Rand schreibt Save() immer in Anführungszeichen.
+        std::wstring value = UnescapeValue(Trim(line.substr(eq + 1)));
         bool found = false;
         for (auto& e : current->entries)
             if (EqualsI(e.first, key)) {
@@ -235,6 +237,10 @@ void Options::Load(const Config& c) {
     if (thumbnailSize > 256) thumbnailSize = 256;
     if (editorTabWidth < 1 || editorTabWidth > 16) editorTabWidth = 4;
     if (historySize < 5) historySize = 5;
+    // Aufzählungen aus der INI-Datei begrenzen (ungültige Kodierung würde beim Speichern eine leere Datei schreiben)
+    if ((int)quickViewTarget < 0 || (int)quickViewTarget > 1) quickViewTarget = d.quickViewTarget;
+    if ((int)newFileEncoding < 0 || (int)newFileEncoding > (int)TextEncoding::Oem) newFileEncoding = d.newFileEncoding;
+    if ((int)newFileLineEnding < 0 || (int)newFileLineEnding > (int)LineEnding::CR) newFileLineEnding = d.newFileLineEnding;
 }
 
 void Options::Save(Config& c) const {
@@ -336,7 +342,7 @@ std::wstring DetermineConfigPath() {
     if (pd.empty()) {
         wchar_t buf[MAX_PATH];
         DWORD n = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
-        pd = n ? std::wstring(buf, n) : L"C:\\ProgramData";
+        pd = (n && n < MAX_PATH) ? std::wstring(buf, n) : L"C:\\ProgramData";
     }
     return PathCombine(PathCombine(pd, L"QFiles"), L"QFiles.ini");
 }

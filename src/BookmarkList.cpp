@@ -6,6 +6,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <uxtheme.h>
+#include <algorithm>
 
 namespace qf {
 

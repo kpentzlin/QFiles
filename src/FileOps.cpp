@@ -5,13 +5,16 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <shellapi.h>
+#include <sherrors.h>
 #include <deque>
 
 namespace qf {
 
 namespace {
 
-enum class UndoType { DeleteCreated, MoveBack, RenameBack };
+// DeleteCreatedIfEmpty: neu angelegte Datei/Verzeichnis – beim Rückgängigmachen nur löschen, solange noch leer
+// (sonst könnten inzwischen hineinkopierte bzw. geschriebene Inhalte verloren gehen).
+enum class UndoType { DeleteCreated, DeleteCreatedIfEmpty, MoveBack, RenameBack };
 
 struct UndoAction {
     UndoType type;
@@ -317,7 +320,7 @@ bool CreateFolder(HWND owner, const std::wstring& dir, const std::wstring& name)
         return false;
     }
     LogOperation(L"Verzeichnis angelegt: " + full);
-    PushUndo({L"Verzeichnis anlegen", {{UndoType::DeleteCreated, full, L""}}});
+    PushUndo({L"Verzeichnis anlegen", {{UndoType::DeleteCreatedIfEmpty, full, L""}}});
     return true;
 }
 
@@ -330,7 +333,7 @@ bool CreateEmptyFile(HWND owner, const std::wstring& dir, const std::wstring& na
     }
     CloseHandle(h);
     LogOperation(L"Datei angelegt: " + full);
-    PushUndo({L"Datei anlegen", {{UndoType::DeleteCreated, full, L""}}});
+    PushUndo({L"Datei anlegen", {{UndoType::DeleteCreatedIfEmpty, full, L""}}});
     return true;
 }
 
@@ -374,7 +377,27 @@ bool UndoLast(HWND owner) {
         case UndoType::DeleteCreated:
             if (PathExists(it->current)) toDelete.push_back(it->current);
             break;
+        case UndoType::DeleteCreatedIfEmpty: {
+            DWORD a = GetFileAttributesW(LongPath(it->current).c_str());
+            if (a == INVALID_FILE_ATTRIBUTES) break;
+            std::vector<DirEntry> entries;
+            bool empty = (a & FILE_ATTRIBUTE_DIRECTORY) ? (ListDirectory(it->current, entries) && entries.empty())
+                                                        : GetFileSize64(it->current) == 0;
+            if (empty) {
+                toDelete.push_back(it->current);
+            } else {
+                MsgError(owner, L"„" + it->current + L"“ ist nicht mehr leer und wird nicht gelöscht.");
+                ok = false;
+            }
+            break;
+        }
         case UndoType::MoveBack:
+            // Nie ein inzwischen am Ursprungsort vorhandenes (fremdes) Element überschreiben
+            if (PathExists(it->original)) {
+                MsgError(owner, L"Rückgängig nicht möglich: „" + it->original + L"“ existiert bereits.");
+                ok = false;
+                break;
+            }
             moveBack.push_back({it->current, PathParent(it->original), PathFileName(it->original)});
             break;
         case UndoType::RenameBack:

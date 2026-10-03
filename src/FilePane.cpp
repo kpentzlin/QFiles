@@ -11,6 +11,7 @@
 #include <windowsx.h>
 #include <uxtheme.h>
 #include <algorithm>
+#include <cstdlib>
 #include <unordered_map>
 
 #undef PathCombine
@@ -181,12 +182,14 @@ void FilePane::SetBounds(const RECT& rc) {
 void FilePane::Show(bool show) { ShowWindow(hwnd_, show ? SW_SHOW : SW_HIDE); }
 
 void FilePane::CreateListFont() {
-    if (listFont_) DeleteObject(listFont_);
     const Options& o = App::Opt();
     int h = -MulDiv(o.listFontSize, (int)GetWindowDpi(hwnd_), 72);
-    listFont_ = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                            CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.listFontName.c_str());
-    SendMessageW(list_, WM_SETFONT, (WPARAM)listFont_, TRUE);
+    HFONT font = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.listFontName.c_str());
+    // Erst die neue Schrift setzen, dann die alte freigeben (die Liste darf nie eine gelöschte Schrift halten)
+    SendMessageW(list_, WM_SETFONT, (WPARAM)font, TRUE);
+    if (listFont_) DeleteObject(listFont_);
+    listFont_ = font;
 }
 
 void FilePane::SetupColumns() {
@@ -560,8 +563,9 @@ void FilePane::OnClickArea(const HitRect& h) {
         break;
     }
     case HitArea::Split:
+        // Der Host setzt den Fokus selbst; diese Liste kann danach unsichtbar sein (Split aufgehoben)
         if (host_) host_->OnPaneSplitButton(this);
-        break;
+        return;
     case HitArea::Bookmark:
         if (host_) host_->OnPaneBookmarkButton(this);
         break;
@@ -606,6 +610,9 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
         if (m != marks_.end()) it.mark = m->second;
         items.push_back(std::move(it));
     }
+    // Neue Elemente fordern ihre Miniaturen neu an: alte Bilder (außer dem Platzhalter 0) verwerfen,
+    // sonst wächst die Bildliste bei jedem Neueinlesen (z. B. durch die Verzeichnisüberwachung) unbegrenzt.
+    if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
     items_ = std::move(items);
     return true;
 }
@@ -692,8 +699,8 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
             std::wstring msg = L"Das Verzeichnis „" + dir + L"“ kann nicht geöffnet werden:\n" + LastErrorMessage(err);
             MsgError(GetAncestor(hwnd_, GA_ROOT), msg);
         }
-        // Liste mit altem Verzeichnis wiederherstellen
-        if (!oldDir.empty() && !sameDir) ReadDirectory(oldDir, &err);
+        // items_ ist unverändert (ReadDirectory ändert bei Fehler nichts) und passt weiter zur ListView.
+        // Ein erneutes Einlesen hier würde items_ unsortiert und mit anderer Anzahl als die ListView hinterlassen.
         return false;
     }
     if (!sameDir) {
@@ -758,11 +765,13 @@ void FilePane::Reload() {
     DWORD err = 0;
     if (!ReadDirectory(dir_, &err)) {
         // Verzeichnis existiert nicht mehr: zum nächsten vorhandenen Elternverzeichnis
-        std::wstring p = dir_;
+        std::wstring old = dir_;
+        // Vorhandenes, aber nicht lesbares Verzeichnis (z. B. Zugriff verweigert): zum Elternverzeichnis
+        std::wstring p = DirExists(dir_) ? PathParent(dir_) : dir_;
         while (!p.empty() && !DirExists(p)) p = PathParent(p);
         if (p.empty()) p = L"C:\\";
         dir_.clear();
-        Navigate(p, L"", true, false);
+        if (!Navigate(p, L"", true, false) && !Navigate(L"C:\\", L"", true, false)) dir_ = old;
         return;
     }
     for (auto& it : items_) {
@@ -969,9 +978,9 @@ void FilePane::UpdateStatus() {
             selTotal += items_[i].e.size;
         }
     }
-    std::wstring s = Format(L"%zu Verz., %zu Dateien (%s)", dirs, files, FormatSize(total).c_str());
+    std::wstring s = IntToStr((long long)dirs) + L" Verz., " + IntToStr((long long)files) + L" Dateien (" + FormatSize(total) + L")";
     if (selFiles + selDirs)
-        s += Format(L"  –  markiert: %zu (%s)", selFiles + selDirs, FormatSize(selTotal).c_str());
+        s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
     if (filter_.IsActive()) s += L"  –  Filter: " + filter_.include + (filter_.exclude.empty() ? L"" : (L" ohne " + filter_.exclude));
     if (freeKnown_) s += L"  –  frei: " + FormatSize(freeBytes_);
     statusText_ = s;
@@ -1105,7 +1114,7 @@ PaneContext FilePane::Context() const {
 
 void FilePane::ToggleSelectFocused(bool moveDown) {
     int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
-    if (i < 0) return;
+    if (i < 0 || i >= (int)items_.size()) return;
     if (!items_[i].isParent) {
         UINT st = ListView_GetItemState(list_, i, LVIS_SELECTED);
         ListView_SetItemState(list_, i, st & LVIS_SELECTED ? 0 : LVIS_SELECTED, LVIS_SELECTED);
@@ -1160,7 +1169,7 @@ void FilePane::ClearMarks() {
 
 void FilePane::BeginRename() {
     int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
-    if (i < 0 || items_[i].isParent) return;
+    if (i < 0 || i >= (int)items_.size() || items_[i].isParent) return;
     SetFocus(list_);
     ListView_EnsureVisible(list_, i, FALSE);
     ListView_EditLabel(list_, i);

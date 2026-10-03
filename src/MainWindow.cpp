@@ -149,6 +149,8 @@ bool MainWindow::Create(int nCmdShow) {
     cb.navigate = [this](const std::wstring& p, bool other) {
         FilePane* target = &Active();
         if (other) {
+            // Die Gegenseite zeigt evtl. die Schnellansicht: dann nicht die verdeckte Liste umschalten
+            if (quickView_) SetQuickView(false);
             if (FilePane* o = Other()) target = o;
         }
         if (target->Navigate(p)) {
@@ -629,6 +631,20 @@ bool MainWindow::PreTranslate(MSG* msg) {
             return false;
         if (shift && !ctrl && !alt && (vk == VK_DELETE || vk == VK_INSERT)) return false;
         if (vk == VK_TAB && ListView_GetEditControl(Active().ListHwnd())) return false;
+    } else if (quickView_ && quickViewPane_ >= 0 && IsChild(panes_[quickViewPane_]->Hwnd(), GetFocus())) {
+        // Fokus in der Schnellansicht (z. B. Hex-Anzeige): Strg+C/Strg+A/Entf usw. gehören der Anzeige,
+        // nicht den Dateien der aktiven Liste
+        UINT vk = (UINT)msg->wParam;
+        bool ctrl = GetKeyState(VK_CONTROL) < 0, alt = GetKeyState(VK_MENU) < 0;
+        bool fkey = vk >= VK_F1 && vk <= VK_F24;
+        if (!ctrl && !alt && !fkey && vk != VK_TAB) return false;
+        if (ctrl && !alt && (vk == 'A' || vk == 'C' || vk == VK_INSERT || vk == VK_HOME || vk == VK_END)) return false;
+    } else if (GetFocus() == tree_.Hwnd()) {
+        // Ziffernblock +, -, * klappen im Verzeichnisbaum auf/zu (statt Gruppe markieren/abwählen/umkehren)
+        UINT vk = (UINT)msg->wParam;
+        if ((vk == VK_ADD || vk == VK_SUBTRACT || vk == VK_MULTIPLY) && GetKeyState(VK_CONTROL) >= 0 &&
+            GetKeyState(VK_MENU) >= 0)
+            return false;
     }
     return TranslateAcceleratorW(hwnd_, accel_, msg) != 0;
 }
@@ -685,7 +701,7 @@ void MainWindow::ApplyPaneVisibility() {
 }
 
 void MainWindow::Layout() {
-    if (!hwnd_ || !panes_[0]) return;
+    if (!hwnd_ || !panes_[3]) return; // erst wenn alle vier Listen erzeugt sind
     RECT rc;
     GetClientRect(hwnd_, &rc);
     auto S = [&](int v) { return DpiScale(hwnd_, v); };
@@ -1147,7 +1163,14 @@ void MainWindow::CopyOrMove(bool move) {
     std::wstring prompt = what + (move ? L" verschieben nach:" : L" kopieren nach:");
     if (!InputBox(hwnd_, move ? L"Verschieben" : L"Kopieren", prompt, target)) return;
     target = Trim(target);
+    if (target.size() >= 2 && target.front() == L'"' && target.back() == L'"') target = target.substr(1, target.size() - 2);
     if (target.empty()) return;
+    // Relative Angaben beziehen sich auf das Verzeichnis der aktiven Liste (nicht auf das Arbeitsverzeichnis des Prozesses)
+    if (!(target.size() >= 2 && (target[1] == L':' || StartsWithI(target, L"\\\\")))) {
+        if (target.front() == L'\\') target = PathCombine(PathRoot(a.Dir()), target.substr(1));
+        else target = PathCombine(a.Dir(), target);
+    }
+    target = NormalizeDir(target);
     if (!DirExists(target)) {
         if (!MsgConfirm(hwnd_, L"Das Zielverzeichnis „" + target + L"“ existiert nicht. Anlegen?")) return;
         if (SHCreateDirectoryExW(hwnd_, target.c_str(), nullptr) != ERROR_SUCCESS) {
@@ -1155,7 +1178,6 @@ void MainWindow::CopyOrMove(bool move) {
             return;
         }
     }
-    target = NormalizeDir(target);
     if (move) MoveItems(hwnd_, paths, target);
     else CopyItems(hwnd_, paths, target);
     a.SelectNone();
@@ -1206,7 +1228,8 @@ void MainWindow::RunCommandLine() {
         if (arg.size() >= 2 && arg.front() == L'"' && arg.back() == L'"') arg = arg.substr(1, arg.size() - 2);
         if (arg.empty()) return;
         std::wstring target;
-        if (arg == L"\\") target = PathRoot(a.Dir());
+        // "\" bzw. "\x": relativ zur Wurzel des aktuellen Laufwerks
+        if (arg.front() == L'\\' && !StartsWithI(arg, L"\\\\")) target = PathCombine(PathRoot(a.Dir()), arg.substr(1));
         else if (arg.size() >= 2 && (arg[1] == L':' || StartsWithI(arg, L"\\\\"))) target = arg;
         else target = PathCombine(a.Dir(), arg);
         a.Navigate(target);
@@ -1488,8 +1511,8 @@ void MainWindow::OnCommand(int id) {
         bool cut = false;
         if (!ClipboardGetFiles(hwnd_, files, cut)) break;
         if (cut) {
-            MoveItems(hwnd_, files, a.Dir());
-            if (OpenClipboard(hwnd_)) {
+            // Zwischenablage nur nach erfolgreichem Verschieben leeren (bei Abbruch/Fehler erneut einfügbar)
+            if (MoveItems(hwnd_, files, a.Dir()) && OpenClipboard(hwnd_)) {
                 EmptyClipboard();
                 CloseClipboard();
             }

@@ -55,6 +55,8 @@ std::wstring Trim(std::wstring_view s) {
 
 int CompareI(std::wstring_view a, std::wstring_view b) {
     // Ordinaler Vergleich ohne Groß-/Kleinschreibung – genau wie das Dateisystem.
+    // Leere Ansichten (data() kann nullptr sein) nicht an die API geben: sie liefert dann 0 (Fehler).
+    if (a.empty() || b.empty()) return a.empty() ? (b.empty() ? 0 : -1) : 1;
     int r = CompareStringOrdinal(a.data(), (int)a.size(), b.data(), (int)b.size(), TRUE);
     return r - 2;
 }
@@ -165,6 +167,8 @@ static bool WildRec(const wchar_t* p, const wchar_t* pe, const wchar_t* s, const
 bool WildcardMatch(std::wstring_view pattern, std::wstring_view name) {
     // "*.*" passt wie unter Windows auch auf Namen ohne Punkt.
     if (pattern == L"*.*" || pattern == L"*") return true;
+    // "*." passt wie unter Windows auf Namen ohne Erweiterung
+    if (pattern == L"*.") return name.find(L'.') == std::wstring_view::npos;
     return WildRec(pattern.data(), pattern.data() + pattern.size(), name.data(), name.data() + name.size());
 }
 

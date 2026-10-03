@@ -124,8 +124,11 @@ static std::wstring DecodeCodePage(UINT cp, const uint8_t* d, size_t n) {
     while (pos < n) {
         size_t chunk = std::min<size_t>(n - pos, 64 * 1024 * 1024);
         // UTF-8: nicht mitten in einer Sequenz trennen
-        if (cp == CP_UTF8 && pos + chunk < n)
+        if (cp == CP_UTF8 && pos + chunk < n) {
+            size_t full = chunk;
             while (chunk > 0 && (d[pos + chunk] & 0xC0) == 0x80) --chunk;
+            if (chunk == 0) chunk = full; // nur Folgebytes (ungültig): sonst Endlosschleife
+        }
         int m = MultiByteToWideChar(cp, 0, (const char*)d + pos, (int)chunk, nullptr, 0);
         size_t old = r.size();
         r.resize(old + m);
