@@ -47,6 +47,7 @@ private:
     enum class Splitter { None, Tree, Bookmarks, Columns, RowLeft, RowRight };
     struct FKeyCell {
         std::wstring key, label;
+        std::wstring shortLabel;   // bei Platzmangel
         int command;
         RECT rc;
     };
@@ -125,6 +126,7 @@ private:
     std::vector<FKeyCell> fkeys_;
     int fkeyMode_ = 0;          // 0 normal, 1 Strg, 2 Strg+Umschalt
     int fkeyPressed_ = -1;
+    bool fkeyShort_ = false;   // Kurzbeschriftungen in der Fußzeile
     std::vector<std::wstring> cmdHistory_;
     std::vector<FunctionKey> fkeyDefs_;
     std::vector<std::pair<int, std::wstring>> toolTips_;  // Befehl -> Tooltip der Werkzeugleiste

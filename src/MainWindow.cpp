@@ -834,14 +834,17 @@ void MainWindow::BuildFKeyCells() {
                    {L"F7", L"Vergleich", cmd::CompareDirs},    {L"F8", L"Neues Verzeichnis", cmd::NewFolder},
                    {L"F9", L"Neue Datei", cmd::NewFile},       {L"F10", L"Duplizieren", cmd::Duplicate},
                    {L"F11", L"Anzeigen", cmd::View}};
-        for (auto& s : std) fkeys_.push_back({s.k, s.l, s.c, {}});
+        const wchar_t* shortLabels[] = {L"Umben.", L"Suchen", L"Bearb.", L"Aktual.", L"Umkehren",
+                                        L"Vergl.", L"Neues Verz.", L"Neue Datei", L"Dupliz.", L"Anzeigen"};
+        int si = 0;
+        for (auto& s : std) fkeys_.push_back({s.k, s.l, shortLabels[si++], s.c, {}});
     } else {
         int base = fkeyMode_ == 1 ? 0 : 12;
         for (int i = 0; i < 12; ++i) {
             const FunctionKey& k = fkeyDefs_[base + i];
             std::wstring key = (fkeyMode_ == 1 ? L"Strg+F" : L"S+Strg+F") + std::to_wstring(i + 1);
             std::wstring label = k.IsEmpty() ? L"–" : (k.label.empty() ? PathStem(k.program) : k.label);
-            fkeys_.push_back({key, label, cmd::FKeyFirst + base + i, {}});
+            fkeys_.push_back({key, label, label, cmd::FKeyFirst + base + i, {}});
         }
     }
     Layout();
@@ -910,12 +913,19 @@ void MainWindow::Layout() {
         int total = 0;
         HDC dc = GetDC(hwnd_);
         HGDIOBJ of = SelectObject(dc, App::UIFont());
-        for (int i = 0; i < n; ++i) {
-            SIZE a{}, b{};
-            GetTextExtentPoint32W(dc, fkeys_[i].key.c_str(), (int)fkeys_[i].key.size(), &a);
-            GetTextExtentPoint32W(dc, fkeys_[i].label.c_str(), (int)fkeys_[i].label.size(), &b);
-            need[i] = a.cx + b.cx + S(16);
-            total += need[i];
+        int avail0 = rc.right - S(4);
+        for (int pass = 0; pass < 2; ++pass) {
+            fkeyShort_ = pass == 1;
+            total = 0;
+            for (int i = 0; i < n; ++i) {
+                const std::wstring& lab = fkeyShort_ ? fkeys_[i].shortLabel : fkeys_[i].label;
+                SIZE a{}, b{};
+                GetTextExtentPoint32W(dc, fkeys_[i].key.c_str(), (int)fkeys_[i].key.size(), &a);
+                GetTextExtentPoint32W(dc, lab.c_str(), (int)lab.size(), &b);
+                need[i] = a.cx + b.cx + S(16);
+                total += need[i];
+            }
+            if (total <= avail0) break;  // Langtexte passen
         }
         SelectObject(dc, of);
         ReleaseDC(hwnd_, dc);
@@ -1049,7 +1059,8 @@ void MainWindow::Paint(HDC dc) {
             lr.left += S(4) + ks.cx + S(5);
             lr.right -= S(2);
             SetTextColor(dc, GetSysColor(COLOR_BTNTEXT));
-            DrawTextW(dc, fkeys_[i].label.c_str(), -1, &lr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS | DT_NOPREFIX);
+            const std::wstring& lab = fkeyShort_ ? fkeys_[i].shortLabel : fkeys_[i].label;
+            DrawTextW(dc, lab.c_str(), -1, &lr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS | DT_NOPREFIX);
         }
     }
     SelectObject(dc, oldFont);
