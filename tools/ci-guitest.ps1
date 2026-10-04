@@ -153,7 +153,7 @@ Shot "screenshot7.png"
 $ini = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
 if ($ini -notmatch "(?m)^DatumSekunden=1\s*$" -or $ini -notmatch "(?m)^SpalteErstellt=1\s*$") {
   $opt = ($ini -split "`r?`n" | Where-Object { $_ -match "DatumSekunden|SpalteErstellt" }) -join ' | '
-  "Optionen „sekundengenau“/„Spalte Erstellt“ wurden nicht gespeichert: $opt" | Tee-Object -FilePath smoke-log.txt
+  "Optionen sekundengenau/Spalte Erstellt wurden nicht gespeichert: $opt" | Tee-Object -FilePath smoke-log.txt
   exit 1
 }
 Write-Output "::notice title=Optionen::DatumSekunden=1 und SpalteErstellt=1 gespeichert."
