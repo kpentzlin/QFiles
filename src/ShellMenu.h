@@ -14,6 +14,9 @@ namespace qf {
 // Rückgabe: gewählte eigene Befehls-ID oder 0. *renameRequested = true, wenn "Umbenennen" gewählt wurde.
 int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names, POINT screenPt,
                          HMENU extra, bool* renameRequested);
+// Sucht im Hintergrund die nach Optionen „KontextmenueAusschluss“ auszuschließenden Kontextmenü-Erweiterungen
+// (einmal beim Programmstart aufrufen; das Kontextmenü wartet beim ersten Aufruf ggf. auf das Ergebnis).
+void PrefetchShellExtensionExclusion();
 // Muss aus der Fensterprozedur des owner-Fensters aufgerufen werden (Untermenüs wie "Senden an", "Neu").
 bool HandleShellMenuMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT* result);
 

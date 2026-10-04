@@ -233,6 +233,7 @@ void Options::Load(const Config& c) {
     externalEditor = c.Get(S, L"ExternerEditor", d.externalEditor);
     externalViewer = c.Get(S, L"ExterneAnzeige", d.externalViewer);
     compareTool = c.Get(S, L"Vergleichsprogramm", d.compareTool);
+    shellExtExclude = c.Get(S, L"KontextmenueAusschluss", d.shellExtExclude);
     historySize = c.GetInt(S, L"Verlaufslaenge", d.historySize);
     saveOnExit = c.GetBool(S, L"BeimBeendenSpeichern", d.saveOnExit);
     if (thumbnailSize < 32) thumbnailSize = 32;
@@ -278,6 +279,7 @@ void Options::Save(Config& c) const {
     c.Set(S, L"ExternerEditor", externalEditor);
     c.Set(S, L"ExterneAnzeige", externalViewer);
     c.Set(S, L"Vergleichsprogramm", compareTool);
+    c.Set(S, L"KontextmenueAusschluss", shellExtExclude);
     c.SetInt(S, L"Verlaufslaenge", historySize);
     c.SetBool(S, L"BeimBeendenSpeichern", saveOnExit);
 }

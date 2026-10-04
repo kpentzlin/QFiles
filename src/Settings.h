@@ -86,6 +86,9 @@ struct Options {
     std::wstring externalEditor;       // leer = integrierter Editor
     std::wstring externalViewer;       // leer = integrierte Anzeige
     std::wstring compareTool;          // leer = integrierter Vergleich
+    // Kontextmenü-Erweiterungen, die QFiles nicht lädt: Muster durch ';' getrennt, verglichen (ohne Groß-/Klein-
+    // schreibung) mit Name, Beschreibung und DLL-Pfad der Erweiterung
+    std::wstring shellExtExclude = L"ArchiCrypt";
     // Sonstiges
     int historySize = 30;
     bool saveOnExit = true;

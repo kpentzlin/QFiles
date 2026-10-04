@@ -1,6 +1,6 @@
 # GUI-Starttest für GitHub Actions (Windows): startet QFiles, bedient es mit echter Maus und Tastatur
 # und speichert Bildschirmfotos. Bei einem Absturz wird der Absturzbericht ausgegeben und der Test schlägt fehl.
-param([string]$Exe = "build\Release\QFiles.exe")
+param([string]$Exe = "build\Release\QFiles.exe", [string]$TestExt = "build\Release\QFilesTestExt.dll")
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -32,6 +32,28 @@ New-Item -ItemType Directory -Force -Path "C:\QFilesDemo\Ünïcödé 日本語 �
 Set-Content -Path "C:\QFilesDemo\Ünïcödé 日本語 ✓\Grüße €.txt" -Value "Hallo Welt – äöü 日本語" -Encoding UTF8
 Set-Content -Path "C:\QFilesDemo\liesmich.txt" -Value "QFiles Starttest" -Encoding UTF8
 Set-Content -Path "C:\QFilesDemo\zweite Datei.txt" -Value "Zweite Datei" -Encoding UTF8
+
+# Test-Kontextmenü-Erweiterung registrieren (nur für diesen Benutzer): A liegt in einem Pfad mit „ArchiCrypt“
+# und muss durch den Standard-Ausschluss fehlen, B muss erscheinen.
+$menuLog = "$PWD\menu-log.txt"
+Remove-Item $menuLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_MENULOG = $menuLog
+$extA = "C:\QFilesTest\ArchiCrypt Testerweiterung\QFilesTestExt.dll"
+$extB = "C:\QFilesTest\Normal\QFilesTestExt.dll"
+foreach ($t in @($extA, $extB)) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $t) | Out-Null
+  Copy-Item $TestExt $t -Force
+}
+$ext = @(@{ Id = "{6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001}"; Dll = $extA; Name = "QFilesTestA" },
+         @{ Id = "{6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A002}"; Dll = $extB; Name = "QFilesTestB" })
+foreach ($e in $ext) {
+  & reg.exe add "HKCU\Software\Classes\CLSID\$($e.Id)" /ve /d "QFiles Testerweiterung $($e.Name)" /f | Out-Null
+  & reg.exe add "HKCU\Software\Classes\CLSID\$($e.Id)\InprocServer32" /ve /d "$($e.Dll)" /f | Out-Null
+  & reg.exe add "HKCU\Software\Classes\CLSID\$($e.Id)\InprocServer32" /v ThreadingModel /d Apartment /f | Out-Null
+  foreach ($k in @("*", "Directory", "Directory\Background")) {
+    & reg.exe add "HKCU\Software\Classes\$k\shellex\ContextMenuHandlers\$($e.Name)" /ve /d "$($e.Id)" /f | Out-Null
+  }
+}
 
 function Shot([string]$name) {
   $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -121,6 +143,28 @@ Shot "screenshot2.png"
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+
+# Ausschluss von Kontextmenü-Erweiterungen prüfen
+Remove-Item Env:\QFILES_TEST_MENULOG
+if (-not (Test-Path $menuLog)) { "Menüprotokoll $menuLog wurde nicht geschrieben" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+$menuText = Get-Content $menuLog -Raw
+Get-Content $menuLog | Select-Object -First 60
+if ($menuText -match "QFiles-Testeintrag A") {
+  "Ausgeschlossene Test-Erweiterung (Pfad mit ArchiCrypt) erscheint trotzdem im Kontextmenü" | Tee-Object -FilePath smoke-log.txt
+  exit 1
+}
+if ($menuText -match "QFiles-Testeintrag B") {
+  Write-Output "::notice title=Kontextmenü-Ausschluss::Test-Erweiterung B geladen, A (ArchiCrypt) ausgeschlossen."
+} else {
+  $short = (($menuText -split "`r?`n") | Select-Object -First 30) -join ' | '
+  Write-Output "::warning title=Kontextmenü-Ausschluss::Test-Erweiterung B wurde nicht geladen – Ausschluss nicht aussagekräftig geprüft. Menü: $short"
+}
+foreach ($e in $ext) {
+  & reg.exe delete "HKCU\Software\Classes\CLSID\$($e.Id)" /f | Out-Null
+  foreach ($k in @("*", "Directory", "Directory\Background")) {
+    & reg.exe delete "HKCU\Software\Classes\$k\shellex\ContextMenuHandlers\$($e.Name)" /f | Out-Null
+  }
+}
 
 # Abgefangener Fehler einer Kontextmenü-Erweiterung (simuliert): Meldung + Protokoll müssen erscheinen
 $env:QFILES_TEST_SHELLFAULT = "1"

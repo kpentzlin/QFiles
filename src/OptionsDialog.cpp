@@ -91,6 +91,9 @@ constexpr int kCompareLabel = 1407;
 constexpr int kCompare = 1408;
 constexpr int kCompareBtn = 1409;
 constexpr int kProgHint = 1410;
+constexpr int kExcludeLabel = 1411;
+constexpr int kExclude = 1412;
+constexpr int kExcludeHint = 1413;
 
 int PageOfId(int id) {
     if (id < 1000 || id >= 1000 + kPageCount * 100) return -1;
@@ -163,6 +166,7 @@ protected:
         SetText(kExtEditor, opt.externalEditor);
         SetText(kExtViewer, opt.externalViewer);
         SetText(kCompare, opt.compareTool);
+        SetText(kExclude, opt.shellExtExclude);
         // Einstellungsdatei
         SetText(kCfgPath, App::Cfg().FilePath());
 
@@ -293,6 +297,7 @@ private:
         opt.externalEditor = Trim(GetText(kExtEditor));
         opt.externalViewer = Trim(GetText(kExtViewer));
         opt.compareTool = Trim(GetText(kCompare));
+        opt.shellExtExclude = Trim(GetText(kExclude));
     }
 
     std::wstring listFont_, edFont_;
@@ -379,6 +384,12 @@ bool ShowOptionsDialog(HWND owner) {
             L"Ist kein Programm eingetragen, verwendet QFiles den integrierten Editor, die integrierte Anzeige "
             L"bzw. den integrierten Dateivergleich.",
             px, py + 98, pw, 20);
+    t.Label(kExcludeLabel, L"Kontextmenü-Erweiterungen &nicht laden (Muster, durch ; getrennt):", px, py + 128, pw, 10);
+    t.Edit(kExclude, px, py + 140, pw, 13, ES_AUTOHSCROLL);
+    t.Label(kExcludeHint,
+            L"Verglichen mit Name, Beschreibung und DLL-Pfad der Erweiterung, z. B. „ArchiCrypt“. Die Einträge "
+            L"solcher Erweiterungen fehlen dann im Kontextmenü von QFiles (der Explorer bleibt unverändert).",
+            px, py + 158, pw, 20);
 
     // ---- Unten: Einstellungsdatei ----
     t.Label(kCfgLabel, L"Einstellungsdatei:", 7, 220, 70, 10);

@@ -325,6 +325,18 @@ meldet Aufruf, betroffenen Menüeintrag, Ausnahmecode, bei C++-Ausnahmen Typ und
 Aufrufstapel mit der vermutlich verursachenden DLL. Die vollständigen Angaben werden an
 `%ProgramData%\QFiles\QFiles-Kontextmenue.txt` angehängt.
 
+### Kontextmenü-Erweiterungen ausschließen
+
+Unter *Werkzeuge → Optionen → Programme* („Kontextmenü-Erweiterungen nicht laden“, in der INI-Datei
+`[Optionen] KontextmenueAusschluss=`) stehen Muster, durch `;` getrennt. Kontextmenü- und Drag-&-Drop-Erweiterungen,
+deren Name, Beschreibung oder DLL-Pfad (in Langform, ohne Groß-/Kleinschreibung) eines der Muster enthält, lädt
+QFiles nicht; ihre Einträge fehlen im Kontextmenü von QFiles. Dazu registriert QFiles nur innerhalb des eigenen
+Prozesses eine leere Ersatz-Erweiterung für deren Klassen-IDs – die Registrierung und der Explorer bleiben
+unverändert. Voreinstellung ist `ArchiCrypt` (die RAM-Disk-Erweiterung `URDShellExt.dll` von ArchiCrypt Ultimate
+RAM-Disk wirft beim Zeichnen ihres Eintrags „RAM-Disk erstellen“ Ausnahmen). Verursacht eine ausgeschlossene
+Erweiterung dennoch einen Fehler, wird er nur protokolliert, ohne Meldung, und ihr Eintrag für den Rest der Sitzung
+ausgeblendet. Ein leeres Feld schaltet den Ausschluss ab.
+
 ## Bekannte Einschränkungen
 
 - Der Hex-Editor arbeitet nur im Überschreibmodus (kein Einfügen/Löschen von Bytes).

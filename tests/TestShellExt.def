@@ -1,0 +1,4 @@
+LIBRARY QFilesTestExt
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

@@ -11,6 +11,7 @@
 #include "App.h"
 #include "MainWindow.h"
 #include "Settings.h"
+#include "ShellMenu.h"
 #include "Util.h"
 
 namespace qf {
@@ -40,6 +41,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     bool firstRun = !App::Cfg().Load(cfgPath);
     App::Cfg().SetFilePath(cfgPath);
     App::Opt().Load(App::Cfg());
+    PrefetchShellExtensionExclusion();
     if (firstRun) {
         // Erste Lesezeichen als Vorgabe
         std::vector<Bookmark> b;
