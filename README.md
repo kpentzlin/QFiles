@@ -103,12 +103,13 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 ### Dateioperationen
 
 - Kopieren (Umschalt+F5) und Verschieben (Umschalt+F6) in die andere Liste.
-- Umbenennen mit F2 im Dialog: eine Datei → Name ändern (Name ohne Erweiterung vorausgewählt); mehrere markierte
-  Dateien → „Dateigruppe umbenennen“. Direkt in der Liste umbenennen: langsamer zweiter Klick auf den Namen.
+- Umbenennen mit F2: immer der vollständige Umbenennungsdialog (auch für eine einzelne Datei). Direkt in der Liste
+  umbenennen: langsamer zweiter Klick auf den Namen.
 - Neues Verzeichnis (F8), neue leere Datei (F9), neue Textdatei mit Editor (Umschalt+F4).
 - **Duplizieren** (F10): Namensvorschlag „Name - Kopie.ext“; der Knopf „Nummeriert“ setzt „Name (1).ext“ ein bzw.
   zählt hoch, wenn es den Namen schon gibt oder er bereits auf „(n)“ endet.
-- Löschen in den Papierkorb (Entf) oder endgültig (Umschalt+Entf).
+- Löschen in den Papierkorb (Entf) oder endgültig (Umschalt+Entf). In der Werkzeugleiste stehen dafür drei Symbole:
+  Papierkorb (Löschen in den Papierkorb), Kreuz (endgültig löschen), Radiergummi (Radieren).
 - **Radieren** (Alt+Entf): Der Inhalt wird mit kryptografisch zufälligen Daten überschrieben, die Datei auf Länge 0
   gekürzt, in einen Zufallsnamen umbenannt und gelöscht; Verzeichnisse rekursiv. Nicht rückgängig zu machen.
   Hinweis: Auf SSDs und bei Schattenkopien/Cloud-Synchronisierung kann der alte Inhalt physisch erhalten bleiben.
@@ -189,7 +190,9 @@ Platzhalter in Parametern und Arbeitsverzeichnis:
 | `[E]` | Erweiterung (Bereiche wie bei `[N]`) |
 | `[C]` | Zähler (Start, Schritt, Stellen einstellbar) |
 | `[D]` | Änderungsdatum JJJJMMTT |
+| `[d]` | Änderungsdatum JJJJ-MM-TT |
 | `[T]` | Uhrzeit hhmmss |
+| `[t]` | Uhrzeit hh-mm-ss |
 | `[P]` | Name des Elternverzeichnisses |
 | `[[`, `]]` | eckige Klammern |
 
@@ -316,9 +319,11 @@ Starttest mit Bildschirmfoto. Wird auf GitHub ein Release veröffentlicht, häng
 ## Absturzberichte
 
 Stürzt QFiles ab, wird neben der Einstellungsdatei ein Bericht mit Aufrufstapel gespeichert
-(`%ProgramData%\QFiles\QFiles-Absturz.txt`, dazu ein Minidump `QFiles-Absturz.dmp`). Stürzt beim Kontextmenü eine
-Shell-Erweiterung eines anderen Programms ab, wird das abgefangen: QFiles läuft weiter und nennt das verursachende
-Modul.
+(`%ProgramData%\QFiles\QFiles-Absturz.txt`, dazu ein Minidump `QFiles-Absturz.dmp`). Wirft beim Kontextmenü eine
+Shell-Erweiterung eines anderen Programms eine unbehandelte Ausnahme, wird das abgefangen: QFiles läuft weiter und
+meldet Aufruf, betroffenen Menüeintrag, Ausnahmecode, bei C++-Ausnahmen Typ und Text sowie die Module auf dem
+Aufrufstapel mit der vermutlich verursachenden DLL. Die vollständigen Angaben werden an
+`%ProgramData%\QFiles\QFiles-Kontextmenue.txt` angehängt.
 
 ## Bekannte Einschränkungen
 

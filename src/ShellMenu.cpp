@@ -392,9 +392,14 @@ void ReportFault(HWND owner, const std::wstring& dir, const std::vector<std::wst
     WriteFileBytes(logPath, u.data(), u.size());
     LogOperation(L"Kontextmenü-Erweiterung: Ausnahme abgefangen – " + g_fault.where);
 
+    // Meldung: Zusammenfassung (Aufrufstapel und Modulliste vollständig nur in der Protokolldatei)
+    std::wstring shortText = r.substr(0, r.find(L"Aufrufstapel:"));
+    shortText += L"Module auf dem Aufrufstapel: ";
+    for (size_t i = 0; i < g_fault.stackPaths.size(); ++i) shortText += (i ? L", " : L"") + PathFileName(g_fault.stackPaths[i]);
+    shortText += L"\n";
     std::wstring msg = L"Eine Kontextmenü-Erweiterung eines anderen Programms hat einen Fehler verursacht. QFiles hat "
-                       L"ihn abgefangen und läuft weiter.\n\n" + r +
-                       L"\nDiese Angaben stehen auch in:\n" + logPath + L"\n(Strg+C kopiert den Text dieser Meldung.)";
+                       L"ihn abgefangen und läuft weiter.\n\n" + shortText +
+                       L"\nVollständige Angaben (mit Aufrufstapel) in:\n" + logPath + L"\n(Strg+C kopiert den Text dieser Meldung.)";
     MessageBoxW(owner, msg.c_str(), L"QFiles – Fehler in Kontextmenü-Erweiterung", MB_OK | MB_ICONWARNING);
 }
 
