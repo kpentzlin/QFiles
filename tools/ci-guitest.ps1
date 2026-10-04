@@ -33,7 +33,7 @@ Set-Content -Path "C:\QFilesDemo\Ünïcödé 日本語 ✓\Grüße €.txt" -Val
 Set-Content -Path "C:\QFilesDemo\liesmich.txt" -Value "QFiles Starttest" -Encoding UTF8
 Set-Content -Path "C:\QFilesDemo\zweite Datei.txt" -Value "Zweite Datei" -Encoding UTF8
 
-# Test-Kontextmenü-Erweiterung registrieren (nur für diesen Benutzer): A liegt in einem Pfad mit „ArchiCrypt“
+# Test-Kontextmenü-Erweiterung registrieren (HKLM: erhöhte Prozesse ignorieren HKCU-Klassen): A liegt in einem Pfad mit „ArchiCrypt“
 # und muss durch den Standard-Ausschluss fehlen, B muss erscheinen.
 $menuLog = "$PWD\menu-log.txt"
 Remove-Item $menuLog -ErrorAction SilentlyContinue
@@ -47,11 +47,11 @@ foreach ($t in @($extA, $extB)) {
 $ext = @(@{ Id = "{6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001}"; Dll = $extA; Name = "QFilesTestA" },
          @{ Id = "{6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A002}"; Dll = $extB; Name = "QFilesTestB" })
 foreach ($e in $ext) {
-  & reg.exe add "HKCU\Software\Classes\CLSID\$($e.Id)" /ve /d "QFiles Testerweiterung $($e.Name)" /f | Out-Null
-  & reg.exe add "HKCU\Software\Classes\CLSID\$($e.Id)\InprocServer32" /ve /d "$($e.Dll)" /f | Out-Null
-  & reg.exe add "HKCU\Software\Classes\CLSID\$($e.Id)\InprocServer32" /v ThreadingModel /d Apartment /f | Out-Null
+  & reg.exe add "HKLM\Software\Classes\CLSID\$($e.Id)" /ve /d "QFiles Testerweiterung $($e.Name)" /f | Out-Null
+  & reg.exe add "HKLM\Software\Classes\CLSID\$($e.Id)\InprocServer32" /ve /d "$($e.Dll)" /f | Out-Null
+  & reg.exe add "HKLM\Software\Classes\CLSID\$($e.Id)\InprocServer32" /v ThreadingModel /d Apartment /f | Out-Null
   foreach ($k in @("*", "Directory", "Directory\Background")) {
-    & reg.exe add "HKCU\Software\Classes\$k\shellex\ContextMenuHandlers\$($e.Name)" /ve /d "$($e.Id)" /f | Out-Null
+    & reg.exe add "HKLM\Software\Classes\$k\shellex\ContextMenuHandlers\$($e.Name)" /ve /d "$($e.Id)" /f | Out-Null
   }
 }
 
@@ -160,9 +160,9 @@ if ($menuText -match "QFiles-Testeintrag B") {
   Write-Output "::warning title=Kontextmenü-Ausschluss::Test-Erweiterung B wurde nicht geladen – Ausschluss nicht aussagekräftig geprüft. Menü: $short"
 }
 foreach ($e in $ext) {
-  & reg.exe delete "HKCU\Software\Classes\CLSID\$($e.Id)" /f | Out-Null
+  & reg.exe delete "HKLM\Software\Classes\CLSID\$($e.Id)" /f | Out-Null
   foreach ($k in @("*", "Directory", "Directory\Background")) {
-    & reg.exe delete "HKCU\Software\Classes\$k\shellex\ContextMenuHandlers\$($e.Name)" /f | Out-Null
+    & reg.exe delete "HKLM\Software\Classes\$k\shellex\ContextMenuHandlers\$($e.Name)" /f | Out-Null
   }
 }
 
