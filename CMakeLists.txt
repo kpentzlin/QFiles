@@ -33,14 +33,16 @@ target_compile_definitions(QFiles PRIVATE
 
 target_link_libraries(QFiles PRIVATE
     comctl32 shell32 shlwapi ole32 oleaut32 uuid
-    gdi32 user32 comdlg32 advapi32 windowscodecs propsys version msimg32 uxtheme
+    gdi32 user32 comdlg32 advapi32 windowscodecs propsys version msimg32 uxtheme dbghelp bcrypt
 )
 
 if(MSVC)
     target_compile_options(QFiles PRIVATE /W4 /utf-8 /permissive- /EHsc /MP
         /wd4100 /wd4201 /wd4245 /wd4267 /wd4244 /wd4389)
-    # Manifest kommt aus der Ressourcendatei.
-    target_link_options(QFiles PRIVATE /MANIFEST:NO)
+    # Manifest kommt aus der Ressourcendatei. PDB auch im Release (für Absturzberichte mit Funktionsnamen).
+    target_compile_options(QFiles PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_link_options(QFiles PRIVATE /MANIFEST:NO $<$<CONFIG:Release>:/DEBUG> $<$<CONFIG:Release>:/OPT:REF>
+        $<$<CONFIG:Release>:/OPT:ICF>)
     set_property(TARGET QFiles PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 else()
     target_compile_options(QFiles PRIVATE -Wall -Wextra -Wno-unused-parameter

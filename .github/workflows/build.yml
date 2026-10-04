@@ -41,44 +41,15 @@ jobs:
           & build\Release\QFilesTests.exe 2>&1 | Tee-Object -FilePath test-log.txt
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      - name: Starttest mit Bildschirmfoto
+      - name: GUI-Test mit Bildschirmfotos
         run: |
-          New-Item -ItemType Directory -Force -Path "C:\QFilesDemo\Ünïcödé 日本語 ✓" | Out-Null
-          Set-Content -Path "C:\QFilesDemo\Ünïcödé 日本語 ✓\Grüße €.txt" -Value "Hallo Welt – äöü 日本語" -Encoding UTF8
-          Set-Content -Path "C:\QFilesDemo\liesmich.txt" -Value "QFiles Starttest" -Encoding UTF8
-          $p = Start-Process -FilePath "build\Release\QFiles.exe" -ArgumentList '"C:\QFilesDemo"','"C:\Windows"' -PassThru
-          Start-Sleep -Seconds 10
-          if ($p.HasExited) { "QFiles hat sich unerwartet beendet (Exitcode $($p.ExitCode))" | Tee-Object -FilePath smoke-log.txt; exit 1 }
-          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-          $g = [System.Drawing.Graphics]::FromImage($bmp)
-          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-          $bmp.Save("$PWD\screenshot.png")
-          # Zweites Bild: rechte Liste teilen (Strg+T), links Datei wählen, Dateianzeige im anderen Fenster (Strg+Q)
-          $ws = New-Object -ComObject WScript.Shell
-          $null = $ws.AppActivate($p.Id)
-          Start-Sleep -Milliseconds 800
-          [System.Windows.Forms.SendKeys]::SendWait("^2")
-          Start-Sleep -Milliseconds 500
-          [System.Windows.Forms.SendKeys]::SendWait("^t")
-          Start-Sleep -Milliseconds 800
-          [System.Windows.Forms.SendKeys]::SendWait("^1")
-          Start-Sleep -Milliseconds 300
-          [System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}{DOWN}")
-          Start-Sleep -Milliseconds 300
-          [System.Windows.Forms.SendKeys]::SendWait("^q")
-          Start-Sleep -Seconds 2
-          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-          $bmp.Save("$PWD\screenshot2.png")
-          if ($p.HasExited) { "QFiles hat sich nach Tastatureingaben beendet (Exitcode $($p.ExitCode))" | Tee-Object -FilePath smoke-log.txt; exit 1 }
-          $p.CloseMainWindow() | Out-Null
-          Start-Sleep -Seconds 3
-          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
-          if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
-            "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
-          }
-          Write-Output "Einstellungsdatei angelegt: C:\ProgramData\QFiles\QFiles.ini"
+          & .\tools\ci-guitest.ps1 -Exe build\Release\QFiles.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Absturzbericht sichern
+        if: always()
+        run: |
+          if (Test-Path C:\ProgramData\QFiles\QFiles-Absturz.txt) { Copy-Item C:\ProgramData\QFiles\QFiles-Absturz.* . }
 
       - name: Fehlerdiagnose
         if: failure()
@@ -110,19 +81,22 @@ jobs:
         if: always()
         with:
           name: screenshot
-          path: screenshot*.png
+          path: |
+            screenshot*.png
+            QFiles-Absturz.*
           if-no-files-found: ignore
 
       - name: Bildschirmfoto in Zweig ci-screenshot
-        if: github.event_name == 'workflow_dispatch' && inputs.screenshot_branch
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.screenshot_branch
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          Copy-Item screenshot*.png $env:RUNNER_TEMP\
+          New-Item -ItemType Directory -Force -Path $env:RUNNER_TEMP\shots | Out-Null
+          Copy-Item screenshot*.png, QFiles-Absturz.*, *-log.txt $env:RUNNER_TEMP\shots\ -ErrorAction SilentlyContinue
           git checkout --orphan ci-screenshot
           git rm -rf --cached . | Out-Null
-          Copy-Item $env:RUNNER_TEMP\screenshot*.png .
-          git add screenshot*.png
+          Copy-Item $env:RUNNER_TEMP\shots\* .
+          Get-ChildItem screenshot*.png, QFiles-Absturz.*, *-log.txt -ErrorAction SilentlyContinue | ForEach-Object { git add -f $_.Name }
           git commit -m "CI-Bildschirmfoto"
           git push -f origin ci-screenshot
 

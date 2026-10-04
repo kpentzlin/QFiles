@@ -15,6 +15,7 @@
 
 namespace qf {
 bool MainWindowPreTranslate(MSG* msg);
+void InstallCrashHandler(const std::wstring& reportDir);
 }
 
 using namespace qf;
@@ -35,6 +36,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
 
     // Einstellungen: standardmäßig %ProgramData%\QFiles\QFiles.ini
     std::wstring cfgPath = DetermineConfigPath();
+    InstallCrashHandler(PathParent(cfgPath));
     bool firstRun = !App::Cfg().Load(cfgPath);
     App::Cfg().SetFilePath(cfgPath);
     App::Opt().Load(App::Cfg());

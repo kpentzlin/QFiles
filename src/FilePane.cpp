@@ -1763,6 +1763,24 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_NOTIFY:
         return OnNotify((NMHDR*)lp);
+    case WM_CONTEXTMENU:
+        // Tastatur (Umschalt+F10 / Kontextmenütaste): Menü am Fokuselement
+        if ((HWND)wp == list_ && lp == -1) {
+            int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
+            POINT pt{ToPx(20), ToPx(20)};
+            bool onItem = i >= 0 && i < (int)items_.size() && !items_[i].isParent;
+            if (i >= 0) {
+                RECT r{};
+                ListView_EnsureVisible(list_, i, FALSE);
+                if (ListView_GetItemRect(list_, i, &r, LVIR_LABEL)) pt = {r.left + ToPx(8), r.bottom};
+            }
+            ClientToScreen(list_, &pt);
+            if (onItem && ListView_GetSelectedCount(list_) == 0)
+                ListView_SetItemState(list_, i, LVIS_SELECTED, LVIS_SELECTED);
+            if (host_) host_->OnPaneContextMenu(this, pt, onItem);
+            return 0;
+        }
+        break;
     case WM_COMMAND:
         if (LOWORD(wp) == kIdPath) {
             if (HIWORD(wp) == CBN_SELENDOK) {
