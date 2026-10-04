@@ -15,6 +15,9 @@ public static class W {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, IntPtr e);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
+  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   public static void Click(int x, int y, bool right) {
     SetCursorPos(x, y); System.Threading.Thread.Sleep(150);
     uint down = right ? 0x0008u : 0x0002u, up = right ? 0x0010u : 0x0004u;
@@ -140,12 +143,17 @@ Check-Alive "Umschalt+F10"
 Check-Alive "Split und Dateianzeige"
 Shot "screenshot2.png"
 
-# Optionen: „Dateidatum sekundengenau“ (Alt+K) und „Spalte Erstellt“ (Alt+E) einschalten, mit OK speichern
+# Optionen: Kontrollkästchen „Dateidatum sekundengenau“ (ID 1015) und „Spalte Erstellt“ (ID 1016) anklicken,
+# mit OK speichern
 [W]::SetForegroundWindow($main) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("%w"); Start-Sleep -Milliseconds 600
 [System.Windows.Forms.SendKeys]::SendWait("o"); Start-Sleep -Seconds 2
-[System.Windows.Forms.SendKeys]::SendWait("%k"); Start-Sleep -Milliseconds 400
-[System.Windows.Forms.SendKeys]::SendWait("%e"); Start-Sleep -Milliseconds 400
+$dlg = [W]::FindWindow("#32770", "Optionen")
+if ($dlg -eq [IntPtr]::Zero) { "Optionen-Dialog nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+foreach ($cid in @(1015, 1016)) {
+  [W]::SendMessage([W]::GetDlgItem($dlg, $cid), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # BM_CLICK
+  Start-Sleep -Milliseconds 300
+}
 Shot "screenshot6.png"
 [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
 Check-Alive "Optionen"
