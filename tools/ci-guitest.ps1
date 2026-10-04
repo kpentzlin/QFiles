@@ -140,6 +140,24 @@ Check-Alive "Umschalt+F10"
 Check-Alive "Split und Dateianzeige"
 Shot "screenshot2.png"
 
+# Optionen: „Dateidatum sekundengenau“ (Alt+K) und „Spalte Erstellt“ (Alt+E) einschalten, mit OK speichern
+[W]::SetForegroundWindow($main) | Out-Null
+[System.Windows.Forms.SendKeys]::SendWait("%w"); Start-Sleep -Milliseconds 600
+[System.Windows.Forms.SendKeys]::SendWait("o"); Start-Sleep -Seconds 2
+[System.Windows.Forms.SendKeys]::SendWait("%k"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("%e"); Start-Sleep -Milliseconds 400
+Shot "screenshot6.png"
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+Check-Alive "Optionen"
+Shot "screenshot7.png"
+$ini = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
+if ($ini -notmatch "(?m)^DatumSekunden=1\s*$" -or $ini -notmatch "(?m)^SpalteErstellt=1\s*$") {
+  $opt = ($ini -split "`r?`n" | Where-Object { $_ -match "DatumSekunden|SpalteErstellt" }) -join ' | '
+  "Optionen „sekundengenau“/„Spalte Erstellt“ wurden nicht gespeichert: $opt" | Tee-Object -FilePath smoke-log.txt
+  exit 1
+}
+Write-Output "::notice title=Optionen::DatumSekunden=1 und SpalteErstellt=1 gespeichert."
+
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }

@@ -210,6 +210,16 @@ void FilePane::SetupColumns() {
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | LVCF_SUBITEM;
         c.fmt = (id == ColSize) ? LVCFMT_RIGHT : LVCFMT_LEFT;
         c.cx = ToPx(colWidths_[id]);
+        if (id == ColDate || id == ColCreated) {
+            // Datumsspalten mindestens so breit, dass ein Datum (ggf. mit Sekunden) vollständig sichtbar ist
+            SYSTEMTIME st{2026, 12, 0, 28, 23, 58, 58, 0};
+            FILETIME ft, utc;
+            SystemTimeToFileTime(&st, &ft);
+            LocalFileTimeToFileTime(&ft, &utc);
+            std::wstring sample = FormatFileTime(utc, o.dateWithSeconds);
+            int need = ListView_GetStringWidth(list_, sample.c_str()) + ToPx(16);
+            if (c.cx < need) c.cx = need;
+        }
         c.pszText = const_cast<wchar_t*>(kColumnTitles[id]);
         c.iSubItem = id;
         ListView_InsertColumn(list_, pos++, &c);

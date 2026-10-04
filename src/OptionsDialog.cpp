@@ -47,8 +47,8 @@ constexpr int kListFontText = 1013;
 constexpr int kListFontBtn = 1014;
 constexpr int kDateSeconds = 1015;
 constexpr int kColCreated = 1016;
-constexpr int kDisplayGroup1 = 1015;
-constexpr int kDisplayGroup2 = 1016;
+constexpr int kDisplayGroup1 = 1017;   // eigene IDs: 1015/1016 gehören den Kontrollkästchen
+constexpr int kDisplayGroup2 = 1018;
 // ---- Seite 1: Bedienung ----
 constexpr int kConfirmDelete = 1101;
 constexpr int kRecycle = 1102;
