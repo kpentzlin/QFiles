@@ -88,6 +88,21 @@ Check-Alive "Kontextmenü schließen"
 Check-Alive "Rechtsklick auf freie Fläche"
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 800
 
+# Mehrfachauswahl (Strg+A) und Rechtsklick
+[W]::Click($x, $y, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^a"); Start-Sleep -Milliseconds 400
+[W]::Click($x, $y, $true); Start-Sleep -Seconds 3
+Check-Alive "Rechtsklick bei Mehrfachauswahl"
+Shot "screenshot4.png"
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 800
+
+# Rechtsklick auf ein Verzeichnis (Zeile 2)
+$yd = $lr.T + 24 + 1 * 20 + 10
+[W]::Click($x, $yd, $false); Start-Sleep -Milliseconds 400
+[W]::Click($x, $yd, $true); Start-Sleep -Seconds 3
+Check-Alive "Rechtsklick auf Verzeichnis"
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 800
+
 # Tastatur-Kontextmenü (Umschalt+F10) auf der Datei
 [W]::Click($x, $y, $false); Start-Sleep -Milliseconds 500
 [System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Seconds 3
@@ -110,3 +125,4 @@ if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 Write-Output "GUI-Test bestanden; Einstellungsdatei: C:\ProgramData\QFiles\QFiles.ini"
+exit 0

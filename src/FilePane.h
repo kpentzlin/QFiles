@@ -40,7 +40,7 @@ public:
 };
 
 enum class PaneView { Details = 0, List = 1, Icons = 2, Thumbnails = 3 };
-enum class SortKey { Name = 0, Ext = 1, Size = 2, Date = 3, Attr = 4 };
+enum class SortKey { Name = 0, Ext = 1, Size = 2, Date = 3, Attr = 4, Created = 5 };
 enum class SplitButton { Split, Unsplit };
 
 class FilePane {
@@ -133,7 +133,7 @@ private:
         uint64_t dirSize = UINT64_MAX; // berechnete Verzeichnisgröße
         CompareMark mark = CompareMark::None;
     };
-    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Browse };
+    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Browse, Active };
     struct HitRect {
         HitArea area;
         int drive;          // Laufwerksindex bei Drive
@@ -209,6 +209,7 @@ private:
     PaneFilter filter_;
     CompareMarks marks_;
     std::vector<int> colWidths_;   // in 96-DPI-Pixeln
+    std::vector<int> colIds_;      // Spaltenindex -> Spalten-ID
 
     std::vector<std::wstring> hist_;     // Zurück/Vor-Liste
     int histPos_ = -1;

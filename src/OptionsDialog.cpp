@@ -45,6 +45,8 @@ constexpr int kThumbEdit = 1010;
 constexpr int kThumbSpin = 1011;
 constexpr int kListFontText = 1013;
 constexpr int kListFontBtn = 1014;
+constexpr int kDateSeconds = 1015;
+constexpr int kColCreated = 1016;
 constexpr int kDisplayGroup1 = 1015;
 constexpr int kDisplayGroup2 = 1016;
 // ---- Seite 1: Bedienung ----
@@ -123,6 +125,8 @@ protected:
         SetCheck(kFullRow, opt.fullRowSelect);
         SetCheck(kColType, opt.showExtensionsColumn);
         SetCheck(kColAttr, opt.showAttributesColumn);
+        SetCheck(kDateSeconds, opt.dateWithSeconds);
+        SetCheck(kColCreated, opt.showCreatedColumn);
         InitSpin(kThumbSpin, kThumbEdit, 32, 256, opt.thumbnailSize);
         listFont_ = opt.listFontName;
         listSize_ = opt.listFontSize;
@@ -255,6 +259,8 @@ private:
         opt.fullRowSelect = IsChecked(kFullRow);
         opt.showExtensionsColumn = IsChecked(kColType);
         opt.showAttributesColumn = IsChecked(kColAttr);
+        opt.dateWithSeconds = IsChecked(kDateSeconds);
+        opt.showCreatedColumn = IsChecked(kColCreated);
         opt.thumbnailSize = SpinValue(kThumbEdit, 32, 256, opt.thumbnailSize);
         opt.listFontName = listFont_;
         opt.listFontSize = listSize_;
@@ -304,21 +310,23 @@ bool ShowOptionsDialog(HWND owner) {
     t.Tab(kTab, 7, 7, W - 14, 206);
 
     // ---- Anzeige ----
-    t.Group(kDisplayGroup1, L"Dateilisten", px - 4, py, pw + 8, 92);
+    t.Group(kDisplayGroup1, L"Dateilisten", px - 4, py, pw + 8, 104);
     t.Check(kShowHidden, L"&Versteckte Dateien anzeigen", px + 4, py + 12, 150, 10);
     t.Check(kShowSystem, L"&Systemdateien anzeigen", px + 4, py + 25, 150, 10);
     t.Check(kDirsFirst, L"Verzeichnisse &zuerst", px + 4, py + 38, 150, 10);
     t.Check(kGridLines, L"&Gitternetzlinien", px + 4, py + 51, 150, 10);
+    t.Check(kDateSeconds, L"Dateidatum se&kundengenau", px + 4, py + 64, 150, 10);
     t.Check(kSizeBytes, L"Größe immer in &Bytes", px + 160, py + 12, 140, 10);
     t.Check(kFullRow, L"Ganze &Zeile markieren", px + 160, py + 25, 140, 10);
     t.Check(kColType, L"Spalte „&Typ“ anzeigen", px + 160, py + 38, 140, 10);
     t.Check(kColAttr, L"Spalte „&Attribute“ anzeigen", px + 160, py + 51, 140, 10);
-    t.Label(kThumbLabel, L"&Miniaturgröße (32–256 Pixel):", px + 4, py + 72, 110, 10);
-    t.Edit(kThumbEdit, px + 118, py + 70, 40, 13, ES_NUMBER);
+    t.Check(kColCreated, L"Spalte „&Erstellt“ anzeigen", px + 160, py + 64, 150, 10);
+    t.Label(kThumbLabel, L"&Miniaturgröße (32–256 Pixel):", px + 4, py + 86, 110, 10);
+    t.Edit(kThumbEdit, px + 118, py + 84, 40, 13, ES_NUMBER);
     t.UpDown(kThumbSpin, 0, 0, 10, 13);
-    t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 116, pw + 8, 34);
-    t.Edit(kListFontText, px + 4, py + 130, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
-    t.Button(kListFontBtn, L"Schrift&art …", px + 200, py + 129, 70, 14);
+    t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 112, pw + 8, 34);
+    t.Edit(kListFontText, px + 4, py + 126, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
+    t.Button(kListFontBtn, L"Schrift&art …", px + 200, py + 125, 70, 14);
 
     // ---- Bedienung ----
     t.Check(kConfirmDelete, L"&Löschen bestätigen", px, py, 150, 10);

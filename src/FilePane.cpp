@@ -33,9 +33,11 @@ enum : UINT {
 
 enum : UINT_PTR { TIMER_REFRESH = 1, TIMER_STATUS = 2 };
 
-enum ColumnId { ColName = 0, ColExt = 1, ColSize = 2, ColDate = 3, ColAttr = 4, ColCount = 5 };
-const int kDefaultWidths[ColCount] = {260, 60, 90, 120, 50};
-const wchar_t* kColumnTitles[ColCount] = {L"Name", L"Typ", L"Größe", L"Geändert", L"Attr."};
+enum ColumnId { ColName = 0, ColExt = 1, ColSize = 2, ColDate = 3, ColAttr = 4, ColCreated = 5, ColCount = 6 };
+const int kDefaultWidths[ColCount] = {260, 60, 90, 120, 50, 120};
+const wchar_t* kColumnTitles[ColCount] = {L"Name", L"Typ", L"Größe", L"Geändert", L"Attr.", L"Erstellt"};
+// Anzeigereihenfolge: Erstellt steht direkt neben Geändert
+const int kColumnOrder[ColCount] = {ColName, ColExt, ColSize, ColDate, ColCreated, ColAttr};
 
 constexpr int kIdList = 10;
 constexpr int kIdPath = 11;
@@ -198,9 +200,12 @@ void FilePane::SetupColumns() {
     while (Header_GetItemCount(header) > 0) ListView_DeleteColumn(list_, 0);
     const Options& o = App::Opt();
     int pos = 0;
-    for (int id = 0; id < ColCount; ++id) {
+    colIds_.clear();
+    for (int k = 0; k < ColCount; ++k) {
+        int id = kColumnOrder[k];
         if (id == ColExt && !o.showExtensionsColumn) continue;
         if (id == ColAttr && !o.showAttributesColumn) continue;
+        if (id == ColCreated && !o.showCreatedColumn) continue;
         LVCOLUMNW c{};
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | LVCF_SUBITEM;
         c.fmt = (id == ColSize) ? LVCFMT_RIGHT : LVCFMT_LEFT;
@@ -208,6 +213,7 @@ void FilePane::SetupColumns() {
         c.pszText = const_cast<wchar_t*>(kColumnTitles[id]);
         c.iSubItem = id;
         ListView_InsertColumn(list_, pos++, &c);
+        colIds_.push_back(id);  // Spaltenindex -> Spalten-ID (LVN_GETDISPINFO liefert den Index)
     }
     // Sortierpfeil
     int n = Header_GetItemCount(header);
@@ -329,7 +335,7 @@ void FilePane::Layout() {
     rcStatus_ = {0, std::max<LONG>(hh + ph, rc.bottom - sh), rc.right, rc.bottom};
     rcList_ = {0, hh + ph, rc.right, rcStatus_.top};
     int btnW = ToPx(kNavBtnW);
-    int comboW = std::max<int>(ToPx(40), rc.right - 4 * btnW - ToPx(6));
+    int comboW = std::max<int>(ToPx(40), rc.right - 5 * btnW - ToPx(6));
     // Combobox vertikal zentriert
     RECT cr;
     GetWindowRect(pathCombo_, &cr);
@@ -355,10 +361,10 @@ void FilePane::BuildHitRects() {
     int pad = ToPx(2);
     int bs = hh - 2 * pad; // quadratische Schaltfläche
     int x = rcHeader_.right - pad;
-    // ganz rechts: Lesezeichen
-    hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
-    x -= bs + pad;
+    // ganz rechts: Split, links daneben: Lesezeichen
     hits_.push_back({HitArea::Split, -1, {x - bs, pad, x, pad + bs}});
+    x -= bs + pad;
+    hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
     int rightLimit = x - bs - ToPx(6);
     // Laufwerke von links
     HDC dc = GetDC(hwnd_);
@@ -380,6 +386,9 @@ void FilePane::BuildHitRects() {
     int px = rcPath_.right - ToPx(2);
     int ph = rcPath_.bottom - rcPath_.top;
     int top = rcPath_.top + ToPx(2), bottom = rcPath_.top + ph - ToPx(2);
+    // ganz rechts: Kreis für aktive/inaktive Liste
+    hits_.push_back({HitArea::Active, -1, {px - btnW, top, px, bottom}});
+    px -= btnW;
     HitArea order[4] = {HitArea::Browse, HitArea::Up, HitArea::Forward, HitArea::Back};
     for (HitArea a : order) {
         hits_.push_back({a, -1, {px - btnW, top, px, bottom}});
@@ -409,6 +418,7 @@ void FilePane::UpdateTooltips() {
         case HitArea::Forward: text = L"Vor (Alt+→)"; break;
         case HitArea::Up: text = L"Übergeordnetes Verzeichnis (Rücktaste)"; break;
         case HitArea::Browse: text = L"Verzeichnis wählen…"; break;
+        case HitArea::Active: text = L"Aktive Liste (grün) – Klick macht diese Liste aktiv"; break;
         default: break;
         }
         TOOLINFOW ti{sizeof(ti)};
@@ -503,6 +513,26 @@ void FilePane::PaintNavButtons(HDC dc) {
     for (auto& h : hits_)
         if (h.area == HitArea::Back || h.area == HitArea::Forward || h.area == HitArea::Up || h.area == HitArea::Browse)
             DrawGlyph(dc, h.area, h.rc, hot_ == &h);
+        else if (h.area == HitArea::Active) {
+            // Kreis: grün gefüllt = aktive Liste, hohl = nicht aktiv (Klick aktiviert)
+            int w = h.rc.right - h.rc.left, hgt = h.rc.bottom - h.rc.top;
+            int d = std::max(8, std::min(w, hgt) * 55 / 100);
+            int cx = (h.rc.left + h.rc.right) / 2, cy = (h.rc.top + h.rc.bottom) / 2;
+            if (hot_ == &h && !activeLook_) {
+                HBRUSH hb = CreateSolidBrush(Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 190));
+                FillRect(dc, &h.rc, hb);
+                DeleteObject(hb);
+            }
+            COLORREF line = activeLook_ ? RGB(20, 120, 40) : RGB(110, 110, 110);
+            HPEN pen = CreatePen(PS_SOLID, std::max(1, ToPx(2) / 2 + (activeLook_ ? 0 : 1)), line);
+            HBRUSH br = activeLook_ ? CreateSolidBrush(RGB(40, 180, 70)) : (HBRUSH)GetStockObject(NULL_BRUSH);
+            HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, br);
+            Ellipse(dc, cx - d / 2, cy - d / 2, cx - d / 2 + d, cy - d / 2 + d);
+            SelectObject(dc, op);
+            SelectObject(dc, ob);
+            DeleteObject(pen);
+            if (activeLook_) DeleteObject(br);
+        }
 }
 
 void FilePane::PaintStatus(HDC dc, const RECT& rc) {
@@ -547,6 +577,7 @@ void FilePane::SetActiveLook(bool active) {
     if (activeLook_ == active) return;
     activeLook_ = active;
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
+    InvalidateRect(hwnd_, &rcPath_, FALSE);
 }
 
 void FilePane::SetSplitButton(SplitButton b) {
@@ -642,6 +673,7 @@ void FilePane::SortItems() {
             break;
         }
         case SortKey::Date: c = CompareFileTime(&a.e.modified, &b.e.modified); break;
+        case SortKey::Created: c = CompareFileTime(&a.e.created, &b.e.created); break;
         case SortKey::Attr: c = (int)(a.e.attributes & 0xFF) - (int)(b.e.attributes & 0xFF); break;
         }
         if (c == 0) c = CompareNatural(a.e.name, b.e.name);
@@ -888,7 +920,9 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
     Item& it = items_[i];
     if (di->item.mask & LVIF_TEXT) {
         std::wstring s;
-        switch (di->item.iSubItem) {
+        int sub = di->item.iSubItem;
+        int colId = (sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub;
+        switch (colId) {
         case ColName: s = it.e.name; break;
         case ColExt:
             if (it.isParent) s = L"";
@@ -904,7 +938,10 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
             else s = App::Opt().sizeInBytes ? FormatSizeBytes(it.e.size) : FormatSize(it.e.size);
             break;
         case ColDate:
-            if (!it.isParent) s = FormatFileTime(it.e.modified);
+            if (!it.isParent) s = FormatFileTime(it.e.modified, App::Opt().dateWithSeconds);
+            break;
+        case ColCreated:
+            if (!it.isParent) s = FormatFileTime(it.e.created, App::Opt().dateWithSeconds);
             break;
         case ColAttr:
             if (!it.isParent) s = FormatAttributes(it.e.attributes);
@@ -1458,7 +1495,7 @@ void FilePane::StopWatch() {
 
 void FilePane::LoadState(const Config& c, const std::wstring& s) {
     view_ = (PaneView)std::clamp(c.GetInt(s, L"Ansicht", 0), 0, 3);
-    sortKey_ = (SortKey)std::clamp(c.GetInt(s, L"Sortierung", 0), 0, 4);
+    sortKey_ = (SortKey)std::clamp(c.GetInt(s, L"Sortierung", 0), 0, 5);
     sortDesc_ = c.GetBool(s, L"Absteigend", false);
     auto widths = Split(c.Get(s, L"Spalten"), L',');
     for (int i = 0; i < ColCount && i < (int)widths.size(); ++i) {
@@ -1634,8 +1671,9 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         return 0; // in der Unterklasse behandelt
     case LVN_COLUMNCLICK: {
         auto* lv = (NMLISTVIEW*)nm;
-        SortKey k = (SortKey)lv->iSubItem;
-        SetSort(k, k == sortKey_ ? !sortDesc_ : (k == SortKey::Date || k == SortKey::Size));
+        int sub = lv->iSubItem;
+        SortKey k = (SortKey)((sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub);
+        SetSort(k, k == sortKey_ ? !sortDesc_ : (k == SortKey::Date || k == SortKey::Size || k == SortKey::Created));
         return 0;
     }
     case LVN_BEGINLABELEDITW: {

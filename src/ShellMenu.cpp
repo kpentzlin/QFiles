@@ -21,6 +21,62 @@ IContextMenu3* g_cm3 = nullptr;
 constexpr UINT kShellFirst = 1;
 constexpr UINT kShellLast = 30000;
 
+// ---- Schutz vor abstürzenden Shell-Erweiterungen ----
+// Kontextmenü-Erweiterungen fremder Programme laufen in unserem Prozess. Stürzt eine davon ab, soll nicht
+// QFiles mit beendet werden: Mit MSVC werden die Aufrufe per SEH abgesichert, das Menü wird verworfen und das
+// verursachende Modul gemeldet.
+bool g_extensionFault = false;
+std::wstring g_faultModule;
+
+#ifdef _MSC_VER
+int FaultFilter(EXCEPTION_POINTERS* ep) {
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_BREAKPOINT) return EXCEPTION_CONTINUE_SEARCH;
+    HMODULE mod = nullptr;
+    wchar_t name[MAX_PATH] = L"?";
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR)ep->ExceptionRecord->ExceptionAddress, &mod) && mod)
+        GetModuleFileNameW(mod, name, MAX_PATH);
+    g_faultModule = name;
+    g_extensionFault = true;
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#define QF_TRY __try
+#define QF_EXCEPT __except (FaultFilter(GetExceptionInformation()))
+#else
+#define QF_TRY if (true)
+#define QF_EXCEPT else
+#endif
+
+HRESULT SafeQueryContextMenu(IContextMenu* cm, HMENU menu, UINT index, UINT flags) {
+    QF_TRY { return cm->QueryContextMenu(menu, index, kShellFirst, kShellLast, flags); }
+    QF_EXCEPT { return E_FAIL; }
+}
+HRESULT SafeGetVerb(IContextMenu* cm, UINT_PTR idx, wchar_t* buf, UINT cch) {
+    QF_TRY { return cm->GetCommandString(idx, GCS_VERBW, nullptr, (LPSTR)buf, cch); }
+    QF_EXCEPT { return E_FAIL; }
+}
+HRESULT SafeInvoke(IContextMenu* cm, CMINVOKECOMMANDINFOEX* ici) {
+    QF_TRY { return cm->InvokeCommand((LPCMINVOKECOMMANDINFO)ici); }
+    QF_EXCEPT { return E_FAIL; }
+}
+HRESULT SafeHandleMenuMsg2(IContextMenu3* cm, UINT msg, WPARAM wp, LPARAM lp, LRESULT* r) {
+    QF_TRY { return cm->HandleMenuMsg2(msg, wp, lp, r); }
+    QF_EXCEPT { return E_FAIL; }
+}
+HRESULT SafeHandleMenuMsg(IContextMenu2* cm, UINT msg, WPARAM wp, LPARAM lp) {
+    QF_TRY { return cm->HandleMenuMsg(msg, wp, lp); }
+    QF_EXCEPT { return E_FAIL; }
+}
+void SafeRelease(IUnknown* u) {
+    if (!u || g_extensionFault) return; // nach einem Fehler das Objekt lieber nicht mehr anfassen
+    QF_TRY { u->Release(); }
+    QF_EXCEPT {}
+}
+HRESULT SafeGetUIObjectOf(IShellFolder* f, HWND owner, UINT n, PCUITEMID_CHILD_ARRAY a, IContextMenu** cm) {
+    QF_TRY { return f->GetUIObjectOf(owner, n, a, IID_IContextMenu, nullptr, (void**)cm); }
+    QF_EXCEPT { return E_FAIL; }
+}
+
 // Liefert IShellFolder des Verzeichnisses und die relativen PIDLs der Namen.
 struct ShellItems {
     IShellFolder* folder = nullptr;
@@ -63,7 +119,7 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
             IShellFolder* parent = nullptr;
             PCUITEMID_CHILD child = nullptr;
             if (SUCCEEDED(SHBindToParent(pidl, IID_PPV_ARGS(&parent), &child))) {
-                parent->GetUIObjectOf(owner, 1, &child, IID_IContextMenu, nullptr, (void**)&cm);
+                SafeGetUIObjectOf(parent, owner, 1, &child, &cm);
                 parent->Release();
             }
             CoTaskMemFree(pidl);
@@ -73,8 +129,7 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
         if (names.empty())
             si.folder->CreateViewObject(owner, IID_PPV_ARGS(&cm));
         else
-            si.folder->GetUIObjectOf(owner, (UINT)si.children.size(), (PCUITEMID_CHILD_ARRAY)si.children.data(),
-                                     IID_IContextMenu, nullptr, (void**)&cm);
+            SafeGetUIObjectOf(si.folder, owner, (UINT)si.children.size(), (PCUITEMID_CHILD_ARRAY)si.children.data(), &cm);
     }
     HMENU menu = CreatePopupMenu();
     // Eigene Einträge oben
@@ -93,25 +148,41 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
         if (extraCount) AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         UINT flags = CMF_NORMAL | CMF_EXPLORE | (names.empty() ? 0 : CMF_CANRENAME);
         if (GetKeyState(VK_SHIFT) < 0) flags |= CMF_EXTENDEDVERBS;
-        cm->QueryContextMenu(menu, GetMenuItemCount(menu), kShellFirst, kShellLast, flags);
-        cm->QueryInterface(IID_PPV_ARGS(&g_cm3));
-        if (!g_cm3) cm->QueryInterface(IID_PPV_ARGS(&g_cm2));
+        SafeQueryContextMenu(cm, menu, GetMenuItemCount(menu), flags);
+        if (!g_extensionFault) {
+            cm->QueryInterface(IID_PPV_ARGS(&g_cm3));
+            if (!g_cm3) cm->QueryInterface(IID_PPV_ARGS(&g_cm2));
+        }
+    }
+    if (g_extensionFault) {
+        // Erweiterung abgestürzt: nur die eigenen Einträge anbieten
+        DestroyMenu(menu);
+        menu = CreatePopupMenu();
+        for (int i = 0; i < extraCount; ++i) {
+            wchar_t text[256] = {};
+            MENUITEMINFOW mi{sizeof(mi)};
+            mi.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STRING | MIIM_STATE;
+            mi.dwTypeData = text;
+            mi.cch = 255;
+            GetMenuItemInfoW(extra, i, TRUE, &mi);
+            mi.dwTypeData = text;
+            InsertMenuItemW(menu, i, TRUE, &mi);
+        }
+        cm = nullptr;
+        extraCount = 0;
     }
     int result = 0;
     UINT id = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, owner, nullptr);
-    if (g_cm3) {
-        g_cm3->Release();
-        g_cm3 = nullptr;
-    }
-    if (g_cm2) {
-        g_cm2->Release();
-        g_cm2 = nullptr;
-    }
+    SafeRelease(g_cm3);
+    g_cm3 = nullptr;
+    SafeRelease(g_cm2);
+    g_cm2 = nullptr;
+    if (g_extensionFault) cm = nullptr;
     if (id >= 40000) {
         result = (int)id;
     } else if (id >= kShellFirst && id <= kShellLast && cm) {
         wchar_t verb[128] = {};
-        if (FAILED(cm->GetCommandString(id - kShellFirst, GCS_VERBW, nullptr, (LPSTR)verb, 127))) verb[0] = 0;
+        if (FAILED(SafeGetVerb(cm, id - kShellFirst, verb, 127))) verb[0] = 0;
         if (_wcsicmp(verb, L"rename") == 0) {
             if (renameRequested) *renameRequested = true;
         } else {
@@ -125,11 +196,19 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
             ici.lpDirectoryW = dir.c_str();
             ici.nShow = SW_SHOWNORMAL;
             ici.ptInvoke = pt;
-            cm->InvokeCommand((LPCMINVOKECOMMANDINFO)&ici);
+            SafeInvoke(cm, &ici);
             LogOperation(L"Kontextmenü „" + std::wstring(verb[0] ? verb : L"Befehl") + L"“ in " + dir);
         }
     }
-    if (cm) cm->Release();
+    SafeRelease(cm);
+    if (g_extensionFault) {
+        g_extensionFault = false;
+        std::wstring msg = L"Eine Kontextmenü-Erweiterung eines anderen Programms ist abgestürzt und wurde übergangen:\n\n" +
+                           g_faultModule + L"\n\nQFiles läuft weiter. Das Explorer-Kontextmenü steht für diese Elemente "
+                                           L"eventuell nur eingeschränkt zur Verfügung.";
+        LogOperation(L"Kontextmenü-Erweiterung abgestürzt: " + g_faultModule);
+        MsgError(owner, msg);
+    }
     // Eigene Untermenüs gehören dem Aufrufer: vor dem Zerstören lösen
     for (int i = 0; i < extraCount; ++i) {
         MENUITEMINFOW mi{sizeof(mi)};
@@ -145,12 +224,12 @@ bool HandleShellMenuMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (msg != WM_INITMENUPOPUP && msg != WM_DRAWITEM && msg != WM_MEASUREITEM && msg != WM_MENUCHAR) return false;
     if (g_cm3) {
         LRESULT r = 0;
-        if (SUCCEEDED(g_cm3->HandleMenuMsg2(msg, wp, lp, &r))) {
+        if (SUCCEEDED(SafeHandleMenuMsg2(g_cm3, msg, wp, lp, &r))) {
             *result = r;
             return true;
         }
     } else if (g_cm2) {
-        if (SUCCEEDED(g_cm2->HandleMenuMsg(msg, wp, lp))) {
+        if (SUCCEEDED(SafeHandleMenuMsg(g_cm2, msg, wp, lp))) {
             *result = 0;
             return true;
         }

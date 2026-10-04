@@ -18,6 +18,7 @@
 #include <knownfolders.h>
 #include <windowsx.h>
 #include <algorithm>
+#include <functional>
 
 namespace qf {
 
@@ -71,6 +72,131 @@ std::wstring Quote(const std::wstring& s) {
 
 void AddItem(HMENU m, int id, const wchar_t* text) { AppendMenuW(m, MF_STRING, id, text); }
 void AddSep(HMENU m) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
+
+// ===================== Kleine Dialoge (Umbenennen, Duplizieren, Auswahl) =====================
+
+// Name eingeben; bei Dateien wird der Name ohne Erweiterung vorausgewählt.
+// numbered: optionaler Knopf "Nummeriert", der einen nummerierten Namen einsetzt.
+class NameDlg : public DialogBase {
+public:
+    std::wstring prompt, value;
+    bool selectStem = true;
+    std::function<std::wstring()> numbered;  // leer = kein Knopf
+    BOOL OnInit() override {
+        SetText(101, prompt);
+        SetText(102, value);
+        SelectStem();
+        SetFocus(Item(102));
+        return FALSE;
+    }
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        if (id == 103 && numbered) {
+            SetText(102, numbered());
+            SelectStem();
+            SetFocus(Item(102));
+            return TRUE;
+        }
+        if (id == IDOK) value = Trim(GetText(102));
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+
+private:
+    void SelectStem() {
+        std::wstring t = GetText(102);
+        size_t dot = t.find_last_of(L'.');
+        if (selectStem && dot != std::wstring::npos && dot > 0) SendMessageW(Item(102), EM_SETSEL, 0, dot);
+        else SendMessageW(Item(102), EM_SETSEL, 0, -1);
+    }
+};
+
+bool AskName(HWND owner, const std::wstring& title, const std::wstring& prompt, std::wstring& value, bool selectStem,
+             std::function<std::wstring()> numbered = nullptr) {
+    DialogTemplate t(title, 280, 66);
+    t.Label(101, L"", 7, 7, 266, 18);
+    t.Edit(102, 7, 26, 266, 14, ES_AUTOHSCROLL);
+    int x = 116;
+    if (numbered) t.Button(103, L"&Nummeriert", 7, 46, 60, 14);
+    t.DefButton(IDOK, L"OK", x + 52, 46, 50, 14);
+    t.Button(IDCANCEL, L"Abbrechen", x + 107, 46, 50, 14);
+    NameDlg dlg;
+    dlg.prompt = prompt;
+    dlg.value = value;
+    dlg.selectStem = selectStem;
+    dlg.numbered = std::move(numbered);
+    if (dlg.DoModal(owner, t) != IDOK) return false;
+    value = dlg.value;
+    return !value.empty();
+}
+
+// Auswahl aus mehreren Möglichkeiten (Optionsfelder). Rückgabe: Index oder -1.
+class ChoiceDlg : public DialogBase {
+public:
+    std::wstring prompt;
+    std::vector<std::wstring> options;
+    int choice = 0;
+    BOOL OnInit() override {
+        SetText(101, prompt);
+        for (size_t i = 0; i < options.size(); ++i) SetText(200 + (int)i, options[i]);
+        SetCheck(200, true);
+        return TRUE;
+    }
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        if (id == IDOK)
+            for (size_t i = 0; i < options.size(); ++i)
+                if (IsChecked(200 + (int)i)) choice = (int)i;
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+};
+
+int AskChoice(HWND owner, const std::wstring& title, const std::wstring& prompt, const std::vector<std::wstring>& options) {
+    int h = 48 + (int)options.size() * 14;
+    DialogTemplate t(title, 300, h);
+    t.Label(101, L"", 7, 7, 286, 10);
+    for (size_t i = 0; i < options.size(); ++i)
+        t.Radio(200 + (int)i, L"", 14, 22 + (int)i * 14, 279, 10, i == 0);
+    t.DefButton(IDOK, L"OK", 186, h - 20, 50, 14);
+    t.Button(IDCANCEL, L"Abbrechen", 243, h - 20, 50, 14);
+    ChoiceDlg dlg;
+    dlg.prompt = prompt;
+    dlg.options = options;
+    if (dlg.DoModal(owner, t) != IDOK) return -1;
+    return dlg.choice;
+}
+
+// Nummerierter Name: "Name (1).ext"; endet der Name schon auf " (n)" oder existiert das Ziel, wird hochgezählt.
+std::wstring NumberedName(const std::wstring& dir, const std::wstring& name, bool isDir) {
+    std::wstring stem = name, ext;
+    size_t dot = name.find_last_of(L'.');
+    if (!isDir && dot != std::wstring::npos && dot > 0) {
+        stem = name.substr(0, dot);
+        ext = name.substr(dot);
+    }
+    int n = 1;
+    if (stem.size() >= 4 && stem.back() == L')') {
+        size_t open = stem.find_last_of(L'(');
+        if (open != std::wstring::npos && open >= 1 && stem[open - 1] == L' ') {
+            std::wstring num = stem.substr(open + 1, stem.size() - open - 2);
+            bool digits = !num.empty() && num.size() < 9;
+            for (wchar_t c : num)
+                if (!iswdigit(c)) digits = false;
+            if (digits) {
+                n = _wtoi(num.c_str()) + 1;
+                stem = stem.substr(0, open - 1);
+            }
+        }
+    }
+    for (;; ++n) {
+        std::wstring cand = stem + L" (" + std::to_wstring(n) + L")" + ext;
+        if (!PathExists(PathCombine(dir, cand))) return cand;
+    }
+}
+
+const wchar_t* PanePositionName(int i, bool twoPanes, bool splitCol) {
+    static const wchar_t* withSplit[4] = {L"links oben", L"rechts oben", L"links unten", L"rechts unten"};
+    if (!splitCol) return twoPanes ? (i % 2 == 0 ? L"links" : L"rechts") : L"";
+    return withSplit[i];
+}
+
 
 } // namespace
 
@@ -303,20 +429,23 @@ void MainWindow::BuildMenu() {
     HMENU m = CreatePopupMenu();
     AddItem(m, cmd::Open, L"Ö&ffnen\tEingabe");
     AddItem(m, cmd::OpenWith, L"Öffnen &mit…");
-    AddItem(m, cmd::View, L"&Anzeigen\tF3");
-    AddItem(m, cmd::ViewWindow, L"Im Anzeige&fenster anzeigen\tUmschalt+F3");
+    AddItem(m, cmd::View, L"&Anzeigen\tF11");
+    AddItem(m, cmd::ViewWindow, L"Im Anzeige&fenster anzeigen\tUmschalt+F11");
     AddItem(m, cmd::Edit, L"&Bearbeiten\tF4");
-    AddItem(m, cmd::HexEdit, L"Im &Hex-Editor bearbeiten\tAlt+F3");
+    AddItem(m, cmd::HexEdit, L"Im &Hex-Editor bearbeiten\tAlt+F11");
     AddSep(m);
+    AddItem(m, cmd::NewFile, L"&Neue Datei…\tF9");
     AddItem(m, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F4");
-    AddItem(m, cmd::NewFolder, L"Neues &Verzeichnis…\tF7");
+    AddItem(m, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
+    AddItem(m, cmd::Duplicate, L"D&uplizieren…\tF10");
     AddSep(m);
-    AddItem(m, cmd::Copy, L"&Kopieren…\tF5");
-    AddItem(m, cmd::Move, L"Ve&rschieben…\tF6");
+    AddItem(m, cmd::Copy, L"&Kopieren…\tUmschalt+F5");
+    AddItem(m, cmd::Move, L"Ve&rschieben…\tUmschalt+F6");
     AddItem(m, cmd::Rename, L"&Umbenennen\tF2");
     AddItem(m, cmd::BatchRename, L"&Dateigruppe umbenennen…\tStrg+M");
     AddItem(m, cmd::Delete, L"&Löschen\tEntf");
     AddItem(m, cmd::DeletePermanent, L"Endgültig lösc&hen\tUmschalt+Entf");
+    AddItem(m, cmd::Wipe, L"Rad&ieren (überschreiben und löschen)…\tAlt+Entf");
     AddSep(m);
     AddItem(m, cmd::Attributes, L"Attribute und &Datum ändern…\tStrg+Umschalt+A");
     AddItem(m, cmd::Properties, L"&Eigenschaften…\tAlt+Eingabe");
@@ -340,7 +469,7 @@ void MainWindow::BuildMenu() {
     AddSep(m);
     AddItem(m, cmd::SelectAll, L"Alles &markieren\tStrg+A");
     AddItem(m, cmd::SelectNone, L"Markierung auf&heben\tNum /");
-    AddItem(m, cmd::InvertSelection, L"Markierung &umkehren\tNum *");
+    AddItem(m, cmd::InvertSelection, L"Markierung &umkehren\tF6");
     AddItem(m, cmd::SelectGroup, L"&Gruppe markieren…\tNum +");
     AddItem(m, cmd::DeselectGroup, L"Gruppe &abwählen…\tNum -");
     AddItem(m, cmd::SelectSameExt, L"Gleiche &Erweiterung markieren\tAlt+Num +");
@@ -365,6 +494,7 @@ void MainWindow::BuildMenu() {
     AddItem(sort, cmd::SortSize, L"&Größe");
     AddItem(sort, cmd::SortDate, L"&Datum");
     AddItem(sort, cmd::SortAttr, L"&Attribute");
+    AddItem(sort, cmd::SortCreated, L"&Erstellungsdatum");
     AddSep(sort);
     AddItem(sort, cmd::SortDescending, L"&Absteigend");
     AppendMenuW(m, MF_POPUP, (UINT_PTR)sort, L"&Sortieren nach");
@@ -376,7 +506,7 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::ToggleFKeyBar, L"&Funktionstastenleiste");
     AddItem(m, cmd::ToggleStatusBar, L"Status&leiste");
     AddSep(m);
-    AddItem(m, cmd::Refresh, L"&Aktualisieren\tStrg+R");
+    AddItem(m, cmd::Refresh, L"&Aktualisieren\tF5");
     AppendMenuW(menu_, MF_POPUP, (UINT_PTR)m, L"&Ansicht");
 
     m = CreatePopupMenu();
@@ -407,11 +537,11 @@ void MainWindow::BuildMenu() {
     AppendMenuW(menu_, MF_POPUP, (UINT_PTR)bookmarkMenu_, L"&Lesezeichen");
 
     m = CreatePopupMenu();
-    AddItem(m, cmd::FindFiles, L"Dateien &suchen…\tStrg+F");
+    AddItem(m, cmd::FindFiles, L"Dateien &suchen…\tF3");
     AddItem(m, cmd::FindDuplicates, L"&Doppelte Dateien suchen…");
     AddSep(m);
     AddItem(m, cmd::CompareFiles, L"Dateien &vergleichen…\tStrg+K");
-    AddItem(m, cmd::CompareDirs, L"Ver&zeichnisse vergleichen…\tStrg+Umschalt+K");
+    AddItem(m, cmd::CompareDirs, L"Ver&zeichnisse vergleichen…\tF7");
     AddItem(m, cmd::ClearCompareMarks, L"Vergleichsmarkierungen &entfernen");
     AddItem(m, cmd::SyncDirs, L"Verzeichnisse s&ynchronisieren…\tStrg+Umschalt+Y");
     AddSep(m);
@@ -457,7 +587,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     check(cmd::SplitToggle, split_[active_ % 2]);
     check(cmd::QuickView, quickView_);
     CheckMenuRadioItem(m, cmd::ViewDetails, cmd::ViewThumbnails, cmd::ViewDetails + (int)a.View(), MF_BYCOMMAND);
-    CheckMenuRadioItem(m, cmd::SortName, cmd::SortAttr, cmd::SortName + (int)a.Sort(), MF_BYCOMMAND);
+    CheckMenuRadioItem(m, cmd::SortName, cmd::SortCreated, cmd::SortName + (int)a.Sort(), MF_BYCOMMAND);
     check(cmd::SortDescending, a.SortDescending());
     check(cmd::ShowHidden, App::Opt().showHidden);
     check(cmd::Filter, a.Filter().IsActive());
@@ -471,7 +601,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     std::wstring undoText = CanUndo() ? (L"&Rückgängig: " + UndoDescription() + L"\tStrg+Z") : L"&Rückgängig\tStrg+Z";
     ModifyMenuW(m, cmd::Undo, MF_BYCOMMAND | MF_STRING | (CanUndo() ? 0 : MF_GRAYED), cmd::Undo, undoText.c_str());
     enable(cmd::ClipPaste, ClipboardHasFiles());
-    for (int id : {cmd::Copy, cmd::Move, cmd::Delete, cmd::DeletePermanent, cmd::ClipCut, cmd::ClipCopy, cmd::Attributes,
+    for (int id : {cmd::Copy, cmd::Move, cmd::Delete, cmd::DeletePermanent, cmd::Wipe, cmd::Duplicate, cmd::ClipCut, cmd::ClipCopy, cmd::Attributes,
                    cmd::CreateZip, cmd::CopyPaths, cmd::CopyNames, cmd::BatchRename, cmd::Rename, cmd::Properties})
         enable(id, hasSel);
     for (int id : {cmd::Edit, cmd::HexEdit, cmd::ViewWindow, cmd::SplitFile, cmd::OpenWith}) enable(id, focusedFile);
@@ -520,19 +650,19 @@ void MainWindow::BuildToolbar() {
         {offHist + HIST_FORWARD, cmd::GoForward, L"Vor", false},
         {offView + VIEW_PARENTFOLDER, cmd::GoUp, L"Übergeordnetes Verzeichnis", false},
         {-1, 0, nullptr, false},
-        {offStd + STD_COPY, cmd::Copy, L"Kopieren (F5)", false},
-        {offStd + STD_CUT, cmd::Move, L"Verschieben (F6)", false},
-        {offView + VIEW_NEWFOLDER, cmd::NewFolder, L"Neues Verzeichnis (F7)", false},
+        {offStd + STD_COPY, cmd::Copy, L"Kopieren in die andere Liste (Umschalt+F5)", false},
+        {offStd + STD_CUT, cmd::Move, L"Verschieben in die andere Liste (Umschalt+F6)", false},
+        {offView + VIEW_NEWFOLDER, cmd::NewFolder, L"Neues Verzeichnis (F8)", false},
         {offStd + STD_DELETE, cmd::Delete, L"Löschen (Entf)", false},
         {offStd + STD_UNDO, cmd::Undo, L"Rückgängig (Strg+Z)", false},
         {-1, 0, nullptr, false},
-        {offStd + STD_PRINTPRE, cmd::View, L"Anzeigen (F3)", false},
+        {offStd + STD_PRINTPRE, cmd::View, L"Anzeigen (F11)", false},
         {offStd + STD_FILENEW, cmd::Edit, L"Bearbeiten (F4)", false},
         {offStd + STD_PROPERTIES, cmd::Properties, L"Eigenschaften (Alt+Eingabe)", false},
         {-1, 0, nullptr, false},
-        {offStd + STD_FIND, cmd::FindFiles, L"Dateien suchen (Strg+F)", false},
-        {offStd + STD_REPLACE, cmd::CompareDirs, L"Verzeichnisse vergleichen", false},
-        {offStd + STD_REDOW, cmd::SyncDirs, L"Verzeichnisse synchronisieren", false},
+        {offStd + STD_FIND, cmd::FindFiles, L"Dateien suchen (F3)", false},
+        {offStd + STD_REPLACE, cmd::CompareDirs, L"Verzeichnisse vergleichen (F7)", false},
+        {offStd + STD_REDOW, cmd::SyncDirs, L"Verzeichnisse synchronisieren (Strg+Umschalt+Y)", false},
         {-1, 0, nullptr, false},
         {offView + VIEW_DETAILS, cmd::ViewDetails, L"Details", false},
         {offView + VIEW_LIST, cmd::ViewList, L"Liste", false},
@@ -552,8 +682,9 @@ void MainWindow::BuildToolbar() {
             t.iBitmap = b.image;
             t.idCommand = b.cmd;
             t.fsState = TBSTATE_ENABLED;
-            t.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE | (b.showText ? BTNS_SHOWTEXT : 0);
-            t.iString = (INT_PTR)b.text;
+            t.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+            t.iString = -1;
+            toolTips_.emplace_back(b.cmd, b.text);
         }
         tb.push_back(t);
     }
@@ -565,18 +696,26 @@ void MainWindow::BuildToolbar() {
 void MainWindow::BuildAccelerators() {
     std::vector<ACCEL> a;
     auto add = [&](BYTE flags, WORD key, int id) { a.push_back({(BYTE)(flags | FVIRTKEY), key, (WORD)id}); };
+    // Funktionstasten F2–F11 (Fußzeile)
     add(0, VK_F2, cmd::Rename);
-    add(0, VK_F3, cmd::View);
-    add(FSHIFT, VK_F3, cmd::ViewWindow);
-    add(FALT, VK_F3, cmd::HexEdit);
+    add(0, VK_F3, cmd::FindFiles);
     add(0, VK_F4, cmd::Edit);
+    add(0, VK_F5, cmd::Refresh);
+    add(0, VK_F6, cmd::InvertSelection);
+    add(0, VK_F7, cmd::CompareDirs);
+    add(0, VK_F8, cmd::NewFolder);
+    add(0, VK_F9, cmd::NewFile);
+    add(0, VK_F10, cmd::Duplicate);      // F10 wird zusätzlich in PreTranslate behandelt (Systemtaste)
+    add(0, VK_F11, cmd::View);
+    // Weitere Belegungen
+    add(FSHIFT, VK_F11, cmd::ViewWindow);
+    add(FALT, VK_F11, cmd::HexEdit);
     add(FSHIFT, VK_F4, cmd::NewTextFile);
-    add(0, VK_F5, cmd::Copy);
-    add(0, VK_F6, cmd::Move);
-    add(0, VK_F7, cmd::NewFolder);
-    add(0, VK_F8, cmd::Delete);
+    add(FSHIFT, VK_F5, cmd::Copy);
+    add(FSHIFT, VK_F6, cmd::Move);
     add(0, VK_DELETE, cmd::Delete);
     add(FSHIFT, VK_DELETE, cmd::DeletePermanent);
+    add(FALT, VK_DELETE, cmd::Wipe);
     add(FALT, VK_RETURN, cmd::Properties);
     add(FALT | FSHIFT, VK_RETURN, cmd::DirSizes);
     add(FCONTROL, VK_RETURN, cmd::CmdLineInsertName);
@@ -623,8 +762,6 @@ void MainWindow::BuildAccelerators() {
     add(FALT, VK_F2, cmd::FocusBookmarks);
     add(FCONTROL, 'E', cmd::FocusCommandLine);
     add(FCONTROL, 'D', cmd::BookmarkAdd);
-    add(FCONTROL, 'F', cmd::FindFiles);
-    add(FALT, VK_F7, cmd::FindFiles);
     add(FCONTROL, 'K', cmd::CompareFiles);
     add(FCONTROL | FSHIFT, 'K', cmd::CompareDirs);
     add(FCONTROL | FSHIFT, 'Y', cmd::SyncDirs);
@@ -638,6 +775,15 @@ void MainWindow::BuildAccelerators() {
 
 bool MainWindow::PreTranslate(MSG* msg) {
     if (!accel_ || !msg->hwnd) return false;
+    // F10 (ohne Umschalt/Strg/Alt) ist eine Systemtaste (Menüleiste) – hier als "Duplizieren" verwenden
+    if (msg->message == WM_SYSKEYDOWN && msg->wParam == VK_F10 && GetAncestor(msg->hwnd, GA_ROOT) == hwnd_ &&
+        GetKeyState(VK_SHIFT) >= 0 && GetKeyState(VK_CONTROL) >= 0 && GetKeyState(VK_MENU) >= 0) {
+        OnCommand(cmd::Duplicate);
+        return true;
+    }
+    if (msg->message == WM_SYSKEYUP && msg->wParam == VK_F10 && GetAncestor(msg->hwnd, GA_ROOT) == hwnd_ &&
+        GetKeyState(VK_SHIFT) >= 0 && GetKeyState(VK_CONTROL) >= 0)
+        return true; // kein Aktivieren der Menüleiste
     if (msg->message != WM_KEYDOWN && msg->message != WM_SYSKEYDOWN) return false;
     if (GetAncestor(msg->hwnd, GA_ROOT) != hwnd_) return false;
     // In Textfeldern (Pfad, Befehlszeile, Umbenennen, Anzeige) keine Tasten abfangen, die dort gebraucht werden
@@ -682,11 +828,12 @@ void MainWindow::BuildFKeyCells() {
             const wchar_t* k;
             const wchar_t* l;
             int c;
-        } std[] = {{L"F2", L"Umbenennen", cmd::Rename},  {L"F3", L"Anzeigen", cmd::View},
-                   {L"F4", L"Bearbeiten", cmd::Edit},    {L"F5", L"Kopieren", cmd::Copy},
-                   {L"F6", L"Verschieben", cmd::Move},   {L"F7", L"Verzeichnis", cmd::NewFolder},
-                   {L"F8", L"Löschen", cmd::Delete},     {L"Strg+F", L"Suchen", cmd::FindFiles},
-                   {L"Alt+F4", L"Beenden", cmd::Exit}};
+        } std[] = {{L"F2", L"Umbenennen", cmd::Rename},        {L"F3", L"Suchen", cmd::FindFiles},
+                   {L"F4", L"Bearbeiten", cmd::Edit},          {L"F5", L"Aktualisieren", cmd::Refresh},
+                   {L"F6", L"Markierung umkehren", cmd::InvertSelection},
+                   {L"F7", L"Vergleich", cmd::CompareDirs},    {L"F8", L"Neues Verzeichnis", cmd::NewFolder},
+                   {L"F9", L"Neue Datei", cmd::NewFile},       {L"F10", L"Duplizieren", cmd::Duplicate},
+                   {L"F11", L"Anzeigen", cmd::View}};
         for (auto& s : std) fkeys_.push_back({s.k, s.l, s.c, {}});
     } else {
         int base = fkeyMode_ == 1 ? 0 : 12;
@@ -757,10 +904,29 @@ void MainWindow::Layout() {
         int h = S(kFKeyH);
         rcFKeys_ = {0, bottom - h, rc.right, bottom};
         bottom -= h;
+        // Breiten nach Textlänge verteilen, damit lange Beschriftungen nicht abgeschnitten werden
         int n = (int)fkeys_.size();
-        int w = n ? (rc.right - S(4)) / n : 0;
-        for (int i = 0; i < n; ++i)
-            fkeys_[i].rc = {S(2) + i * w, rcFKeys_.top + S(2), S(2) + (i + 1) * w - S(2), rcFKeys_.bottom - S(2)};
+        std::vector<int> need(n);
+        int total = 0;
+        HDC dc = GetDC(hwnd_);
+        HGDIOBJ of = SelectObject(dc, App::UIFont());
+        for (int i = 0; i < n; ++i) {
+            SIZE a{}, b{};
+            GetTextExtentPoint32W(dc, fkeys_[i].key.c_str(), (int)fkeys_[i].key.size(), &a);
+            GetTextExtentPoint32W(dc, fkeys_[i].label.c_str(), (int)fkeys_[i].label.size(), &b);
+            need[i] = a.cx + b.cx + S(16);
+            total += need[i];
+        }
+        SelectObject(dc, of);
+        ReleaseDC(hwnd_, dc);
+        int avail = rc.right - S(4);
+        int x = S(2);
+        for (int i = 0; i < n; ++i) {
+            int w = total > 0 ? (int)((long long)avail * need[i] / total) : 0;
+            if (i == n - 1) w = rc.right - S(2) - x;
+            fkeys_[i].rc = {x, rcFKeys_.top + S(2), x + w - S(2), rcFKeys_.bottom - S(2)};
+            x += w;
+        }
     } else {
         rcFKeys_ = {};
     }
@@ -1101,20 +1267,23 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
         names = p->SelectedOrFocusedNames();
         bool file = !p->FocusedIsDir();
         if (file) {
-            AddItem(extra, cmd::View, L"&Anzeigen\tF3");
+            AddItem(extra, cmd::View, L"&Anzeigen\tF11");
             AddItem(extra, cmd::Edit, L"&Bearbeiten\tF4");
         }
-        AddItem(extra, cmd::Copy, L"&Kopieren in andere Liste\tF5");
-        AddItem(extra, cmd::Move, L"&Verschieben in andere Liste\tF6");
-        if (names.size() > 1) AddItem(extra, cmd::BatchRename, L"Dateigruppe &umbenennen…\tStrg+M");
+        AddItem(extra, cmd::Copy, L"&Kopieren in andere Liste\tUmschalt+F5");
+        AddItem(extra, cmd::Move, L"&Verschieben in andere Liste\tUmschalt+F6");
+        AddItem(extra, cmd::Duplicate, L"D&uplizieren…\tF10");
+        AddItem(extra, cmd::Rename, names.size() > 1 ? L"Dateigruppe &umbenennen…\tF2" : L"&Umbenennen…\tF2");
         AddItem(extra, cmd::Attributes, L"Attribute/&Datum ändern…");
         if (file && IsArchive(p->FocusedName())) AddItem(extra, cmd::OpenArchive, L"Archiv anzeigen/en&tpacken…");
         AddItem(extra, cmd::CreateZip, L"&ZIP-Archiv erstellen…");
+        AddItem(extra, cmd::Wipe, L"Rad&ieren…\tAlt+Entf");
     } else {
-        AddItem(extra, cmd::NewFolder, L"Neues &Verzeichnis…\tF7");
+        AddItem(extra, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
+        AddItem(extra, cmd::NewFile, L"&Neue Datei…\tF9");
         AddItem(extra, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F4");
         if (ClipboardHasFiles()) AddItem(extra, cmd::ClipPaste, L"&Einfügen\tStrg+V");
-        AddItem(extra, cmd::Refresh, L"&Aktualisieren\tStrg+R");
+        AddItem(extra, cmd::Refresh, L"&Aktualisieren\tF5");
         AddItem(extra, cmd::BookmarkAdd, L"Den &Lesezeichen hinzufügen\tStrg+D");
     }
     bool rename = false;
@@ -1298,23 +1467,33 @@ void MainWindow::OpenSpecialFolder(int index) {
 
 void MainWindow::ShowShortcuts() {
     const wchar_t* text =
+        L"Funktionstasten (Fußzeile)\r\n"
+        L"  F2\tUmbenennen (Dialog; bei mehreren markierten Dateien: Dateigruppe umbenennen)\r\n"
+        L"  F3\tDateien suchen\r\n"
+        L"  F4\tBearbeiten (Texteditor)\r\n"
+        L"  F5\tAktualisieren (Verzeichnisse neu einlesen)\r\n"
+        L"  F6\tMarkierung umkehren\r\n"
+        L"  F7\tVerzeichnisse vergleichen (bei Split mit Auswahl der Vergleichsliste)\r\n"
+        L"  F8\tNeues Verzeichnis\r\n"
+        L"  F9\tNeue Datei;  Umschalt+F4: neue Textdatei (öffnet den Editor)\r\n"
+        L"  F10\tDuplizieren (Name + „ - Kopie“, Knopf „Nummeriert“)\r\n"
+        L"  F11\tAnzeigen (Dateianzeige im anderen Fenster);  Umschalt+F11: Anzeigefenster;  Alt+F11: Hex-Editor\r\n"
+        L"\r\n"
         L"Dateilisten\r\n"
         L"  Eingabe\tÖffnen (Verzeichnis wechseln, Archiv anzeigen, Datei mit Standardprogramm)\r\n"
         L"  Umschalt+Eingabe\tMit Standardprogramm öffnen\r\n"
         L"  Rücktaste\tÜbergeordnetes Verzeichnis;  Strg+Rücktaste: Stammverzeichnis\r\n"
         L"  Alt+← / Alt+→\tZurück / Vor\r\n"
-        L"  Tab\tNächste Liste;  Strg+1…4: Liste 1…4\r\n"
+        L"  Tab\tNächste Liste;  Strg+1…4: Liste 1…4;  Klick auf den Kreis in der Pfadzeile aktiviert eine Liste\r\n"
         L"  Leertaste / Einfg\tMarkieren (Leertaste berechnet bei Verzeichnissen die Größe)\r\n"
         L"  Num + / Num - / Num * / Num /\tGruppe markieren / abwählen / umkehren / aufheben\r\n"
         L"  Strg+A\tAlles markieren\r\n"
+        L"  Umschalt+F10\tKontextmenü\r\n"
         L"\r\n"
         L"Dateien\r\n"
-        L"  F2\tUmbenennen;  Strg+M: Dateigruppe umbenennen\r\n"
-        L"  F3\tAnzeigen (Dateianzeige im anderen Fenster, siehe Optionen);  Umschalt+F3: Anzeigefenster;  Alt+F3: Hex-Editor\r\n"
-        L"  F4\tBearbeiten (Texteditor);  Umschalt+F4: neue Textdatei\r\n"
-        L"  F5 / F6\tKopieren / Verschieben in die andere Liste\r\n"
-        L"  F7\tNeues Verzeichnis\r\n"
-        L"  F8 / Entf\tLöschen (Papierkorb);  Umschalt+Entf: endgültig\r\n"
+        L"  Umschalt+F5 / Umschalt+F6\tKopieren / Verschieben in die andere Liste\r\n"
+        L"  Entf\tLöschen (Papierkorb);  Umschalt+Entf: endgültig;  Alt+Entf: Radieren\r\n"
+        L"  Strg+M\tDateigruppe umbenennen\r\n"
         L"  Alt+Eingabe\tEigenschaften;  Alt+Umschalt+Eingabe: Verzeichnisgrößen\r\n"
         L"  Strg+Umschalt+A\tAttribute und Datum ändern\r\n"
         L"  Alt+F5 / Alt+F9\tZIP erstellen / Archiv anzeigen und entpacken\r\n"
@@ -1333,8 +1512,7 @@ void MainWindow::ShowShortcuts() {
         L"  Alt+F1 / Alt+F2\tVerzeichnisbaum / Lesezeichenliste\r\n"
         L"  Strg+D\tGewähltes Verzeichnis den Lesezeichen hinzufügen\r\n"
         L"  Strg+U\tListen tauschen;  Strg+Umschalt+O: Gegenseite auf dasselbe Verzeichnis\r\n"
-        L"  Strg+F / Alt+F7\tDateien suchen\r\n"
-        L"  Strg+K / Strg+Umschalt+K\tDateien / Verzeichnisse vergleichen;  Strg+Umschalt+Y: Synchronisieren\r\n"
+        L"  Strg+K\tDateien vergleichen;  Strg+Umschalt+Y: Synchronisieren\r\n"
         L"  Strg+P\tVerzeichnisliste drucken\r\n"
         L"  Strg+F1…F12, Strg+Umschalt+F1…F12\t24 programmierbare Funktionstasten (Werkzeuge → Funktionstasten belegen)\r\n";
     class ShortcutDlg : public DialogBase {
@@ -1461,10 +1639,82 @@ void MainWindow::OnCommand(int id) {
     }
     case cmd::Copy: CopyOrMove(false); break;
     case cmd::Move: CopyOrMove(true); break;
-    case cmd::Rename:
-        if (CurrentFocusArea() == FocusArea::Bookmarks) bookmarks_.RenameSelected();
-        else a.BeginRename();
+    case cmd::Rename: {
+        // F2: Umbenennungsdialog (eine Datei: Name ändern, mehrere: Dateigruppe umbenennen).
+        // Direktes Umbenennen in der Liste: langsamer zweiter Klick auf den Namen.
+        if (CurrentFocusArea() == FocusArea::Bookmarks) {
+            bookmarks_.RenameSelected();
+            break;
+        }
+        auto names = a.SelectedOrFocusedNames();
+        if (names.empty()) break;
+        if (names.size() > 1) {
+            if (BatchRename(hwnd_, a.Dir(), names)) ReloadVisible();
+            break;
+        }
+        std::wstring oldName = names[0];
+        std::wstring newName = oldName;
+        bool isDir = DirExists(PathCombine(a.Dir(), oldName));
+        if (!AskName(hwnd_, L"Umbenennen", L"Neuer Name für „" + oldName + L"“:", newName, !isDir)) break;
+        if (newName == oldName) break;
+        if (RenameItem(hwnd_, PathCombine(a.Dir(), oldName), newName)) {
+            a.Reload();
+            a.FocusName(newName);
+            if (isDir) tree_.RefreshPath(a.Dir());
+        }
         break;
+    }
+    case cmd::NewFile: {
+        std::wstring name = MakeUniqueName(a.Dir(), L"Neue Datei");
+        if (!AskName(hwnd_, L"Neue Datei", L"Name der neuen (leeren) Datei in „" + a.Dir() + L"“:", name, false)) break;
+        if (PathExists(PathCombine(a.Dir(), name))) {
+            MsgError(hwnd_, L"„" + name + L"“ existiert bereits.");
+            break;
+        }
+        if (CreateEmptyFile(hwnd_, a.Dir(), name)) {
+            a.Reload();
+            a.FocusName(name);
+        }
+        break;
+    }
+    case cmd::Duplicate: {
+        auto names = a.SelectedOrFocusedNames();
+        if (names.empty()) break;
+        std::wstring lastNew;
+        for (auto& n : names) {
+            std::wstring src = PathCombine(a.Dir(), n);
+            bool isDir = DirExists(src);
+            std::wstring stem = n, ext;
+            size_t dot = n.find_last_of(L'.');
+            if (!isDir && dot != std::wstring::npos && dot > 0) {
+                stem = n.substr(0, dot);
+                ext = n.substr(dot);
+            }
+            std::wstring target = stem + L" - Kopie" + ext;
+            std::wstring dir = a.Dir();
+            if (!AskName(hwnd_, L"Duplizieren", L"Name des Duplikats von „" + n + L"“:", target, !isDir,
+                         [dir, n, isDir]() { return NumberedName(dir, n, isDir); }))
+                break;
+            if (PathExists(PathCombine(a.Dir(), target))) {
+                MsgError(hwnd_, L"„" + target + L"“ existiert bereits.");
+                continue;
+            }
+            if (CopyJobs(hwnd_, {{src, a.Dir(), target}})) lastNew = target;
+        }
+        a.Reload();
+        if (!lastNew.empty()) a.FocusName(lastNew);
+        break;
+    }
+    case cmd::Wipe: {
+        if (CurrentFocusArea() == FocusArea::Bookmarks) break;
+        auto paths = a.SelectedOrFocusedPaths();
+        if (paths.empty()) break;
+        if (WipeItems(hwnd_, paths)) {
+            ReloadVisible();
+            tree_.RefreshPath(a.Dir());
+        }
+        break;
+    }
     case cmd::BatchRename: {
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) break;
@@ -1593,6 +1843,7 @@ void MainWindow::OnCommand(int id) {
     case cmd::SortSize: a.SetSort(SortKey::Size, a.SortDescending()); break;
     case cmd::SortDate: a.SetSort(SortKey::Date, a.SortDescending()); break;
     case cmd::SortAttr: a.SetSort(SortKey::Attr, a.SortDescending()); break;
+    case cmd::SortCreated: a.SetSort(SortKey::Created, a.SortDescending()); break;
     case cmd::SortDescending: a.SetSort(a.Sort(), !a.SortDescending()); break;
     case cmd::ShowHidden:
         App::Opt().showHidden = !App::Opt().showHidden;
@@ -1701,14 +1952,39 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::CompareDirs: {
-        FilePane* o = Other();
-        if (!o) break;
-        FilePane* left = (active_ % 2 == 0) ? &a : o;
-        FilePane* right = (left == &a) ? o : &a;
-        if (!twoPanes_) {
-            left = active_ < 2 ? &a : o;
-            right = left == &a ? o : &a;
+        // Vergleich der aktiven Liste mit einer anderen. Gibt es mehrere (Split), wird gefragt:
+        // zuerst die andere Liste derselben Spalte, dann die gegenüberliegende.
+        std::vector<int> cands;
+        int col = active_ % 2, row = active_ / 2;
+        int order[3] = {col + (1 - row) * 2, (1 - col) + row * 2, (1 - col) + (1 - row) * 2};
+        for (int i : order)
+            if (i != active_ && PaneVisible(i) && !(quickView_ && i == quickViewPane_)) cands.push_back(i);
+        if (cands.empty()) {
+            MsgInfo(hwnd_, L"Zum Vergleichen wird eine zweite Dateiliste benötigt (zwei Listen oder Split).");
+            break;
         }
+        int pick = cands[0];
+        if (cands.size() > 1) {
+            std::vector<std::wstring> opts;
+            for (int i : cands) {
+                std::wstring pos = PanePositionName(i, twoPanes_, split_[i % 2]);
+                opts.push_back(L"Liste " + std::to_wstring(i + 1) + (pos.empty() ? L"" : (L" (" + pos + L")")) + L":  " +
+                               panes_[i]->Dir());
+            }
+            std::wstring self = PanePositionName(active_, twoPanes_, split_[col]);
+            int c = AskChoice(hwnd_, L"Verzeichnisse vergleichen",
+                              L"Liste " + std::to_wstring(active_ + 1) + (self.empty() ? L"" : (L" (" + self + L")")) +
+                                  L" vergleichen mit:",
+                              opts);
+            if (c < 0) break;
+            pick = cands[c];
+        }
+        FilePane* p1 = &a;
+        FilePane* p2 = panes_[pick].get();
+        // links = kleinere Spalte; bei gleicher Spalte die obere
+        bool swap = (pick % 2 < col) || (pick % 2 == col && pick < active_);
+        FilePane* left = swap ? p2 : p1;
+        FilePane* right = swap ? p1 : p2;
         CompareMarks ml, mr;
         std::vector<std::wstring> sl, sr;
         if (CompareDirectories(hwnd_, left->Dir(), right->Dir(), ml, mr, sl, sr)) {
@@ -1941,6 +2217,17 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         auto* nm = (NMHDR*)lp;
         if (nm->hwndFrom == tree_.Hwnd()) return tree_.OnNotify(nm);
         if (nm->hwndFrom == bookmarks_.Hwnd()) return bookmarks_.OnNotify(nm);
+        if (nm->code == TTN_GETDISPINFOW) {
+            // Tooltips der Werkzeugleiste (Mauszeiger über einem Symbol)
+            auto* di = (NMTTDISPINFOW*)nm;
+            for (auto& [id, text] : toolTips_)
+                if ((UINT_PTR)id == nm->idFrom) {
+                    di->lpszText = const_cast<wchar_t*>(text.c_str());
+                    di->hinst = nullptr;
+                    break;
+                }
+            return 0;
+        }
         return 0;
     }
     case WM_INITMENUPOPUP:

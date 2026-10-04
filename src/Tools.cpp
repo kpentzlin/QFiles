@@ -492,9 +492,10 @@ protected:
         SendMessageW(Item(kTitle), WM_SETFONT, (WPARAM)titleFont_, TRUE);
         SetText(kTitle, L"QFiles");
         SetText(kVersion, L"Version " + Utf8ToWide(QFILES_VERSION_STRING) + L" (64-Bit)");
-        SetText(kDesc, L"Dateimanager für Windows – nachempfunden Idoswin Pro.\nVoll Unicode-fähig, Win32/C++20.");
+        SetText(kDesc, L"Dateimanager für Windows\nVoll Unicode-fähig, 64 Bit, Win32/C++20");
         SetText(kCfgPath, App::Cfg().FilePath());
-        return TRUE;
+        SetFocus(Item(IDOK));
+        return FALSE;
     }
     void OnDestroy() override {
         if (titleFont_) DeleteObject(titleFont_);
@@ -540,14 +541,14 @@ bool EditFilter(HWND owner, PaneFilter& filter) {
 }
 
 void ShowAbout(HWND owner) {
-    DialogTemplate t(L"Über QFiles", 250, 130);
+    DialogTemplate t(L"Über QFiles", 260, 156);
     t.Add(AboutDlg::kIcon, L"Static", L"", 10, 10, 32, 32, SS_ICON | SS_CENTERIMAGE);
-    t.Label(AboutDlg::kTitle, L"", 52, 8, 190, 20);
-    t.Label(AboutDlg::kVersion, L"", 52, 30, 190, 10);
-    t.Label(AboutDlg::kDesc, L"", 52, 44, 190, 20);
-    t.Label(AboutDlg::kCfgLabel, L"Einstellungsdatei:", 10, 72, 232, 10);
-    t.Edit(AboutDlg::kCfgPath, 10, 84, 232, 13, ES_AUTOHSCROLL | ES_READONLY);
-    t.DefButton(IDOK, L"OK", 192, 109, 50, 14);
+    t.Label(AboutDlg::kTitle, L"", 52, 6, 200, 28);
+    t.Label(AboutDlg::kVersion, L"", 52, 36, 200, 12);
+    t.Label(AboutDlg::kDesc, L"", 52, 50, 200, 30);
+    t.Label(AboutDlg::kCfgLabel, L"Einstellungsdatei:", 10, 88, 242, 12);
+    t.Edit(AboutDlg::kCfgPath, 10, 101, 242, 14, ES_AUTOHSCROLL | ES_READONLY);
+    t.DefButton(IDOK, L"OK", 202, 134, 50, 14);
     AboutDlg dlg;
     dlg.DoModal(owner, t);
 }

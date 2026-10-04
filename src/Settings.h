@@ -60,6 +60,8 @@ struct Options {
     bool fullRowSelect = true;
     bool showExtensionsColumn = true;
     bool showAttributesColumn = true;
+    bool showCreatedColumn = false;    // zusätzliche Spalte Erstellungsdatum (neben Änderungsdatum)
+    bool dateWithSeconds = false;      // Dateidatum sekundengenau
     int thumbnailSize = 96;            // Pixel
     std::wstring listFontName = L"Segoe UI";
     int listFontSize = 9;              // Punkt

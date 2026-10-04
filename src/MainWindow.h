@@ -127,6 +127,7 @@ private:
     int fkeyPressed_ = -1;
     std::vector<std::wstring> cmdHistory_;
     std::vector<FunctionKey> fkeyDefs_;
+    std::vector<std::pair<int, std::wstring>> toolTips_;  // Befehl -> Tooltip der Werkzeugleiste
 };
 
 } // namespace qf

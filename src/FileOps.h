@@ -31,6 +31,8 @@ bool CopyJobs(HWND owner, const std::vector<CopyJob>& jobs, unsigned flags = OpN
 bool MoveJobs(HWND owner, const std::vector<CopyJob>& jobs, unsigned flags = OpNone);
 // Löschen (Papierkorb gemäß Option bzw. permanent).
 bool DeleteItems(HWND owner, const std::vector<std::wstring>& paths, bool recycle, bool confirm);
+// Radieren: Inhalt mit Zufallsdaten überschreiben, dann endgültig löschen (fragt nach). Nicht rückgängig zu machen.
+bool WipeItems(HWND owner, const std::vector<std::wstring>& paths);
 // Umbenennen (nur Name, kein Pfad). Zeigt Fehler an.
 bool RenameItem(HWND owner, const std::wstring& path, const std::wstring& newName);
 // Neues Verzeichnis / neue leere Datei anlegen (Rückgängig: wieder löschen).

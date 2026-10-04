@@ -24,14 +24,16 @@ ebenfalls unterstützt.
 | Disketten | Alle diskettenbezogenen Funktionen entfallen (keine Diskettenlaufwerke A:/B:, kein Formatieren/Kopieren von Disketten, keine Diskettengrößen beim Teilen) |
 | Zwei Dateilisten | Immer **senkrecht nebeneinander**, Verzeichnisbaum links |
 | Dateianzeige | Standardeinstellung „**in dem jeweils anderen Fenster**“ (Schnellansicht ersetzt die Gegenseite) |
-| Kopfzeile jeder Liste | Laufwerksymbole, rechtsbündig **Split** und ganz rechts **Lesezeichen hinzufügen** |
+| Kopfzeile jeder Liste | Laufwerksymbole, rechtsbündig **Lesezeichen hinzufügen** und ganz rechts **Split** |
+| Pfadzeile jeder Liste | Ganz rechts ein **Kreis**: grün gefüllt = aktive Liste, hohl = nicht aktiv; ein Klick darauf macht die Liste aktiv |
 | Lesezeichen | Als **senkrechte Liste zwischen Verzeichnisbaum und Dateilisten**, immer sichtbar (nicht abwählbar), statt im Kopfzeilenbereich |
 | Split | Teilt eine Liste waagerecht: unten erscheint Liste 3 (links) bzw. Liste 4 (rechts) mit gleichem Kopfbereich |
 | Einstellungen | Standardmäßig in `%ProgramData%\QFiles\QFiles.ini` |
 
 ### Lesezeichen-Symbol in der Kopfzeile
 
-Ein Klick auf das Lesezeichen-Symbol (ganz rechts in der Kopfzeile jeder Liste, auch mit Strg+D) fügt das in
+Ein Klick auf das Lesezeichen-Symbol (rechts in der Kopfzeile jeder Liste, links neben dem Split-Symbol, auch mit
+Strg+D) fügt das in
 dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 
 - Es erscheint eine Abfrage nach dem Namen. Sie ist mit dem letzten Glied des Verzeichnisnamens vorbelegt
@@ -42,10 +44,10 @@ dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 
 ### Split-Funktion
 
-- Das **Split-Symbol** in der Kopfzeile (oder Strg+T) teilt die Liste. Die untere Hälfte ist ein eigenes,
+- Das **Split-Symbol** ganz rechts in der Kopfzeile (oder Strg+T) teilt die Liste. Die untere Hälfte ist ein eigenes,
   vollwertiges Listenfenster: das „dritte“ (links) bzw. „vierte“ (rechts).
-- Das untere Fenster hat denselben Kopfbereich: Laufwerksymbole, rechts Split- und Lesezeichensymbol, darunter das
-  Verzeichnis-Textfeld mit Wahlsymbolen (Zurück, Vor, Übergeordnet, Verzeichnis wählen).
+- Das untere Fenster hat denselben Kopfbereich: Laufwerksymbole, rechts Lesezeichen- und Split-Symbol, darunter das
+  Verzeichnis-Textfeld mit Wahlsymbolen (Zurück, Vor, Übergeordnet, Verzeichnis wählen) und dem Aktiv-Kreis.
 - Im oberen Fenster wird das Split-Symbol zum **Split-aufheben-Symbol**. Im unteren Fenster erscheint es nur so.
   Ein Klick in einem der beiden hebt die Teilung auf.
 - Beide Spalten lassen sich unabhängig teilen. Bis zu vier Listen sind gleichzeitig sichtbar; die Teilerhöhe ist
@@ -53,7 +55,7 @@ dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 
 ### Dateianzeige „in dem jeweils anderen Fenster“
 
-F3 (oder Strg+Q) schaltet die Schnellansicht ein. Die jeweils andere Liste zeigt dann den Inhalt der Datei, auf
+F11 (oder Strg+Q) schaltet die Schnellansicht ein. Die jeweils andere Liste zeigt dann den Inhalt der Datei, auf
 der in der aktiven Liste der Fokus steht. Die Anzeige folgt beim Blättern und lässt sich mit Esc beenden.
 
 | Dateityp | Darstellung |
@@ -85,7 +87,9 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
   - Zurück/Vor, Übergeordnet, Verzeichnis wählen.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, freier Speicher.
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar).
-- Sortieren nach Name, Typ, Größe, Datum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
+- Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
+  (beides unter *Werkzeuge → Optionen → Anzeige*).
+- Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
   wie im Explorer.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
@@ -98,8 +102,16 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 
 ### Dateioperationen
 
-- Kopieren (F5) und Verschieben (F6) in die andere Liste, Umbenennen direkt in der Liste (F2), neues Verzeichnis
-  (F7), neue Textdatei (Umschalt+F4), Löschen in den Papierkorb (Entf/F8) oder endgültig (Umschalt+Entf).
+- Kopieren (Umschalt+F5) und Verschieben (Umschalt+F6) in die andere Liste.
+- Umbenennen mit F2 im Dialog: eine Datei → Name ändern (Name ohne Erweiterung vorausgewählt); mehrere markierte
+  Dateien → „Dateigruppe umbenennen“. Direkt in der Liste umbenennen: langsamer zweiter Klick auf den Namen.
+- Neues Verzeichnis (F8), neue leere Datei (F9), neue Textdatei mit Editor (Umschalt+F4).
+- **Duplizieren** (F10): Namensvorschlag „Name - Kopie.ext“; der Knopf „Nummeriert“ setzt „Name (1).ext“ ein bzw.
+  zählt hoch, wenn es den Namen schon gibt oder er bereits auf „(n)“ endet.
+- Löschen in den Papierkorb (Entf) oder endgültig (Umschalt+Entf).
+- **Radieren** (Alt+Entf): Der Inhalt wird mit kryptografisch zufälligen Daten überschrieben, die Datei auf Länge 0
+  gekürzt, in einen Zufallsnamen umbenannt und gelöscht; Verzeichnisse rekursiv. Nicht rückgängig zu machen.
+  Hinweis: Auf SSDs und bei Schattenkopien/Cloud-Synchronisierung kann der alte Inhalt physisch erhalten bleiben.
 - Ausführung über die Windows-Shell (`IFileOperation`): Fortschrittsanzeige, Konfliktdialoge, Rechteerhöhung.
 - **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen und Anlegen.
 - Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Rechte Maustaste fragt nach Kopieren oder
@@ -114,10 +126,10 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 | Werkzeug | Funktion |
 |---|---|
 | Dateigruppe umbenennen (Strg+M) | Masken mit Platzhaltern (siehe unten), Zähler, Suchen/Ersetzen (auch regulärer Ausdruck), Groß-/Kleinschreibung, Unterverzeichnisse, Live-Vorschau mit Konfliktprüfung; ein Rückgängig-Schritt |
-| Dateien suchen (Strg+F) | Name, Text in UTF-8/UTF-16/ANSI, Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“ |
+| Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI, Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“ |
 | Doppelte Dateien | Gleicher Inhalt: Größe, dann Hash, dann byteweiser Vergleich |
 | Dateien vergleichen (Strg+K) | Text zeilenweise nebeneinander mit Farbmarkierung und zeichengenauer Hervorhebung; Binärvergleich |
-| Verzeichnisse vergleichen (Strg+Umschalt+K) | Markiert gleiche, unterschiedliche, neuere und fehlende Dateien farbig und wählt sie zum Kopieren aus |
+| Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); markiert gleiche, unterschiedliche, neuere und fehlende Dateien farbig und wählt sie zum Kopieren aus |
 | Verzeichnisse synchronisieren (Strg+Umschalt+Y) | In eine oder beide Richtungen, mit Vorschau, Filter, Spiegeln |
 | Datei teilen / zusammenfügen | Mit CRC-Prüfsumme und Batchdatei zum Zusammenfügen ohne QFiles |
 | Archive | ZIP anzeigen, entpacken und erstellen (Windows-Shell); 7z, RAR, TAR, CAB, ISO u. a. anzeigen und entpacken über das Windows-eigene `tar.exe` |
@@ -159,9 +171,9 @@ Platzhalter in Parametern und Arbeitsverzeichnis:
 
 ### Anzeige und Hex-Editor
 
-- Anzeigefenster (Umschalt+F3) für Text, Bilder (Zoom), Hex und Vorschauhandler; blättert durch die Dateien des
+- Anzeigefenster (Umschalt+F11) für Text, Bilder (Zoom), Hex und Vorschauhandler; blättert durch die Dateien des
   Verzeichnisses.
-- Hex-Editor (Alt+F3) für beliebig große Dateien. Er arbeitet im Überschreibmodus, hebt Änderungen hervor, hat
+- Hex-Editor (Alt+F11) für beliebig große Dateien. Er arbeitet im Überschreibmodus, hebt Änderungen hervor, hat
   Rückgängig und kann suchen (Hex/Text) sowie zu einem Offset springen.
 
 ### Platzhalter beim Umbenennen von Dateigruppen
@@ -185,8 +197,42 @@ Platzhalter in Parametern und Arbeitsverzeichnis:
 
 ## Tastenkürzel (Auswahl)
 
+Funktionstasten (auch in der Fußzeile anklickbar):
+
 | Taste | Funktion |
 |---|---|
+| F2 | Umbenennen (Dialog; mehrere Dateien: Dateigruppe umbenennen) |
+| F3 | Suchen |
+| F4 | Bearbeiten |
+| F5 | Aktualisieren (Verzeichnisse neu einlesen, auch bei abgeschalteter automatischer Aktualisierung) |
+| F6 | Markierung umkehren |
+| F7 | Vergleich (Verzeichnisse) |
+| F8 | Neues Verzeichnis |
+| F9 | Neue Datei (Umschalt+F4: neue Textdatei) |
+| F10 | Duplizieren |
+| F11 | Anzeigen |
+
+Weitere:
+
+| Taste | Funktion |
+|---|---|
+| Eingabe / Rücktaste | Öffnen / übergeordnetes Verzeichnis |
+| Tab, Strg+1…4 | Nächste Liste, Liste 1…4 |
+| Umschalt+F5 · Umschalt+F6 | Kopieren · Verschieben in die andere Liste |
+| Entf · Umschalt+Entf · Alt+Entf | Löschen (Papierkorb) · endgültig löschen · Radieren |
+| Umschalt+F11 · Alt+F11 | Anzeigefenster · Hex-Editor |
+| Strg+T | Split / Split aufheben |
+| Strg+Q | Dateianzeige im anderen Fenster |
+| Strg+D | Gewähltes Verzeichnis den Lesezeichen hinzufügen |
+| Strg+Z | Rückgängig |
+| Strg+K · Strg+Umschalt+Y | Dateien vergleichen · Synchronisieren |
+| Strg+L / Strg+G · Strg+E | Verzeichnis eingeben · Befehlszeile |
+| Alt+F1 · Alt+F2 | Verzeichnisbaum · Lesezeichenliste |
+| Leertaste / Einfg · Num+ / Num− / Num* | Markieren · Gruppe markieren / abwählen / umkehren |
+| Umschalt+F10 | Kontextmenü |
+| F1 | Vollständige Übersicht aller Tastenkürzel |
+
+---|---|
 | Eingabe / Rücktaste | Öffnen / übergeordnetes Verzeichnis |
 | Tab, Strg+1…4 | Nächste Liste, Liste 1…4 |
 | F2 · F3 · F4 | Umbenennen · Anzeigen · Bearbeiten |
@@ -266,6 +312,13 @@ Starttest mit Bildschirmfoto. Wird auf GitHub ein Release veröffentlicht, häng
 | `src/Tools.cpp`, `Attributes.cpp`, `FunctionKeys.cpp`, `Archive.cpp`, `PrintList.cpp`, `OptionsDialog.cpp` | Weitere Werkzeuge und Optionen |
 
 ---
+
+## Absturzberichte
+
+Stürzt QFiles ab, wird neben der Einstellungsdatei ein Bericht mit Aufrufstapel gespeichert
+(`%ProgramData%\QFiles\QFiles-Absturz.txt`, dazu ein Minidump `QFiles-Absturz.dmp`). Stürzt beim Kontextmenü eine
+Shell-Erweiterung eines anderen Programms ab, wird das abgefangen: QFiles läuft weiter und nennt das verursachende
+Modul.
 
 ## Bekannte Einschränkungen
 

@@ -210,6 +210,8 @@ void Options::Load(const Config& c) {
     fullRowSelect = c.GetBool(S, L"GanzeZeileMarkieren", d.fullRowSelect);
     showExtensionsColumn = c.GetBool(S, L"SpalteTyp", d.showExtensionsColumn);
     showAttributesColumn = c.GetBool(S, L"SpalteAttribute", d.showAttributesColumn);
+    showCreatedColumn = c.GetBool(S, L"SpalteErstellt", d.showCreatedColumn);
+    dateWithSeconds = c.GetBool(S, L"DatumSekunden", d.dateWithSeconds);
     thumbnailSize = c.GetInt(S, L"Miniaturgroesse", d.thumbnailSize);
     listFontName = c.Get(S, L"ListenSchrift", d.listFontName);
     listFontSize = c.GetInt(S, L"ListenSchriftgroesse", d.listFontSize);
@@ -253,6 +255,8 @@ void Options::Save(Config& c) const {
     c.SetBool(S, L"GanzeZeileMarkieren", fullRowSelect);
     c.SetBool(S, L"SpalteTyp", showExtensionsColumn);
     c.SetBool(S, L"SpalteAttribute", showAttributesColumn);
+    c.SetBool(S, L"SpalteErstellt", showCreatedColumn);
+    c.SetBool(S, L"DatumSekunden", dateWithSeconds);
     c.SetInt(S, L"Miniaturgroesse", thumbnailSize);
     c.Set(S, L"ListenSchrift", listFontName);
     c.SetInt(S, L"ListenSchriftgroesse", listFontSize);

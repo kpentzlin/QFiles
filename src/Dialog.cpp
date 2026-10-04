@@ -79,7 +79,10 @@ void DialogTemplate::Add(int id, const wchar_t* className, const std::wstring& t
 }
 
 void DialogTemplate::Label(int id, const std::wstring& text, int x, int y, int cx, int cy, DWORD extraStyle) {
-    AddControl(id, nullptr, 0x0082, text, x, y, cx, cy, SS_LEFT | SS_NOPREFIX | extraStyle, 0);
+    // Feste Beschriftungen mit '&' kennzeichnen ein Zugriffszeichen (unterstrichen, Alt+Taste).
+    // Leere Beschriftungen werden später mit Dateinamen/Pfaden gefüllt: dort '&' wörtlich anzeigen.
+    DWORD prefix = text.find(L'&') != std::wstring::npos ? 0 : SS_NOPREFIX;
+    AddControl(id, nullptr, 0x0082, text, x, y, cx, cy, SS_LEFT | prefix | extraStyle, 0);
 }
 void DialogTemplate::Edit(int id, int x, int y, int cx, int cy, DWORD extraStyle, DWORD exStyle) {
     AddControl(id, nullptr, 0x0081, L"", x, y, cx, cy, WS_TABSTOP | extraStyle, exStyle);

@@ -44,7 +44,6 @@ jobs:
       - name: GUI-Test mit Bildschirmfotos
         run: |
           & .\tools\ci-guitest.ps1 -Exe build\Release\QFiles.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Absturzbericht sichern
         if: always()

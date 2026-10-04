@@ -28,6 +28,9 @@ enum : int {
     PrintList,         // Strg+P
     Undo,              // Strg+Z
     Exit,
+    NewFile,           // F9 – neue (leere) Datei
+    Duplicate,         // F10 – Duplizieren
+    Wipe,              // Alt+Entf – Radieren
 
     // Bearbeiten
     ClipCut = 40100,
@@ -54,6 +57,7 @@ enum : int {
     SortSize,
     SortDate,
     SortAttr,
+    SortCreated,
     SortDescending,
     ShowHidden,
     Filter,
