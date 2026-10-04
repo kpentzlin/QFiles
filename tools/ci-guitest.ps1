@@ -143,17 +143,16 @@ Check-Alive "Umschalt+F10"
 Check-Alive "Split und Dateianzeige"
 Shot "screenshot2.png"
 
-# Optionen: Kontrollkästchen „Dateidatum sekundengenau“ (ID 1015) und „Spalte Erstellt“ (ID 1016) anklicken,
-# mit OK speichern
+# Optionen: „Dateidatum sekundengenau“ (Alt+K) und „Spalte Erstellt“ (Alt+E) per Zugriffstaste einschalten,
+# mit OK speichern (prüft auch, dass die Zugriffstasten eindeutig sind und Kontrollkästchen umschalten)
 [W]::SetForegroundWindow($main) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("%w"); Start-Sleep -Milliseconds 600
 [System.Windows.Forms.SendKeys]::SendWait("o"); Start-Sleep -Seconds 2
 $dlg = [W]::FindWindow("#32770", "Optionen")
 if ($dlg -eq [IntPtr]::Zero) { "Optionen-Dialog nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
-foreach ($cid in @(1015, 1016)) {
-  [W]::SendMessage([W]::GetDlgItem($dlg, $cid), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # BM_CLICK
-  Start-Sleep -Milliseconds 300
-}
+[W]::SetForegroundWindow($dlg) | Out-Null
+[System.Windows.Forms.SendKeys]::SendWait("%k"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("%e"); Start-Sleep -Milliseconds 400
 Shot "screenshot6.png"
 [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
 Check-Alive "Optionen"

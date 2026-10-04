@@ -218,14 +218,44 @@ private:
         return (int)std::clamp<long long>(v, lo, hi);
     }
 
+    // Zugriffstasten (&x) gelten nur auf der sichtbaren Seite: Windows berücksichtigt bei Alt+Taste auch
+    // ausgeblendete Steuerelemente und schaltet bei mehrfach vergebenen Buchstaben ein Kontrollkästchen nicht um,
+    // sondern setzt nur den Fokus. Daher tragen Beschriftungen ausgeblendeter Seiten ihr '&' nicht.
+    static std::wstring StripMnemonic(const std::wstring& t) {
+        std::wstring r;
+        for (size_t i = 0; i < t.size(); ++i) {
+            if (t[i] == L'&') {
+                if (i + 1 < t.size() && t[i + 1] == L'&') r += L"&&", ++i;
+                continue;
+            }
+            r += t[i];
+        }
+        return r;
+    }
+
     void ShowPage(int page) {
         if (page < 0 || page >= kPageCount) page = 0;
         TabCtrl_SetCurSel(Item(kTab), page);
+        if (!mnemonicsCollected_) {
+            mnemonicsCollected_ = true;
+            for (HWND c = GetWindow(hwnd_, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) {
+                if (PageOfId(GetDlgCtrlID(c)) < 0) continue;
+                wchar_t cls[32] = {};
+                GetClassNameW(c, cls, 31);
+                if (_wcsicmp(cls, L"Button") != 0 && _wcsicmp(cls, L"Static") != 0) continue;
+                int len = GetWindowTextLengthW(c);
+                std::wstring text(len + 1, L'\0');
+                text.resize(GetWindowTextW(c, text.data(), len + 1));
+                if (text.find(L'&') != std::wstring::npos) mnemonicTexts_.push_back({c, text});
+            }
+        }
         for (HWND c = GetWindow(hwnd_, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) {
             int p = PageOfId(GetDlgCtrlID(c));
             if (p < 0) continue;
             ShowWindow(c, p == page ? SW_SHOW : SW_HIDE);
         }
+        for (auto& [c, text] : mnemonicTexts_)
+            SetWindowTextW(c, PageOfId(GetDlgCtrlID(c)) == page ? text.c_str() : StripMnemonic(text).c_str());
     }
 
     bool ChooseFontFor(std::wstring& name, int& size) {
@@ -300,6 +330,8 @@ private:
         opt.shellExtExclude = Trim(GetText(kExclude));
     }
 
+    bool mnemonicsCollected_ = false;
+    std::vector<std::pair<HWND, std::wstring>> mnemonicTexts_;   // Steuerelemente mit Zugriffstaste
     std::wstring listFont_, edFont_;
     int listSize_ = 9, edSize_ = 10;
 };
@@ -322,7 +354,7 @@ bool ShowOptionsDialog(HWND owner) {
     t.Check(kGridLines, L"&Gitternetzlinien", px + 4, py + 51, 150, 10);
     t.Check(kDateSeconds, L"Dateidatum se&kundengenau", px + 4, py + 64, 150, 10);
     t.Check(kSizeBytes, L"Größe immer in &Bytes", px + 160, py + 12, 140, 10);
-    t.Check(kFullRow, L"Ganze &Zeile markieren", px + 160, py + 25, 140, 10);
+    t.Check(kFullRow, L"Ganze Zei&le markieren", px + 160, py + 25, 140, 10);
     t.Check(kColType, L"Spalte „&Typ“ anzeigen", px + 160, py + 38, 140, 10);
     t.Check(kColAttr, L"Spalte „&Attribute“ anzeigen", px + 160, py + 51, 140, 10);
     t.Check(kColCreated, L"Spalte „&Erstellt“ anzeigen", px + 160, py + 64, 150, 10);
@@ -331,12 +363,12 @@ bool ShowOptionsDialog(HWND owner) {
     t.UpDown(kThumbSpin, 0, 0, 10, 13);
     t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 112, pw + 8, 34);
     t.Edit(kListFontText, px + 4, py + 126, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
-    t.Button(kListFontBtn, L"Schrift&art …", px + 200, py + 125, 70, 14);
+    t.Button(kListFontBtn, L"Sc&hriftart …", px + 200, py + 125, 70, 14);
 
     // ---- Bedienung ----
     t.Check(kConfirmDelete, L"&Löschen bestätigen", px, py, 150, 10);
     t.Check(kRecycle, L"&Papierkorb verwenden", px, py + 13, 150, 10);
-    t.Check(kConfirmOverwrite, L"Ü&berschreiben bestätigen", px, py + 26, 150, 10);
+    t.Check(kConfirmOverwrite, L"&Überschreiben bestätigen", px, py + 26, 150, 10);
     t.Check(kSaveOnExit, L"Einstellungen beim &Beenden speichern", px, py + 39, 150, 10);
     t.Check(kSingleClickTree, L"&Einfachklick im Baum öffnet Verzeichnis", px + 155, py, 150, 10);
     t.Check(kTreeFollows, L"Baum &folgt der aktiven Liste", px + 155, py + 13, 150, 10);
