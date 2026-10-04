@@ -18,6 +18,7 @@
 //   [C]        Zähler (Start, Schrittweite, Stellenzahl in eigenen Feldern)
 //   [D]        Änderungsdatum JJJJMMTT (Ortszeit)
 //   [T]        Änderungsuhrzeit hhmmss (Ortszeit)
+//   [d] / [t]  Änderungsdatum JJJJ-MM-TT / Uhrzeit hh-mm-ss (Ortszeit)
 //   [P]        Name des Elternverzeichnisses
 //   [[  ]]     eckige Klammer auf / zu
 // Groß-/Kleinbuchstaben der Platzhalterbuchstaben sind gleichwertig ([n] = [N]).
@@ -58,7 +59,9 @@ enum : int {
     CID_INS_E,
     CID_INS_C,
     CID_INS_D,
+    CID_INS_DD,
     CID_INS_T,
+    CID_INS_TD,
     CID_INS_P,
     CID_INS_LB,
     CID_INS_RB,
@@ -98,7 +101,7 @@ enum : int {
 // Masken
 // ---------------------------------------------------------------------------
 
-enum class TokKind { Literal, Name, Ext, Counter, Date, Time, Parent };
+enum class TokKind { Literal, Name, Ext, Counter, Date, Time, DateDash, TimeDash, Parent };
 enum class RangeKind { Whole, Single, Range, OpenEnd, Count, LastN };
 
 struct Tok {
@@ -221,11 +224,13 @@ bool CompileMask(const std::wstring& mask, std::vector<Tok>& out, std::wstring& 
                 ok = rest.empty();
                 break;
             case L'D':
-                t.kind = TokKind::Date;
+                // [D] = JJJJMMTT, [d] = JJJJ-MM-TT
+                t.kind = content[0] == L'd' ? TokKind::DateDash : TokKind::Date;
                 ok = rest.empty();
                 break;
             case L'T':
-                t.kind = TokKind::Time;
+                // [T] = hhmmss, [t] = hh-mm-ss
+                t.kind = content[0] == L't' ? TokKind::TimeDash : TokKind::Time;
                 ok = rest.empty();
                 break;
             case L'P':
@@ -500,7 +505,8 @@ const wchar_t* kHelpText =
     L"[N] Name ohne Erweiterung  ·  [N3] 3. Zeichen  ·  [N2-5] Zeichen 2 bis 5  ·  [N2-] ab dem 2. Zeichen  ·  "
     L"[N-3] die letzten 3 Zeichen  ·  [N2,4] 4 Zeichen ab dem 2.  ·  [N2--2] vom 2. bis zum vorletzten Zeichen "
     L"(negative Positionen zählen vom Ende)  ·  [E] Erweiterung ohne Punkt (Bereiche wie bei [N])  ·  [C] Zähler  ·  "
-    L"[D] Änderungsdatum JJJJMMTT  ·  [T] Uhrzeit hhmmss  ·  [P] Elternverzeichnis  ·  [[ und ]] eckige Klammern";
+    L"[D] Änderungsdatum JJJJMMTT  ·  [d] Änderungsdatum JJJJ-MM-TT  ·  [T] Uhrzeit hhmmss  ·  [t] Uhrzeit hh-mm-ss  ·  "
+    L"[P] Elternverzeichnis  ·  [[ und ]] eckige Klammern";
 
 BOOL BatchRenameDialog::OnInit() {
     // Spalten der Vorschau
@@ -703,12 +709,14 @@ void BatchRenameDialog::UpdatePreview() {
             stem = it.name.substr(0, dot);
             ext = it.name.substr(dot + 1);
         }
-        std::wstring dateStr, timeStr;
+        std::wstring dateStr, timeStr, dateDashStr, timeDashStr;
         {
             SYSTEMTIME utc{}, loc{};
             if (FileTimeToSystemTime(&it.modified, &utc) && SystemTimeToTzSpecificLocalTime(nullptr, &utc, &loc)) {
                 dateStr = Format(L"%04u%02u%02u", (unsigned)loc.wYear, (unsigned)loc.wMonth, (unsigned)loc.wDay);
                 timeStr = Format(L"%02u%02u%02u", (unsigned)loc.wHour, (unsigned)loc.wMinute, (unsigned)loc.wSecond);
+                dateDashStr = Format(L"%04u-%02u-%02u", (unsigned)loc.wYear, (unsigned)loc.wMonth, (unsigned)loc.wDay);
+                timeDashStr = Format(L"%02u-%02u-%02u", (unsigned)loc.wHour, (unsigned)loc.wMinute, (unsigned)loc.wSecond);
             }
         }
         const std::wstring counterStr = FormatCounter(start + step * idx, digits);
@@ -722,6 +730,8 @@ void BatchRenameDialog::UpdatePreview() {
                 case TokKind::Counter: r += counterStr; break;
                 case TokKind::Date: r += dateStr; break;
                 case TokKind::Time: r += timeStr; break;
+                case TokKind::DateDash: r += dateDashStr; break;
+                case TokKind::TimeDash: r += timeDashStr; break;
                 case TokKind::Parent: r += LastPathElement(it.dir); break;
                 }
             }
@@ -869,6 +879,8 @@ BOOL BatchRenameDialog::OnCommand(int id, int code, HWND ctl) {
     case CID_INS_C: InsertPlaceholder(L"[C]"); return TRUE;
     case CID_INS_D: InsertPlaceholder(L"[D]"); return TRUE;
     case CID_INS_T: InsertPlaceholder(L"[T]"); return TRUE;
+    case CID_INS_DD: InsertPlaceholder(L"[d]"); return TRUE;
+    case CID_INS_TD: InsertPlaceholder(L"[t]"); return TRUE;
     case CID_INS_P: InsertPlaceholder(L"[P]"); return TRUE;
     case CID_INS_LB: InsertPlaceholder(L"[["); return TRUE;
     case CID_INS_RB: InsertPlaceholder(L"]]"); return TRUE;
@@ -1080,7 +1092,9 @@ bool BatchRename(HWND owner, const std::wstring& dir, const std::vector<std::wst
     ins(CID_INS_E, L"[E]", 26);
     ins(CID_INS_C, L"[C]", 26);
     ins(CID_INS_D, L"[D]", 26);
+    ins(CID_INS_DD, L"[d]", 26);
     ins(CID_INS_T, L"[T]", 26);
+    ins(CID_INS_TD, L"[t]", 26);
     ins(CID_INS_P, L"[P]", 26);
     ins(CID_INS_LB, L"[[", 22);
     ins(CID_INS_RB, L"]]", 22);

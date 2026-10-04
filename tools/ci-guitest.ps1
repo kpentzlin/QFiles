@@ -121,6 +121,28 @@ Shot "screenshot2.png"
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+
+# Abgefangener Fehler einer Kontextmenü-Erweiterung (simuliert): Meldung + Protokoll müssen erscheinen
+$env:QFILES_TEST_SHELLFAULT = "1"
+$log = "C:\ProgramData\QFiles\QFiles-Kontextmenue.txt"
+Remove-Item $log -ErrorAction SilentlyContinue
+$script:p = Start-Process -FilePath $Exe -ArgumentList '"C:\QFilesDemo"','"C:\Windows"' -PassThru
+Start-Sleep -Seconds 6
+Check-Alive "Start (Fehlersimulation)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+[W]::Click($x, $y, $false); Start-Sleep -Milliseconds 500
+[W]::Click($x, $y, $true); Start-Sleep -Seconds 2
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 2
+Shot "screenshot5.png"
+Check-Alive "Fehlersimulation"
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Milliseconds 800
+if (-not (Test-Path $log)) { "Protokoll $log wurde nicht geschrieben" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+Copy-Item $log .\kontextmenue-log.txt
+Get-Content $log
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 2
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_SHELLFAULT
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
 }

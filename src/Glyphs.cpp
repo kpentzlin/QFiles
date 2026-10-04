@@ -151,6 +151,20 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
         Lines(dc, v1, 2, RGB(255, 255, 255), std::max(1, u));
         break;
     }
+    case Glyph::Eraser: {
+        // Radiergummi, schräg gestellt: rosa Körper, blaue Manschette, Wischspur darunter
+        int full = std::min(w, h);
+        int ox = rc.left + (w - full) / 2, oy = rc.top + (h - full) / 2;
+        auto P = [&](double x, double y) { return POINT{ox + (int)(x * full / 16.0 + 0.5), oy + (int)(y * full / 16.0 + 0.5)}; };
+        COLORREF outline = RGB(90, 50, 60);
+        POINT body[4] = {P(6.5, 2.0), P(14.0, 9.5), P(10.5, 13.0), P(3.0, 5.5)};
+        Poly(dc, body, 4, RGB(240, 120, 150), outline, 1);
+        POINT sleeve[4] = {P(3.0, 5.5), P(10.5, 13.0), P(8.5, 15.0), P(1.0, 7.5)};
+        Poly(dc, sleeve, 4, RGB(70, 120, 210), outline, 1);
+        POINT trail[2] = {P(9.5, 15.2), P(15.5, 15.2)};
+        Lines(dc, trail, 2, RGB(120, 120, 120), std::max(1, full / 16));
+        break;
+    }
     }
 }
 

@@ -638,6 +638,46 @@ void MainWindow::BuildToolbar() {
     TBADDBITMAP ah{HINST_COMMCTRL, (UINT_PTR)(large ? IDB_HIST_LARGE_COLOR : IDB_HIST_SMALL_COLOR)};
     int offHist = (int)SendMessageW(toolbar_, TB_ADDBITMAP, 0, (LPARAM)&ah);
     if (offHist <= 0) offHist = offView + 13;
+    // Eigene Symbole: Papierkorb (Windows-Standardsymbol) und Radiergummi (selbst gezeichnet), 32 Bit mit Alpha
+    int custom = -1;
+    {
+        int sz = large ? 24 : 16;
+        BITMAPINFO bi{};
+        bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz * 2, -sz, 1, 32, BI_RGB};
+        void* bits = nullptr;
+        HBITMAP strip = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (strip && bits) {
+            auto* px = (uint32_t*)bits;
+            memset(bits, 0, (size_t)sz * 2 * sz * 4);
+            HDC dc = CreateCompatibleDC(nullptr);
+            HGDIOBJ old = SelectObject(dc, strip);
+            // Zelle 0: Papierkorb
+            SHSTOCKICONINFO sii{sizeof(sii)};
+            if (SUCCEEDED(SHGetStockIconInfo(SIID_RECYCLERFULL, SHGSI_ICON | (large ? SHGSI_LARGEICON : SHGSI_SMALLICON), &sii)) ||
+                SUCCEEDED(SHGetStockIconInfo(SIID_RECYCLER, SHGSI_ICON | (large ? SHGSI_LARGEICON : SHGSI_SMALLICON), &sii))) {
+                DrawIconEx(dc, 0, 0, sii.hIcon, sz, sz, 0, nullptr, DI_NORMAL);
+                DestroyIcon(sii.hIcon);
+            }
+            // Zelle 1: Radiergummi auf Schlüsselfarbe zeichnen, danach in Alpha umwandeln
+            for (int y = 0; y < sz; ++y)
+                for (int x = sz; x < 2 * sz; ++x) px[y * sz * 2 + x] = 0x00FF00FF;
+            GdiFlush();
+            RECT cell{sz, 0, 2 * sz, sz};
+            DrawGlyph(dc, Glyph::Eraser, cell, RGB(0, 0, 0));
+            GdiFlush();
+            for (int y = 0; y < sz; ++y)
+                for (int x = sz; x < 2 * sz; ++x) {
+                    uint32_t& c = px[y * sz * 2 + x];
+                    c = ((c & 0x00FFFFFF) == 0x00FF00FF) ? 0 : (c | 0xFF000000u);
+                }
+            SelectObject(dc, old);
+            DeleteDC(dc);
+            TBADDBITMAP ac{nullptr, (UINT_PTR)strip};
+            custom = (int)SendMessageW(toolbar_, TB_ADDBITMAP, 2, (LPARAM)&ac);
+        }
+    }
+    int imgRecycle = custom >= 0 ? custom : offStd + STD_DELETE;
+    int imgEraser = custom >= 0 ? custom + 1 : offStd + STD_DELETE;
 
     struct B {
         int image;
@@ -653,7 +693,9 @@ void MainWindow::BuildToolbar() {
         {offStd + STD_COPY, cmd::Copy, L"Kopieren in die andere Liste (Umschalt+F5)", false},
         {offStd + STD_CUT, cmd::Move, L"Verschieben in die andere Liste (Umschalt+F6)", false},
         {offView + VIEW_NEWFOLDER, cmd::NewFolder, L"Neues Verzeichnis (F8)", false},
-        {offStd + STD_DELETE, cmd::Delete, L"Löschen (Entf)", false},
+        {imgRecycle, cmd::Delete, L"Löschen – in den Papierkorb (Entf)", false},
+        {offStd + STD_DELETE, cmd::DeletePermanent, L"Endgültig löschen (Umschalt+Entf)", false},
+        {imgEraser, cmd::Wipe, L"Radieren – mit Zufallsdaten überschreiben und löschen (Alt+Entf)", false},
         {offStd + STD_UNDO, cmd::Undo, L"Rückgängig (Strg+Z)", false},
         {-1, 0, nullptr, false},
         {offStd + STD_PRINTPRE, cmd::View, L"Anzeigen (F11)", false},
@@ -1284,11 +1326,10 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
         AddItem(extra, cmd::Copy, L"&Kopieren in andere Liste\tUmschalt+F5");
         AddItem(extra, cmd::Move, L"&Verschieben in andere Liste\tUmschalt+F6");
         AddItem(extra, cmd::Duplicate, L"D&uplizieren…\tF10");
-        AddItem(extra, cmd::Rename, names.size() > 1 ? L"Dateigruppe &umbenennen…\tF2" : L"&Umbenennen…\tF2");
+        AddItem(extra, cmd::Rename, L"&Umbenennen…\tF2");
         AddItem(extra, cmd::Attributes, L"Attribute/&Datum ändern…");
         if (file && IsArchive(p->FocusedName())) AddItem(extra, cmd::OpenArchive, L"Archiv anzeigen/en&tpacken…");
         AddItem(extra, cmd::CreateZip, L"&ZIP-Archiv erstellen…");
-        AddItem(extra, cmd::Wipe, L"Rad&ieren…\tAlt+Entf");
     } else {
         AddItem(extra, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
         AddItem(extra, cmd::NewFile, L"&Neue Datei…\tF9");
@@ -1651,7 +1692,7 @@ void MainWindow::OnCommand(int id) {
     case cmd::Copy: CopyOrMove(false); break;
     case cmd::Move: CopyOrMove(true); break;
     case cmd::Rename: {
-        // F2: Umbenennungsdialog (eine Datei: Name ändern, mehrere: Dateigruppe umbenennen).
+        // F2: vollständiger Umbenennungsdialog (auch für eine einzelne Datei).
         // Direktes Umbenennen in der Liste: langsamer zweiter Klick auf den Namen.
         if (CurrentFocusArea() == FocusArea::Bookmarks) {
             bookmarks_.RenameSelected();
@@ -1659,19 +1700,9 @@ void MainWindow::OnCommand(int id) {
         }
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) break;
-        if (names.size() > 1) {
-            if (BatchRename(hwnd_, a.Dir(), names)) ReloadVisible();
-            break;
-        }
-        std::wstring oldName = names[0];
-        std::wstring newName = oldName;
-        bool isDir = DirExists(PathCombine(a.Dir(), oldName));
-        if (!AskName(hwnd_, L"Umbenennen", L"Neuer Name für „" + oldName + L"“:", newName, !isDir)) break;
-        if (newName == oldName) break;
-        if (RenameItem(hwnd_, PathCombine(a.Dir(), oldName), newName)) {
-            a.Reload();
-            a.FocusName(newName);
-            if (isDir) tree_.RefreshPath(a.Dir());
+        if (BatchRename(hwnd_, a.Dir(), names)) {
+            ReloadVisible();
+            tree_.RefreshPath(a.Dir());
         }
         break;
     }
