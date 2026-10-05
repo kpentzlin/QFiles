@@ -13,7 +13,7 @@
 namespace qf {
 
 namespace {
-enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent, MenuNewFtp };
+enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent, MenuNewFtp, MenuSort };
 
 int StockIndex(SHSTOCKICONID id) {
     SHSTOCKICONINFO sii{sizeof(sii)};
@@ -21,8 +21,45 @@ int StockIndex(SHSTOCKICONID id) {
 }
 
 // Hintergrundfarben der Lesezeichenliste
-const COLORREF kNetworkBack = RGB(255, 214, 214);  // hellrot: Netzwerkpfade
-const COLORREF kRemoteBack = RGB(208, 228, 255);   // hellblau: FTP/SFTP
+// (deutlich heller als die blaue Kopfzeile der aktiven Liste)
+const COLORREF kNetworkBack = RGB(255, 228, 228);   // hellrot: Netzwerkpfade
+const COLORREF kRemoteBack = RGB(220, 244, 220);    // hellgrün: FTP/SFTP
+const COLORREF kStandardBack = RGB(228, 240, 253);  // hellblau: Windows-Standardverzeichnisse
+
+enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3 };
+
+// Windows-Standardverzeichnisse (Benutzerordner, öffentliche Ordner, Systemordner)
+const std::vector<std::wstring>& StandardFolders() {
+    static std::vector<std::wstring> list;
+    static bool done = false;
+    if (done) return list;
+    done = true;
+    const GUID* ids[] = {&FOLDERID_Desktop, &FOLDERID_Documents, &FOLDERID_Downloads, &FOLDERID_Pictures,
+                         &FOLDERID_Music, &FOLDERID_Videos, &FOLDERID_Profile, &FOLDERID_Favorites, &FOLDERID_Links,
+                         &FOLDERID_SavedGames, &FOLDERID_SavedSearches, &FOLDERID_Contacts, &FOLDERID_SkyDrive,
+                         &FOLDERID_CameraRoll, &FOLDERID_Screenshots, &FOLDERID_Public, &FOLDERID_PublicDesktop,
+                         &FOLDERID_PublicDocuments, &FOLDERID_PublicDownloads, &FOLDERID_PublicPictures,
+                         &FOLDERID_PublicMusic, &FOLDERID_PublicVideos, &FOLDERID_RoamingAppData,
+                         &FOLDERID_LocalAppData, &FOLDERID_ProgramData, &FOLDERID_ProgramFiles,
+                         &FOLDERID_ProgramFilesX86, &FOLDERID_StartMenu, &FOLDERID_Startup, &FOLDERID_SendTo,
+                         &FOLDERID_Windows, &FOLDERID_System, &FOLDERID_Templates, &FOLDERID_UserProfiles};
+    for (auto id : ids) {
+        std::wstring p = GetKnownFolder(*id);
+        if (!p.empty()) list.push_back(ToLower(NormalizeDir(p)));
+    }
+    std::wstring t = GetTempDir();
+    if (!t.empty()) list.push_back(ToLower(NormalizeDir(t)));
+    return list;
+}
+
+int KindOf(const std::wstring& p) {
+    if (IsRemoteUrl(p)) return KindRemote;
+    if (IsNetworkPath(p)) return KindNetwork;
+    std::wstring n = ToLower(NormalizeDir(p));
+    for (auto& f : StandardFolders())
+        if (f == n) return KindStandard;
+    return KindLocal;
+}
 }
 
 bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
@@ -76,11 +113,10 @@ void BookmarkList::Rebuild(int select) {
     for (size_t i = 0; i < items_.size(); ++i) {
         const std::wstring& p = items_[i].path;
         int icon = folder;
-        if (IsRemoteUrl(p)) {
-            kinds_[i] = 2;
+        kinds_[i] = KindOf(p);
+        if (kinds_[i] == KindRemote) {
             icon = StockIndex(SIID_WORLD);
-        } else if (IsNetworkPath(p)) {
-            kinds_[i] = 1;
+        } else if (kinds_[i] == KindNetwork) {
             icon = IsNetworkRoot(p) ? StockIndex(SIID_MYNETWORK)
                    : IsNetworkServer(p) ? StockIndex(SIID_SERVER)
                    : IsUncShareRoot(p) ? StockIndex(SIID_SERVERSHARE)
@@ -119,6 +155,34 @@ int BookmarkList::FindPath(const std::wstring& path) const {
 void BookmarkList::Append(const std::wstring& name, const std::wstring& path) {
     items_.push_back({name, path});
     Rebuild((int)items_.size() - 1);
+    if (cb_.changed) cb_.changed();
+}
+
+void BookmarkList::SortByCategory() {
+    // Reihenfolge: „Netzwerk“, Standardverzeichnisse (blau), FTP/SFTP (grün), übrige Netzwerkpfade (rot), lokal;
+    // innerhalb jeder Gruppe alphabetisch nach Namen
+    auto rank = [](const Bookmark& b) {
+        if (IsNetworkRoot(b.path)) return 0;
+        switch (KindOf(b.path)) {
+        case KindStandard: return 1;
+        case KindRemote: return 2;
+        case KindNetwork: return 3;
+        default: return 4;
+        }
+    };
+    int sel = Selected();
+    std::wstring selPath = sel >= 0 ? items_[sel].path : L"";
+    std::stable_sort(items_.begin(), items_.end(), [&](const Bookmark& a, const Bookmark& b) {
+        int ra = rank(a), rb = rank(b);
+        if (ra != rb) return ra < rb;
+        int c = CompareNatural(a.name, b.name);
+        if (c != 0) return c < 0;
+        return CompareI(a.path, b.path) < 0;
+    });
+    int newSel = -1;
+    for (size_t i = 0; i < items_.size(); ++i)
+        if (!selPath.empty() && items_[i].path == selPath) newSel = (int)i;
+    Rebuild(newSel);
     if (cb_.changed) cb_.changed();
 }
 
@@ -162,6 +226,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, MenuAddCurrent, L"Aktuelles Verzeichnis &hinzufügen\tStrg+D");
     AppendMenuW(m, MF_STRING, MenuNewFtp, L"Neuer &FTP/sFTP-Zugriff…");
+    AppendMenuW(m, items_.size() > 1 ? MF_STRING : MF_GRAYED, MenuSort, L"&Sortieren…");
     UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, GetAncestor(list_, GA_ROOT), nullptr);
     DestroyMenu(m);
     switch (id) {
@@ -200,6 +265,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     case MenuDelete: DeleteSelected(); break;
     case MenuAddCurrent: PostMessageW(App::MainWindow(), WM_COMMAND, 40400 /* cmd::BookmarkAdd */, 0); break;
     case MenuNewFtp: PostMessageW(App::MainWindow(), WM_COMMAND, 40401 /* cmd::BookmarkNewRemote */, 0); break;
+    case MenuSort: PostMessageW(App::MainWindow(), WM_COMMAND, 40402 /* cmd::BookmarkSort */, 0); break;
     }
 }
 
@@ -225,9 +291,9 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         if (ti->iItem >= 0 && ti->iItem < (int)items_.size()) {
             std::wstring s = LocationDisplay(items_[ti->iItem].path);
             // Netzwerk und FTP nicht prüfen (nicht erreichbare Server würden die Oberfläche blockieren)
-            if (kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == 2)
+            if (kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == KindRemote)
                 s += StartsWithI(s, L"sftp://") ? L"\nSFTP-Zugang" : L"\nFTP-Zugang (unverschlüsselt)";
-            else if (!(kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == 1) && !DirExists(s))
+            else if (!(kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == KindNetwork) && !DirExists(s))
                 s += L"\n(nicht erreichbar)";
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         }
@@ -262,7 +328,7 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
             size_t i = (size_t)cd->nmcd.dwItemSpec;
             if (i < kinds_.size() && kinds_[i]) {
-                cd->clrTextBk = kinds_[i] == 2 ? kRemoteBack : kNetworkBack;
+                cd->clrTextBk = kinds_[i] == KindRemote ? kRemoteBack : kinds_[i] == KindStandard ? kStandardBack : kNetworkBack;
                 cd->clrText = RGB(0, 0, 0);
                 return CDRF_NEWFONT;
             }

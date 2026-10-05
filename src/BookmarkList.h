@@ -28,6 +28,8 @@ public:
     void DeleteSelected();
     void RenameSelected();
     void MoveSelected(int delta);
+    // Sortieren: „Netzwerk“, Standardverzeichnisse, FTP/SFTP, Netzwerkpfade, lokale Verzeichnisse – je alphabetisch
+    void SortByCategory();
     LRESULT OnNotify(NMHDR* nm);
     void Resize();
 
@@ -40,7 +42,7 @@ private:
     HWND list_ = nullptr;
     Callbacks cb_;
     std::vector<Bookmark> items_;
-    std::vector<int> kinds_;   // 0 = lokal, 1 = Netzwerk (hellrot), 2 = FTP/SFTP (hellblau)
+    std::vector<int> kinds_;   // 0 = lokal, 1 = Netzwerk (hellrot), 2 = FTP/SFTP (hellgrün), 3 = Standardverzeichnis (hellblau)
 };
 
 } // namespace qf

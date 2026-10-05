@@ -571,6 +571,7 @@ void MainWindow::BuildBookmarkMenu(HMENU m) {
     while (GetMenuItemCount(m) > 0) DeleteMenu(m, 0, MF_BYPOSITION);
     AddItem(m, cmd::BookmarkAdd, L"Gewähltes Verzeichnis &hinzufügen…\tStrg+D");
     AddItem(m, cmd::BookmarkNewRemote, L"Neuer &FTP/sFTP-Zugriff…");
+    AddItem(m, cmd::BookmarkSort, L"&Sortieren…");
     AddItem(m, cmd::FocusBookmarks, L"Lesezeichenliste &bearbeiten\tAlt+F2");
     const auto& b = bookmarks_.Get();
     if (!b.empty()) AddSep(m);
@@ -1804,7 +1805,8 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::ShowHidden: case cmd::Filter: case cmd::Refresh: case cmd::ToggleToolbar: case cmd::ToggleFKeyBar:
     case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
-    case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::FunctionKeys:
+    case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
+    case cmd::FunctionKeys:
     case cmd::Options: case cmd::Shortcuts: case cmd::About: case cmd::Exit: case cmd::ClearCompareMarks: case cmd::OpLog:
     case cmd::DriveOverview: case cmd::CommandPrompt:
         return false;
@@ -2275,6 +2277,13 @@ void MainWindow::OnCommand(int id) {
 
     // ---- Lesezeichen ----
     case cmd::BookmarkAdd: AddBookmarkFor(a); break;
+    case cmd::BookmarkSort:
+        if (bookmarks_.Get().size() < 2) break;
+        if (MsgConfirm(hwnd_, L"Lesezeichen sortieren?\n\nReihenfolge: „Netzwerk“, Windows-Standardverzeichnisse (blau), "
+                              L"FTP/SFTP-Zugänge (grün), übrige Netzwerkpfade (rot), lokale Verzeichnisse – "
+                              L"innerhalb jeder Gruppe alphabetisch."))
+            bookmarks_.SortByCategory();
+        break;
     case cmd::BookmarkNewRemote: {
         RemoteAccess acc;
         acc.url.proto = RemoteProto::Sftp;

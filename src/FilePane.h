@@ -181,6 +181,7 @@ private:
     void UpdateStatus();
     void UpdatePathCombo();
     void AddHistory(const std::wstring& dir);
+    void ShowHistoryMenu(bool back, POINT screenPt);
     void CreateListFont();
     void SetupColumns();
     void ApplyViewStyle();

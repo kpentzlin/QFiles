@@ -453,8 +453,8 @@ void FilePane::UpdateTooltips() {
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
             break;
         case HitArea::Bookmark: text = L"Gewähltes Verzeichnis den Lesezeichen hinzufügen (Strg+D)"; break;
-        case HitArea::Back: text = L"Zurück (Alt+←)"; break;
-        case HitArea::Forward: text = L"Vor (Alt+→)"; break;
+        case HitArea::Back: text = L"Zurück (Alt+←) – Rechtsklick: Liste"; break;
+        case HitArea::Forward: text = L"Vor (Alt+→) – Rechtsklick: Liste"; break;
         case HitArea::Up: text = L"Übergeordnetes Verzeichnis (Rücktaste)"; break;
         case HitArea::Browse: text = L"Verzeichnis wählen…"; break;
         case HitArea::Active: text = L"Aktive Liste (grün) – Klick macht diese Liste aktiv"; break;
@@ -1022,6 +1022,44 @@ void FilePane::GoForward() {
         hist_.erase(hist_.begin() + histPos_);
         --histPos_;
     }
+}
+
+// Aufklappliste für Zurück bzw. Vor: zuletzt aufgerufene Verzeichnisse oben, ältere unten
+// (nur Verzeichnisse dieser Sitzung; die Zurück/Vor-Liste wird nicht gespeichert)
+void FilePane::ShowHistoryMenu(bool back, POINT screenPt) {
+    if (host_) host_->OnPaneActivated(this);
+    std::vector<int> idx;
+    if (back) {
+        for (int i = histPos_ - 1; i >= 0; --i) idx.push_back(i);
+    } else {
+        for (int i = (int)hist_.size() - 1; i > histPos_; --i) idx.push_back(i);
+    }
+    if (idx.empty()) {
+        MessageBeep(MB_ICONASTERISK);
+        return;
+    }
+    if (idx.size() > 40) idx.resize(40);
+    HMENU m = CreatePopupMenu();
+    for (size_t k = 0; k < idx.size(); ++k) {
+        std::wstring t = ReplaceAll(LocationDisplay(hist_[idx[k]]), L"&", L"&&");
+        AppendMenuW(m, MF_STRING, k + 1, t.c_str());
+    }
+    UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, screenPt.x, screenPt.y,
+                               hwnd_, nullptr);
+    DestroyMenu(m);
+    if (id >= 1 && id <= idx.size()) {
+        int target = idx[id - 1];
+        int old = histPos_;
+        histPos_ = target;
+        if (!Navigate(hist_[target], L"", false, true)) {
+            // nicht mehr erreichbar: aus der Liste nehmen
+            histPos_ = old;
+            hist_.erase(hist_.begin() + target);
+            if (target < histPos_) --histPos_;
+            InvalidateRect(hwnd_, &rcPath_, FALSE);
+        }
+    }
+    FocusList();
 }
 
 void FilePane::AddHistory(const std::wstring& dir) {
@@ -1998,6 +2036,13 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_RBUTTONUP: {
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         const HitRect* h = HitTest(pt);
+        if (h && (h->area == HitArea::Back || h->area == HitArea::Forward)) {
+            // Rechtsklick auf Zurück/Vor: Liste der Verzeichnisse dieser Sitzung
+            POINT sp{h->rc.left, h->rc.bottom};
+            ClientToScreen(hwnd_, &sp);
+            ShowHistoryMenu(h->area == HitArea::Back, sp);
+            return 0;
+        }
         if (h && h->area == HitArea::Drive) {
             std::wstring root = drives_[h->drive].root;
             ClientToScreen(hwnd_, &pt);

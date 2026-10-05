@@ -92,6 +92,7 @@ enum : int {
     // Lesezeichen
     BookmarkAdd = 40400,
     BookmarkNewRemote = 40401,  // Neuer FTP/sFTP-Zugriff
+    BookmarkSort = 40402,       // Lesezeichen sortieren
     BookmarkFirst = 40410,    // dynamische Einträge
     BookmarkLast = 40499,
 

@@ -79,8 +79,11 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
   (z. B. `N:  \\fritz.box\FRITZ.NAS\media1`), Wechseldatenträger mit ihrer Bezeichnung.
 - Lesezeichenliste daneben:
   - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen.
-  - Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) erscheinen mit **hellroter**, FTP/SFTP-Zugänge mit
-    **hellblauer** Hintergrundfarbe.
+  - Hintergrundfarben: Windows-Standardverzeichnisse (Desktop, Dokumente, Downloads, Bilder, Musik, Videos,
+    Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, FTP/SFTP-Zugänge **hellgrün**, Netzwerkpfade
+    (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**.
+  - **Lesezeichen → Sortieren…** (nach Rückfrage): zuerst „Netzwerk“, dann die Standardverzeichnisse, die
+    FTP/SFTP-Zugänge, die übrigen Netzwerkpfade und zuletzt die lokalen Verzeichnisse – jeweils alphabetisch.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
   - Umbenennen mit F2, Entfernen mit Entf, Verschieben mit Alt+↑/↓, Pfad über das Kontextmenü ändern.
   - Dateien lassen sich auf ein Lesezeichen ziehen.
@@ -89,7 +92,8 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
   - Laufwerksymbole: Ein Klick springt zum zuletzt besuchten Verzeichnis des Laufwerks; ein Rechtsklick öffnet das
     Kontextmenü des Laufwerks.
   - Verzeichnis-Textfeld mit Verlauf und Autovervollständigung; Umgebungsvariablen wie `%USERPROFILE%` sind erlaubt.
-  - Zurück/Vor, Übergeordnet, Verzeichnis wählen.
+  - Zurück/Vor, Übergeordnet, Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
+    Verzeichnisse dieser Sitzung (zuletzt aufgerufene oben); die Zurück/Vor-Liste wird nicht gespeichert.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar).
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
