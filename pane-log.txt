@@ -1,0 +1,7 @@
+Liste 2 | ftp://127.0.0.1:2121/ | Ordner Ä, Grüße vom FTP.txt | 1 Verz., 1 Dateien (22 B)  –  FTP (unverschlüsselt)
+Liste 3 | C:\Users\runneradmin | .cargo, .docker, .dotnet, .rustup, .templateengine, Contacts, Desktop, Documents, Downloads, Favorites, Links, Music, Pictures, Saved Games, Searches, source, Videos, query | 17 Verz., 1 Dateien (7 B)  –  belegt: 120 GB, frei: 29.4 GB
+Liste 4 | C:\Users\runneradmin\Downloads |  | 0 Verz., 0 Dateien (0 B)  –  belegt: 120 GB, frei: 29.4 GB
+Liste 1 | \\localhost | QFilesTest | 1 Freigabe
+Liste 1 | \\localhost\QFilesTest | Ünïcödé 日本語 ✓, liesmich.txt, zweite Datei.txt | 1 Verz., 2 Dateien (32 B)  –  belegt: 120 GB, frei: 29.3 GB
+Liste 1 | C:\QFilesDemo | Ünïcödé 日本語 ✓, liesmich.txt, zweite Datei.txt | 1 Verz., 2 Dateien (32 B)  –  belegt: 120 GB, frei: 29.3 GB
+Liste 1 | C:\QFilesDemo (rekursiv) | Ünïcödé 日本語 ✓\Grüße €.txt, liesmich.txt, zweite Datei.txt | 3 Dateien in 2 Verzeichnissen (65 B)  –  belegt: 120 GB, frei: 29.3 GB

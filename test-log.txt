@@ -1,0 +1,26 @@
+Testverzeichnis: C:\Users\RUNNER~1\AppData\Local\Temp\QFilesTest ✓ 267484
+Einstellungsdatei (Standard): C:\ProgramData\QFiles\QFiles.ini
+FEHLER: Ein Dateiname darf keines der folgenden Zeichen enthalten:
+\ / : * ? " < > |
+Server-Test: ftp://test@127.0.0.1:2121/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: dav://test@127.0.0.1:8090/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: dav://test@127.0.0.1:8091/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: ftp://demo@test.rebex.net/ (lesend)
+  Startverzeichnis: /
+  2 Einträge in /
+  heruntergeladen: readme.txt (379 Bytes)
+Server-Test: sftp://demo@test.rebex.net/ (lesend)
+  Hostschlüssel test.rebex.net:22: ecdsa-sha2-nistp256 SHA256:OzvpQxRUzSfV9F/ECMXbQ7B7zbK0aTngrhFCBUno65c
+  Startverzeichnis: /
+  2 Einträge in /
+  heruntergeladen: readme.txt (379 Bytes)
+Bestanden: 208, fehlgeschlagen: 0
