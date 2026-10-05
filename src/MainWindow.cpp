@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "App.h"
+#include "Cloud.h"
 #include "Commands.h"
 #include "Dialog.h"
 #include "FileOps.h"
@@ -149,6 +150,20 @@ public:
         return DialogBase::OnCommand(id, code, ctl);
     }
 };
+
+// Namen ("Unterverzeichnis\\Datei") nach Unterverzeichnis gruppieren (Ansicht „Mit Unterverzeichnissen“)
+std::vector<std::pair<std::wstring, std::vector<std::wstring>>> GroupBySubdir(const std::vector<std::wstring>& names) {
+    std::vector<std::pair<std::wstring, std::vector<std::wstring>>> r;
+    for (auto& n : names) {
+        size_t pos = n.find_last_of(L'\\');
+        std::wstring sub = pos == std::wstring::npos ? L"" : n.substr(0, pos);
+        std::wstring base = pos == std::wstring::npos ? n : n.substr(pos + 1);
+        auto it = std::find_if(r.begin(), r.end(), [&](const auto& g) { return EqualsI(g.first, sub); });
+        if (it == r.end()) r.push_back({sub, {base}});
+        else it->second.push_back(base);
+    }
+    return r;
+}
 
 int AskChoice(HWND owner, const std::wstring& title, const std::wstring& prompt, const std::vector<std::wstring>& options) {
     int h = 48 + (int)options.size() * 14;
@@ -492,6 +507,7 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::ViewList, L"&Liste\tStrg+Umschalt+2");
     AddItem(m, cmd::ViewIcons, L"&Symbole\tStrg+Umschalt+3");
     AddItem(m, cmd::ViewThumbnails, L"&Miniaturansicht\tStrg+Umschalt+4");
+    AddItem(m, cmd::ViewRecursive, L"Mit &Unterverzeichnissen\tStrg+Umschalt+5");
     AddSep(m);
     HMENU sort = CreatePopupMenu();
     AddItem(sort, cmd::SortName, L"&Name");
@@ -570,7 +586,8 @@ void MainWindow::BuildMenu() {
 void MainWindow::BuildBookmarkMenu(HMENU m) {
     while (GetMenuItemCount(m) > 0) DeleteMenu(m, 0, MF_BYPOSITION);
     AddItem(m, cmd::BookmarkAdd, L"Gewähltes Verzeichnis &hinzufügen…\tStrg+D");
-    AddItem(m, cmd::BookmarkNewRemote, L"Neuer &FTP/sFTP-Zugriff…");
+    AddItem(m, cmd::BookmarkNewRemote, L"Neuer &FTP/sFTP/WebDAV-Zugriff…");
+    AddItem(m, cmd::BookmarkAddCloud, L"&Cloud-Speicher hinzufügen (Dropbox, Google Drive, OneDrive)…");
     AddItem(m, cmd::BookmarkSort, L"&Sortieren…");
     AddItem(m, cmd::FocusBookmarks, L"Lesezeichenliste &bearbeiten\tAlt+F2");
     const auto& b = bookmarks_.Get();
@@ -593,7 +610,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     check(cmd::TwoPanes, twoPanes_);
     check(cmd::SplitToggle, split_[active_ % 2]);
     check(cmd::QuickView, quickView_);
-    CheckMenuRadioItem(m, cmd::ViewDetails, cmd::ViewThumbnails, cmd::ViewDetails + (int)a.View(), MF_BYCOMMAND);
+    CheckMenuRadioItem(m, cmd::ViewDetails, cmd::ViewRecursive, cmd::ViewDetails + (int)a.View(), MF_BYCOMMAND);
     CheckMenuRadioItem(m, cmd::SortName, cmd::SortCreated, cmd::SortName + (int)a.Sort(), MF_BYCOMMAND);
     check(cmd::SortDescending, a.SortDescending());
     check(cmd::ShowHidden, App::Opt().showHidden);
@@ -803,6 +820,7 @@ void MainWindow::BuildAccelerators() {
     add(FCONTROL | FSHIFT, '2', cmd::ViewList);
     add(FCONTROL | FSHIFT, '3', cmd::ViewIcons);
     add(FCONTROL | FSHIFT, '4', cmd::ViewThumbnails);
+    add(FCONTROL | FSHIFT, '5', cmd::ViewRecursive);
     add(FCONTROL, 'H', cmd::ShowHidden);
     add(FCONTROL | FSHIFT, 'F', cmd::Filter);
     add(FCONTROL, 'R', cmd::Refresh);
@@ -1600,7 +1618,7 @@ void MainWindow::ShowShortcuts() {
         L"  Strg+T\tAktive Liste teilen (Split) / Teilung aufheben\r\n"
         L"  Strg+Umschalt+L\tEine / zwei Dateilisten\r\n"
         L"  Strg+Q\tDateianzeige im jeweils anderen Fenster ein/aus\r\n"
-        L"  Strg+Umschalt+1…4\tDetails / Liste / Symbole / Miniaturen\r\n"
+        L"  Strg+Umschalt+1…5\tDetails / Liste / Symbole / Miniaturen / Mit Unterverzeichnissen\r\n"
         L"  Strg+H\tVersteckte Dateien;  Strg+Umschalt+F: Dateifilter;  Strg+R: Aktualisieren\r\n"
         L"\r\n"
         L"Navigation und Werkzeuge\r\n"
@@ -1691,7 +1709,7 @@ void MainWindow::RemoteCopyOrMove(bool move) {
     if (o && !o->IsNetworkLevel() && !(quickView_ && o->Index() == quickViewPane_)) target = o->Dir();
     std::wstring what = sources.size() == 1 ? (L"„" + LocationFileName(sources[0]) + L"“") : (std::to_wstring(sources.size()) + L" Elemente");
     if (!InputBox(hwnd_, move ? L"Verschieben" : L"Kopieren",
-                  what + (move ? L" verschieben nach (Verzeichnis oder ftp://…, sftp://…):" : L" kopieren nach (Verzeichnis oder ftp://…, sftp://…):"),
+                  what + (move ? L" verschieben nach (Verzeichnis oder ftp://…, sftp://…, dav(s)://…):" : L" kopieren nach (Verzeichnis oder ftp://…, sftp://…, dav(s)://…):"),
                   target))
         return;
     target = Trim(target);
@@ -1800,12 +1818,13 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::GoOtherSame: case cmd::SwapPanes: case cmd::NextPane: case cmd::FocusPane1: case cmd::FocusPane2:
     case cmd::FocusPane3: case cmd::FocusPane4: case cmd::FocusTree: case cmd::FocusBookmarks: case cmd::FocusCommandLine:
     case cmd::CmdLineInsertName: case cmd::TwoPanes: case cmd::SplitToggle: case cmd::QuickView: case cmd::ViewDetails:
-    case cmd::ViewList: case cmd::ViewIcons: case cmd::ViewThumbnails: case cmd::SortName: case cmd::SortExt:
+    case cmd::ViewList: case cmd::ViewIcons: case cmd::ViewThumbnails: case cmd::ViewRecursive: case cmd::SortName: case cmd::SortExt:
     case cmd::SortSize: case cmd::SortDate: case cmd::SortAttr: case cmd::SortCreated: case cmd::SortDescending:
     case cmd::ShowHidden: case cmd::Filter: case cmd::Refresh: case cmd::ToggleToolbar: case cmd::ToggleFKeyBar:
     case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
     case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
+    case cmd::BookmarkAddCloud:
     case cmd::FunctionKeys:
     case cmd::Options: case cmd::Shortcuts: case cmd::About: case cmd::Exit: case cmd::ClearCompareMarks: case cmd::OpLog:
     case cmd::DriveOverview: case cmd::CommandPrompt:
@@ -1870,7 +1889,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) return true;
         if (names.size() > 1) {
-            MsgInfo(hwnd_, L"Auf FTP/SFTP-Servern kann jeweils ein Element umbenannt werden.");
+            MsgInfo(hwnd_, L"Auf FTP/SFTP/WebDAV-Servern kann jeweils ein Element umbenannt werden.");
             return true;
         }
         std::wstring name = names[0];
@@ -1892,7 +1911,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
         return true;
     }
     }
-    MsgInfo(hwnd_, L"Diese Funktion ist für FTP/SFTP-Verzeichnisse nicht verfügbar.");
+    MsgInfo(hwnd_, L"Diese Funktion ist für FTP/SFTP/WebDAV-Verzeichnisse nicht verfügbar.");
     return true;
 }
 
@@ -2011,7 +2030,11 @@ void MainWindow::OnCommand(int id) {
         }
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) break;
-        if (BatchRename(hwnd_, a.Dir(), names)) {
+        // Ansicht „Mit Unterverzeichnissen“: je Unterverzeichnis ein Umbenennungsdialog
+        bool any = false;
+        for (auto& [sub, group] : GroupBySubdir(names))
+            if (BatchRename(hwnd_, PathCombine(a.Dir(), sub), group)) any = true;
+        if (any) {
             ReloadVisible();
             tree_.RefreshPath(a.Dir());
         }
@@ -2034,8 +2057,10 @@ void MainWindow::OnCommand(int id) {
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) break;
         std::wstring lastNew;
-        for (auto& n : names) {
-            std::wstring src = PathCombine(a.Dir(), n);
+        for (auto& rel : names) {
+            std::wstring src = PathCombine(a.Dir(), rel);
+            std::wstring srcDir = PathParent(src);   // bei „Mit Unterverzeichnissen“ das Unterverzeichnis
+            std::wstring n = PathFileName(rel);
             bool isDir = DirExists(src);
             std::wstring stem = n, ext;
             size_t dot = n.find_last_of(L'.');
@@ -2044,15 +2069,18 @@ void MainWindow::OnCommand(int id) {
                 ext = n.substr(dot);
             }
             std::wstring target = stem + L" - Kopie" + ext;
-            std::wstring dir = a.Dir();
+            std::wstring dir = srcDir;
             if (!AskName(hwnd_, L"Duplizieren", L"Name des Duplikats von „" + n + L"“:", target, !isDir,
                          [dir, n, isDir]() { return NumberedName(dir, n, isDir); }))
                 break;
-            if (PathExists(PathCombine(a.Dir(), target))) {
+            if (PathExists(PathCombine(srcDir, target))) {
                 MsgError(hwnd_, L"„" + target + L"“ existiert bereits.");
                 continue;
             }
-            if (CopyJobs(hwnd_, {{src, a.Dir(), target}})) lastNew = target;
+            if (CopyJobs(hwnd_, {{src, srcDir, target}})) {
+                std::wstring sub = PathParent(PathCombine(L"X:\\", rel)).substr(3);
+                lastNew = sub.empty() ? target : PathCombine(sub, target);
+            }
         }
         a.Reload();
         if (!lastNew.empty()) a.FocusName(lastNew);
@@ -2071,7 +2099,10 @@ void MainWindow::OnCommand(int id) {
     case cmd::BatchRename: {
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) break;
-        if (BatchRename(hwnd_, a.Dir(), names)) ReloadVisible();
+        bool any = false;
+        for (auto& [sub, group] : GroupBySubdir(names))
+            if (BatchRename(hwnd_, PathCombine(a.Dir(), sub), group)) any = true;
+        if (any) ReloadVisible();
         break;
     }
     case cmd::Delete: DeleteSelection(false); break;
@@ -2191,6 +2222,7 @@ void MainWindow::OnCommand(int id) {
     case cmd::ViewList: a.SetView(PaneView::List); break;
     case cmd::ViewIcons: a.SetView(PaneView::Icons); break;
     case cmd::ViewThumbnails: a.SetView(PaneView::Thumbnails); break;
+    case cmd::ViewRecursive: a.SetView(PaneView::Recursive); break;
     case cmd::SortName: a.SetSort(SortKey::Name, a.SortDescending()); break;
     case cmd::SortExt: a.SetSort(SortKey::Ext, a.SortDescending()); break;
     case cmd::SortSize: a.SetSort(SortKey::Size, a.SortDescending()); break;
@@ -2280,10 +2312,33 @@ void MainWindow::OnCommand(int id) {
     case cmd::BookmarkSort:
         if (bookmarks_.Get().size() < 2) break;
         if (MsgConfirm(hwnd_, L"Lesezeichen sortieren?\n\nReihenfolge: „Netzwerk“, Windows-Standardverzeichnisse (blau), "
-                              L"FTP/SFTP-Zugänge (grün), übrige Netzwerkpfade (rot), lokale Verzeichnisse – "
-                              L"innerhalb jeder Gruppe alphabetisch."))
+                              L"Cloud-Speicher (lila), FTP/SFTP/WebDAV-Zugänge (grün), übrige Netzwerkpfade (rot), "
+                              L"lokale Verzeichnisse – innerhalb jeder Gruppe alphabetisch."))
             bookmarks_.SortByCategory();
         break;
+    case cmd::BookmarkAddCloud: {
+        const auto& clouds = DetectCloudFolders(true);
+        if (clouds.empty()) {
+            MsgInfo(hwnd_, L"Es wurde kein Cloud-Speicher gefunden.\n\nQFiles nutzt die Ordner der Windows-Programme der "
+                           L"Anbieter: Dropbox, „Google Drive für den Desktop“ bzw. Microsoft OneDrive. Ist eines davon "
+                           L"installiert und angemeldet, erscheint sein Ordner hier.");
+            break;
+        }
+        std::vector<std::wstring> opts;
+        for (auto& c : clouds) {
+            bool has = bookmarks_.FindPath(c.path) >= 0;
+            opts.push_back(c.name + L":  " + c.path + (has ? L"   (bereits Lesezeichen)" : L""));
+        }
+        if (clouds.size() > 1) opts.push_back(L"Alle hinzufügen");
+        int c = AskChoice(hwnd_, L"Cloud-Speicher hinzufügen", L"Gefundene Cloud-Ordner:", opts);
+        if (c < 0) break;
+        for (size_t i = 0; i < clouds.size(); ++i) {
+            if (c != (int)i && c != (int)clouds.size()) continue;
+            if (bookmarks_.FindPath(clouds[i].path) >= 0) continue;
+            bookmarks_.Append(clouds[i].name, clouds[i].path);
+        }
+        break;
+    }
     case cmd::BookmarkNewRemote: {
         RemoteAccess acc;
         acc.url.proto = RemoteProto::Sftp;
@@ -2322,7 +2377,7 @@ void MainWindow::OnCommand(int id) {
     }
     case cmd::CompareDirs: {
         if (Other() && Other()->IsVirtual()) {
-            MsgInfo(hwnd_, L"Verzeichnisse auf FTP/SFTP-Servern bzw. die Netzwerkübersicht können nicht verglichen werden.");
+            MsgInfo(hwnd_, L"Verzeichnisse auf FTP/SFTP/WebDAV-Servern bzw. die Netzwerkübersicht können nicht verglichen werden.");
             break;
         }
         // Vergleich der aktiven Liste mit einer anderen. Gibt es mehrere (Split), wird gefragt:
@@ -2375,7 +2430,7 @@ void MainWindow::OnCommand(int id) {
         FilePane* o = Other();
         if (!o) break;
         if (o->IsVirtual()) {
-            MsgInfo(hwnd_, L"Mit FTP/SFTP-Verzeichnissen bzw. der Netzwerkübersicht kann nicht synchronisiert werden.");
+            MsgInfo(hwnd_, L"Mit FTP/SFTP/WebDAV-Verzeichnissen bzw. der Netzwerkübersicht kann nicht synchronisiert werden.");
             break;
         }
         FilePane* left = (active_ % 2 == 0) ? &a : o;
@@ -2408,6 +2463,7 @@ void MainWindow::OnCommand(int id) {
         break;
     case cmd::Options:
         if (ShowOptionsDialog(hwnd_)) {
+            bookmarks_.Set(LoadBookmarks(App::Cfg()));   // ggf. importierte Lesezeichen
             ApplyOptionsAll();
             Layout();
         }

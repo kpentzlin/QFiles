@@ -44,7 +44,38 @@ bool IsUncShareRoot(const std::wstring& p) {
     return parts.size() == 2;
 }
 
-bool IsRemoteUrl(const std::wstring& p) { return StartsWithI(p, L"ftp://") || StartsWithI(p, L"sftp://"); }
+bool IsRemoteUrl(const std::wstring& p) {
+    return StartsWithI(p, L"ftp://") || StartsWithI(p, L"sftp://") || IsWebDavUrl(p);
+}
+
+bool IsWebDavUrl(const std::wstring& p) { return StartsWithI(p, L"dav://") || StartsWithI(p, L"davs://"); }
+
+const wchar_t* RemoteScheme(RemoteProto p) {
+    switch (p) {
+    case RemoteProto::Sftp: return L"sftp";
+    case RemoteProto::WebDav: return L"dav";
+    case RemoteProto::WebDavs: return L"davs";
+    default: return L"ftp";
+    }
+}
+
+int RemoteDefaultPort(RemoteProto p) {
+    switch (p) {
+    case RemoteProto::Sftp: return 22;
+    case RemoteProto::WebDav: return 80;
+    case RemoteProto::WebDavs: return 443;
+    default: return 21;
+    }
+}
+
+const wchar_t* RemoteProtoName(RemoteProto p) {
+    switch (p) {
+    case RemoteProto::Sftp: return L"SFTP";
+    case RemoteProto::WebDav: return L"WebDAV (HTTP, unverschlüsselt)";
+    case RemoteProto::WebDavs: return L"WebDAV (HTTPS)";
+    default: return L"FTP (unverschlüsselt)";
+    }
+}
 
 bool IsVirtualLocation(const std::wstring& p) { return IsNetworkVirtual(p) || IsRemoteUrl(p); }
 
@@ -62,7 +93,8 @@ std::wstring NormalizeSpecialLocation(const std::wstring& raw) {
     if (p.size() >= 2 && p.front() == L'"' && p.back() == L'"') p = p.substr(1, p.size() - 2);
     if (IsNetworkRoot(p)) return kNetworkRoot;
     if (IsNetworkServer(p)) return L"\\\\" + UncRest(p);
-    if (IsRemoteUrl(p)) {
+    if (IsRemoteUrl(p) || StartsWithI(p, L"http://") || StartsWithI(p, L"https://")) {
+        // http(s):// im Verzeichnisfeld = WebDAV
         RemoteUrl u;
         if (ParseRemoteUrl(p, u)) return u.ToString();
     }
@@ -136,10 +168,10 @@ std::wstring NormalizeRemotePath(const std::wstring& path) {
 }
 
 std::wstring RemoteUrl::ServerKey() const {
-    std::wstring s = proto == RemoteProto::Sftp ? L"sftp://" : L"ftp://";
+    std::wstring s = std::wstring(RemoteScheme(proto)) + L"://";
     if (!user.empty()) s += ReplaceAll(ReplaceAll(user, L"%", L"%25"), L"@", L"%40") + L"@";
     s += host.find(L':') != std::wstring::npos ? (L"[" + host + L"]") : host;
-    if (port && port != (proto == RemoteProto::Sftp ? 22 : 21)) s += L":" + std::to_wstring(port);
+    if (port && port != RemoteDefaultPort(proto)) s += L":" + std::to_wstring(port);
     return s;
 }
 
@@ -155,6 +187,12 @@ bool ParseRemoteUrl(const std::wstring& s, RemoteUrl& out) {
     } else if (StartsWithI(t, L"ftp://")) {
         u.proto = RemoteProto::Ftp;
         start = 6;
+    } else if (StartsWithI(t, L"davs://") || StartsWithI(t, L"https://")) {
+        u.proto = RemoteProto::WebDavs;
+        start = t.find(L"://") + 3;
+    } else if (StartsWithI(t, L"dav://") || StartsWithI(t, L"http://")) {
+        u.proto = RemoteProto::WebDav;
+        start = t.find(L"://") + 3;
     } else {
         return false;
     }

@@ -30,6 +30,15 @@ else()
     target_compile_options(qf_libssh2 PRIVATE -w)
 endif()
 
+# Build-Kennung (Commit) für den Info-Dialog, damit sich Versionen unterscheiden lassen
+set(QFILES_BUILD_ID "")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=7 HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE QFILES_BUILD_ID OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
+string(TIMESTAMP QFILES_BUILD_DATE "%Y-%m-%d")
+
 file(GLOB QFILES_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
 file(GLOB QFILES_HEADERS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.h)
 
@@ -49,12 +58,14 @@ target_compile_definitions(QFiles PRIVATE
     WINVER=0x0A00
     NTDDI_VERSION=0x0A000006
     QFILES_VERSION_STRING="${PROJECT_VERSION}"
+    QFILES_BUILD_ID="${QFILES_BUILD_ID}"
+    QFILES_BUILD_DATE="${QFILES_BUILD_DATE}"
 )
 
 target_link_libraries(QFiles PRIVATE
     comctl32 shell32 shlwapi ole32 oleaut32 uuid
     gdi32 user32 comdlg32 advapi32 windowscodecs propsys version msimg32 uxtheme dbghelp bcrypt
-    qf_libssh2 ws2_32 crypt32 netapi32 mpr
+    qf_libssh2 ws2_32 crypt32 netapi32 mpr winhttp
 )
 
 if(MSVC)
@@ -80,13 +91,13 @@ if(QFILES_BUILD_TESTS)
     add_executable(QFilesTests
         tests/QFilesTests.cpp
         src/Util.cpp src/Dialog.cpp src/Settings.cpp src/App.cpp src/Encoding.cpp src/FileOps.cpp
-        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp
+        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp
     )
     target_include_directories(QFilesTests PRIVATE src res)
     target_compile_definitions(QFilesTests PRIVATE UNICODE _UNICODE NOMINMAX STRICT _WIN32_WINNT=0x0A00 WINVER=0x0A00
         NTDDI_VERSION=0x0A000006 QFILES_VERSION_STRING="${PROJECT_VERSION}")
     target_link_libraries(QFilesTests PRIVATE comctl32 shell32 shlwapi ole32 oleaut32 uuid gdi32 user32 comdlg32
-        advapi32 windowscodecs propsys qf_libssh2 ws2_32 crypt32)
+        advapi32 windowscodecs propsys qf_libssh2 ws2_32 crypt32 winhttp)
     if(MSVC)
         target_compile_options(QFilesTests PRIVATE /utf-8 /EHsc /permissive-)
         set_property(TARGET QFilesTests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

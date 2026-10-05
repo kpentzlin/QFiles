@@ -160,9 +160,7 @@ std::shared_ptr<RemoteFs> Acquire(HWND owner, const RemoteUrl& url, std::wstring
         }
         if (it->second->Connected()) return it->second;
     }
-    std::shared_ptr<RemoteFs> fs = it != pool.end() ? it->second
-                                                    : std::shared_ptr<RemoteFs>(url.proto == RemoteProto::Sftp ? CreateSftpFs()
-                                                                                                                : CreateFtpFs());
+    std::shared_ptr<RemoteFs> fs = it != pool.end() ? it->second : std::shared_ptr<RemoteFs>(CreateRemoteFs(url.proto));
     std::lock_guard<std::recursive_mutex> lock(fs->mutex());
     bool savePw = false;
     ConnectPrompts prompts = MakePrompts(owner, key, &savePw);
@@ -447,22 +445,36 @@ RemoteAccess LoadRemoteAccess(const std::wstring& url) {
 
 bool HasSavedRemoteLogin(const std::wstring& url) {
     RemoteAccess a = LoadRemoteAccess(url);
-    return !a.password.empty() || !a.keyFile.empty() || (a.url.proto == RemoteProto::Ftp && a.url.user.empty());
+    // anonym: FTP ohne Benutzer bzw. WebDAV ohne Benutzer
+    return !a.password.empty() || !a.keyFile.empty() || a.url.user.empty();
 }
 
 bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
     enum { kName = 101, kProto, kHost, kPort, kUser, kPass, kSave, kDir, kKey, kKeyBtn, kTest, kHint, kKeyLabel };
+    // Reihenfolge der Protokolle in der Auswahlliste
+    static const RemoteProto kProtos[4] = {RemoteProto::Sftp, RemoteProto::Ftp, RemoteProto::WebDavs, RemoteProto::WebDav};
     class Dlg : public DialogBase {
     public:
         RemoteAccess a;
         bool isNew = true;
 
     protected:
+        static int IndexOf(RemoteProto p) {
+            for (int i = 0; i < 4; ++i)
+                if (kProtos[i] == p) return i;
+            return 0;
+        }
+        RemoteProto SelProto() const {
+            int i = ComboSel(kProto);
+            return kProtos[i >= 0 && i < 4 ? i : 0];
+        }
         BOOL OnInit() override {
             SetText(kName, a.name);
-            ComboAdd(kProto, L"SFTP (SSH, verschlüsselt)", 1);
-            ComboAdd(kProto, L"FTP (unverschlüsselt)", 0);
-            ComboSetSel(kProto, a.url.proto == RemoteProto::Sftp ? 0 : 1);
+            ComboAdd(kProto, L"SFTP (SSH, verschlüsselt)", 0);
+            ComboAdd(kProto, L"FTP (unverschlüsselt)", 1);
+            ComboAdd(kProto, L"WebDAV über HTTPS (verschlüsselt)", 2);
+            ComboAdd(kProto, L"WebDAV über HTTP (unverschlüsselt)", 3);
+            ComboSetSel(kProto, IndexOf(a.url.proto));
             SetText(kHost, a.url.host);
             SetText(kPort, std::to_wstring(a.url.EffectivePort()));
             SetText(kUser, a.url.user);
@@ -475,7 +487,7 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
             return FALSE;
         }
         void UpdateProto() {
-            bool sftp = ComboSel(kProto) == 0;
+            bool sftp = SelProto() == RemoteProto::Sftp;
             Enable(kKey, sftp);
             Enable(kKeyBtn, sftp);
             Enable(kKeyLabel, sftp);
@@ -483,7 +495,7 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
         bool Read(RemoteAccess& out, bool quiet) {
             out = a;
             out.name = Trim(GetText(kName));
-            out.url.proto = ComboSel(kProto) == 0 ? RemoteProto::Sftp : RemoteProto::Ftp;
+            out.url.proto = SelProto();
             std::wstring host = Trim(GetText(kHost));
             // Vollständige Adresse im Serverfeld akzeptieren
             RemoteUrl parsed;
@@ -492,7 +504,7 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
                 SetText(kHost, parsed.host);
                 if (!parsed.user.empty()) SetText(kUser, parsed.user);
                 SetText(kPort, std::to_wstring(parsed.EffectivePort()));
-                ComboSetSel(kProto, parsed.proto == RemoteProto::Sftp ? 0 : 1);
+                ComboSetSel(kProto, IndexOf(parsed.proto));
                 if (parsed.path != L"/") SetText(kDir, parsed.path);
                 host = parsed.host;
             }
@@ -516,7 +528,7 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
                 if (!quiet) MsgError(hwnd_, L"Für SFTP ist ein Benutzername erforderlich.");
                 return false;
             }
-            if (out.url.port == (out.url.proto == RemoteProto::Sftp ? 22 : 21)) out.url.port = 0;
+            if (out.url.port == RemoteDefaultPort(out.url.proto)) out.url.port = 0;
             if (out.name.empty()) out.name = out.url.user.empty() ? out.url.host : (out.url.user + L"@" + out.url.host);
             return true;
         }
@@ -527,7 +539,7 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
             s.password = r.password;
             s.keyFile = r.keyFile;
             s.knownHostsFile = KnownHostsFile();
-            std::unique_ptr<RemoteFs> fs = r.url.proto == RemoteProto::Sftp ? CreateSftpFs() : CreateFtpFs();
+            std::unique_ptr<RemoteFs> fs = CreateRemoteFs(r.url.proto);
             bool savePw = false;
             ConnectPrompts p = MakePrompts(hwnd_, r.url.ServerKey(), &savePw);
             HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
@@ -549,8 +561,8 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
         BOOL OnCommand(int id, int code, HWND ctl) override {
             if (id == kProto && code == CBN_SELCHANGE) {
                 int port = (int)GetInt(kPort, 0);
-                bool sftp = ComboSel(kProto) == 0;
-                if (port == 0 || port == 21 || port == 22) SetText(kPort, sftp ? L"22" : L"21");
+                if (port == 0 || port == 21 || port == 22 || port == 80 || port == 443)
+                    SetText(kPort, std::to_wstring(RemoteDefaultPort(SelProto())));
                 UpdateProto();
                 return TRUE;
             }
@@ -591,7 +603,7 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
             return DialogBase::OnCommand(id, code, ctl);
         }
     };
-    DialogTemplate t(isNew ? L"Neuer FTP/sFTP-Zugriff" : L"FTP/sFTP-Zugriff bearbeiten", 280, 222);
+    DialogTemplate t(isNew ? L"Neuer FTP/sFTP/WebDAV-Zugriff" : L"FTP/sFTP/WebDAV-Zugriff bearbeiten", 280, 232);
     int y = 7;
     t.Label(-1, L"&Name (Lesezeichen):", 7, y + 2, 80, 10);
     t.Edit(kName, 90, y, 183, 14, ES_AUTOHSCROLL);
@@ -621,11 +633,12 @@ bool EditRemoteAccess(HWND owner, RemoteAccess& access, bool isNew) {
     y += 20;
     t.Label(kHint,
             L"Leeres Startverzeichnis = Anmeldeverzeichnis des Servers. Ohne Kennwort wird beim Verbinden gefragt; bei FTP "
-            L"ohne Benutzer wird anonym angemeldet. FTP überträgt Kennwort und Daten unverschlüsselt.",
-            7, y, 266, 26);
-    t.Button(kTest, L"&Verbindung testen", 7, 201, 70, 14);
-    t.DefButton(IDOK, L"OK", 166, 201, 50, 14);
-    t.Button(IDCANCEL, L"Abbrechen", 223, 201, 50, 14);
+            L"ohne Benutzer wird anonym angemeldet. Bei WebDAV ist das Startverzeichnis der Pfad auf dem Server "
+            L"(z. B. /remote.php/dav/files/name). FTP und HTTP übertragen unverschlüsselt.",
+            7, y, 266, 36);
+    t.Button(kTest, L"&Verbindung testen", 7, 211, 70, 14);
+    t.DefButton(IDOK, L"OK", 166, 211, 50, 14);
+    t.Button(IDCANCEL, L"Abbrechen", 223, 211, 50, 14);
     Dlg dlg;
     dlg.a = access;
     dlg.isNew = isNew;

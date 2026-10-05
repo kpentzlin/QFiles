@@ -738,8 +738,30 @@ struct ShellItems {
 
 } // namespace
 
-int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names, POINT pt,
+int ShowShellContextMenu(HWND owner, const std::wstring& dirIn, const std::vector<std::wstring>& namesIn, POINT pt,
                          HMENU extra, bool* renameRequested) {
+    // Namen mit Unterverzeichnis (Ansicht „Mit Unterverzeichnissen“): gemeinsamer Ordner -> dessen Menü;
+    // Elemente aus verschiedenen Ordnern -> nur die eigenen Einträge
+    std::wstring dir = dirIn;
+    std::vector<std::wstring> names = namesIn;
+    if (!names.empty() && names[0].find(L'\\') != std::wstring::npos) {
+        std::wstring sub = PathParent(PathCombine(L"X:\\", names[0]));
+        bool same = true;
+        std::vector<std::wstring> base;
+        for (auto& n : names) {
+            if (!EqualsI(PathParent(PathCombine(L"X:\\", n)), sub)) same = false;
+            base.push_back(PathFileName(n));
+        }
+        if (same) {
+            dir = PathCombine(dirIn, sub.substr(3));
+            names = base;
+        } else {
+            dir.clear();
+        }
+    } else {
+        for (auto& n : names)
+            if (n.find(L'\\') != std::wstring::npos) dir.clear();
+    }
     if (renameRequested) *renameRequested = false;
     g_fault = FaultInfo();
     g_extensionFault = false;
@@ -762,7 +784,7 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
             CoTaskMemFree(pidl);
         }
     }
-    if (!cm && si.Init(owner, dir, names)) {
+    if (!cm && !dir.empty() && si.Init(owner, dir, names)) {
         if (names.empty())
             si.folder->CreateViewObject(owner, IID_PPV_ARGS(&cm));
         else
@@ -901,6 +923,26 @@ void ShowShellProperties(HWND owner, const std::wstring& dir, const std::vector<
 }
 
 IDataObject* CreateShellDataObject(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names) {
+    bool nested = false;
+    for (auto& n : names)
+        if (n.find(L'\\') != std::wstring::npos) nested = true;
+    if (nested) {
+        // Elemente aus verschiedenen Unterverzeichnissen (Ansicht „Mit Unterverzeichnissen“): über absolute PIDLs
+        std::vector<PIDLIST_ABSOLUTE> pidls;
+        for (auto& n : names) {
+            PIDLIST_ABSOLUTE p = nullptr;
+            if (SUCCEEDED(SHParseDisplayName(PathCombine(dir, n).c_str(), nullptr, &p, 0, nullptr))) pidls.push_back(p);
+        }
+        IDataObject* data = nullptr;
+        IShellItemArray* arr = nullptr;
+        if (!pidls.empty() &&
+            SUCCEEDED(SHCreateShellItemArrayFromIDLists((UINT)pidls.size(), (PCIDLIST_ABSOLUTE_ARRAY)pidls.data(), &arr))) {
+            arr->BindToHandler(nullptr, BHID_DataObject, IID_PPV_ARGS(&data));
+            arr->Release();
+        }
+        for (auto p : pidls) CoTaskMemFree(p);
+        return data;
+    }
     ShellItems si;
     if (names.empty() || !si.Init(owner, dir, names)) return nullptr;
     IDataObject* data = nullptr;

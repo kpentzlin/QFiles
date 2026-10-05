@@ -491,7 +491,13 @@ protected:
         titleFont_ = CreateFontIndirectW(&lf);
         SendMessageW(Item(kTitle), WM_SETFONT, (WPARAM)titleFont_, TRUE);
         SetText(kTitle, L"QFiles");
-        SetText(kVersion, L"Version " + Utf8ToWide(QFILES_VERSION_STRING) + L" (64-Bit)");
+        std::wstring build;
+#if defined(QFILES_BUILD_ID) && defined(QFILES_BUILD_DATE)
+        build = Utf8ToWide(QFILES_BUILD_DATE);
+        if (*QFILES_BUILD_ID) build += L", Stand " + Utf8ToWide(QFILES_BUILD_ID);
+        build = L"\nErstellt " + build;
+#endif
+        SetText(kVersion, L"Version " + Utf8ToWide(QFILES_VERSION_STRING) + L" (64-Bit)" + build);
         SetText(kDesc, L"Dateimanager für Windows\nVoll Unicode-fähig, 64 Bit, Win32/C++20");
         SetText(kCfgPath, App::Cfg().FilePath());
         SetFocus(Item(IDOK));
@@ -541,14 +547,14 @@ bool EditFilter(HWND owner, PaneFilter& filter) {
 }
 
 void ShowAbout(HWND owner) {
-    DialogTemplate t(L"Über QFiles", 260, 156);
+    DialogTemplate t(L"Über QFiles", 260, 166);
     t.Add(AboutDlg::kIcon, L"Static", L"", 10, 10, 32, 32, SS_ICON | SS_CENTERIMAGE);
     t.Label(AboutDlg::kTitle, L"", 52, 6, 200, 28);
-    t.Label(AboutDlg::kVersion, L"", 52, 36, 200, 12);
-    t.Label(AboutDlg::kDesc, L"", 52, 50, 200, 30);
-    t.Label(AboutDlg::kCfgLabel, L"Einstellungsdatei:", 10, 88, 242, 12);
-    t.Edit(AboutDlg::kCfgPath, 10, 101, 242, 14, ES_AUTOHSCROLL | ES_READONLY);
-    t.DefButton(IDOK, L"OK", 202, 134, 50, 14);
+    t.Label(AboutDlg::kVersion, L"", 52, 36, 200, 20);
+    t.Label(AboutDlg::kDesc, L"", 52, 60, 200, 30);
+    t.Label(AboutDlg::kCfgLabel, L"Einstellungsdatei:", 10, 98, 242, 12);
+    t.Edit(AboutDlg::kCfgPath, 10, 111, 242, 14, ES_AUTOHSCROLL | ES_READONLY);
+    t.DefButton(IDOK, L"OK", 202, 144, 50, 14);
     AboutDlg dlg;
     dlg.DoModal(owner, t);
 }

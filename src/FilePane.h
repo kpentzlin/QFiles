@@ -41,8 +41,10 @@ public:
     virtual bool IsPaneActive(const FilePane* p) const = 0;
 };
 
-enum class PaneView { Details = 0, List = 1, Icons = 2, Thumbnails = 3 };
-enum class SortKey { Name = 0, Ext = 1, Size = 2, Date = 3, Attr = 4, Created = 5 };
+// Recursive: wie Details, aber alle Dateien des Verzeichnisses und seiner Unterverzeichnisse
+// (Spalten „Dateiname“ und „Unterverzeichnis“)
+enum class PaneView { Details = 0, List = 1, Icons = 2, Thumbnails = 3, Recursive = 4 };
+enum class SortKey { Name = 0, Ext = 1, Size = 2, Date = 3, Attr = 4, Created = 5, Subdir = 6 };
 enum class SplitButton { Split, Unsplit };
 
 class FilePane {
@@ -73,7 +75,7 @@ public:
     bool IsRemote() const;              // FTP/SFTP-Verzeichnis
     bool IsNetworkLevel() const;        // Netzwerk bzw. Rechner (Liste der Rechner/Freigaben)
     bool IsVirtual() const;             // eines von beiden (keine gewöhnlichen Dateioperationen)
-    bool ScanRunning() const { return netScanning_; }
+    bool ScanRunning() const { return netScanning_ || walkRunning_; }
     void CancelScan();                  // Netzwerksuche abbrechen (Esc)
 
     // Auswahl
@@ -141,7 +143,15 @@ private:
         uint64_t dirSize = UINT64_MAX; // berechnete Verzeichnisgröße
         CompareMark mark = CompareMark::None;
         int netKind = 0;               // 1 = Rechner, 2 = Freigabe (Netzwerkebenen)
+        std::wstring sub;              // Unterverzeichnis (relativ) in der Ansicht „Mit Unterverzeichnissen“
     };
+    // Name relativ zum Verzeichnis der Liste ("Unterverzeichnis\Datei" bzw. "Datei")
+    static std::wstring RelName(const Item& it) { return it.sub.empty() ? it.e.name : it.sub + L"\\" + it.e.name; }
+    struct TreeWalk;
+    void StartTreeWalk();
+    void OnTreeBatch(WPARAM gen);
+    void OnTreeDone(WPARAM gen);
+    bool AcceptEntry(const DirEntry& e) const;
     enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Browse, Active };
     struct HitRect {
         HitArea area;
@@ -270,6 +280,15 @@ private:
     std::wstring pendingFocus_;      // Element, das nach dem Finden den Fokus erhält
     std::unordered_map<std::wstring, std::wstring> netComments_;  // Beschreibung je Rechner/Freigabe
     std::wstring remoteError_;       // letzter Fehler beim Lesen eines FTP/SFTP-Verzeichnisses
+
+    // Ansicht „Mit Unterverzeichnissen“: Dateien der Unterverzeichnisse werden im Hintergrund gelesen
+    std::shared_ptr<TreeWalk> walk_;
+    unsigned walkGen_ = 0;
+    bool walkRunning_ = false;
+    bool walkCancelled_ = false;
+    size_t walkDirs_ = 0;
+    std::wstring walkFocus_;                 // nach dem Neueinlesen wiederherzustellen
+    std::vector<std::wstring> walkSel_;
 };
 
 } // namespace qf

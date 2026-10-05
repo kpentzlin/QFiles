@@ -36,10 +36,10 @@ jobs:
           cmake --build build --config Release --parallel 2>&1 | Tee-Object -FilePath build-log.txt
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      - name: FTP-Testserver vorbereiten
+      - name: FTP- und WebDAV-Testserver vorbereiten
         run: |
-          python -m pip install --quiet pyftpdlib
-          New-Item -ItemType Directory -Force -Path C:\QFilesFtp | Out-Null
+          python -m pip install --quiet pyftpdlib wsgidav cheroot
+          New-Item -ItemType Directory -Force -Path C:\QFilesFtp, C:\QFilesDav, C:\QFilesDavDigest | Out-Null
 
       - name: Tests ausführen
         env:
@@ -49,14 +49,20 @@ jobs:
           QFILES_TEST_SFTP_RO_PASS: password
           QFILES_TEST_FTP_RO: ftp://demo@test.rebex.net/
           QFILES_TEST_FTP_RO_PASS: password
+          QFILES_TEST_DAV: dav://test@127.0.0.1:8090/
+          QFILES_TEST_DAV_PASS: geheim
+          QFILES_TEST_DAV_DIGEST: dav://test@127.0.0.1:8091/
+          QFILES_TEST_DAV_DIGEST_PASS: geheim
         run: |
           $ftpd = Start-Process python -ArgumentList 'tools\ci-ftpd.py','C:\QFilesFtp','2121' -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 3
+          $davd = Start-Process python -ArgumentList 'tools\ci-davd.py','C:\QFilesDav','8090' -PassThru -WindowStyle Hidden
+          $davd2 = Start-Process python -ArgumentList 'tools\ci-davd.py','C:\QFilesDavDigest','8091','digest' -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 5
           & build\Release\QFilesTests.exe 2>&1 | Tee-Object -FilePath test-log.txt
           $code = $LASTEXITCODE
-          Stop-Process -Id $ftpd.Id -Force -ErrorAction SilentlyContinue
+          foreach ($p in @($ftpd, $davd, $davd2)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
           $srv = Get-Content test-log.txt | Select-String -Pattern 'Server-Test|Hostschl|WARNUNG|Verbindung fehl|heruntergeladen|Startverzeichnis' | ForEach-Object { $_.Line.Trim() }
-          if ($srv) { Write-Output ("::notice title=FTP/SFTP-Tests::" + ($srv -join ' | ')) }
+          if ($srv) { Write-Output ("::notice title=FTP/SFTP/WebDAV-Tests::" + ($srv -join ' | ')) }
           if ($code -ne 0) { exit 1 }
 
       - name: GUI-Test mit Bildschirmfotos

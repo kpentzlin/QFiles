@@ -97,6 +97,15 @@ SOCKET ConnectTcp(const std::wstring& host, int port, int timeoutMs, std::wstrin
     return s;
 }
 
+std::unique_ptr<RemoteFs> CreateRemoteFs(RemoteProto proto) {
+    switch (proto) {
+    case RemoteProto::Sftp: return CreateSftpFs();
+    case RemoteProto::WebDav:
+    case RemoteProto::WebDavs: return CreateWebDavFs();
+    default: return CreateFtpFs();
+    }
+}
+
 FILETIME UnixTimeToFileTime(int64_t t) {
     uint64_t v = (uint64_t)(t * 10000000LL + 116444736000000000LL);
     FILETIME ft;

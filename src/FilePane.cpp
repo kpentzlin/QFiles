@@ -33,6 +33,8 @@ enum : UINT {
     WM_APP_DIRSIZE_DONE = WM_APP + 5,
     WM_APP_NETITEM = WM_APP + 6,
     WM_APP_NETDONE = WM_APP + 7,
+    WM_APP_TREEBATCH = WM_APP + 8,
+    WM_APP_TREEDONE = WM_APP + 9,
 };
 
 struct NetItemMsg {
@@ -47,11 +49,12 @@ struct NetDoneMsg {
 
 enum : UINT_PTR { TIMER_REFRESH = 1, TIMER_STATUS = 2 };
 
-enum ColumnId { ColName = 0, ColExt = 1, ColSize = 2, ColDate = 3, ColAttr = 4, ColCreated = 5, ColCount = 6 };
-const int kDefaultWidths[ColCount] = {260, 60, 90, 120, 50, 120};
-const wchar_t* kColumnTitles[ColCount] = {L"Name", L"Typ", L"Größe", L"Geändert", L"Attr.", L"Erstellt"};
-// Anzeigereihenfolge: Erstellt steht direkt neben Geändert
-const int kColumnOrder[ColCount] = {ColName, ColExt, ColSize, ColDate, ColCreated, ColAttr};
+enum ColumnId { ColName = 0, ColExt = 1, ColSize = 2, ColDate = 3, ColAttr = 4, ColCreated = 5, ColSubdir = 6, ColCount = 7 };
+const int kDefaultWidths[ColCount] = {260, 60, 90, 120, 50, 120, 200};
+const wchar_t* kColumnTitles[ColCount] = {L"Name", L"Typ", L"Größe", L"Geändert", L"Attr.", L"Erstellt", L"Unterverzeichnis"};
+// Anzeigereihenfolge: Erstellt steht direkt neben Geändert; Unterverzeichnis (nur Ansicht „Mit Unterverzeichnissen“)
+// neben dem Dateinamen
+const int kColumnOrder[ColCount] = {ColName, ColSubdir, ColExt, ColSize, ColDate, ColCreated, ColAttr};
 
 constexpr int kIdList = 10;
 constexpr int kIdPath = 11;
@@ -231,6 +234,7 @@ void FilePane::SetupColumns() {
         if (id == ColExt && !o.showExtensionsColumn) continue;
         if (id == ColAttr && !o.showAttributesColumn) continue;
         if (id == ColCreated && !o.showCreatedColumn) continue;
+        if (id == ColSubdir && view_ != PaneView::Recursive) continue;
         LVCOLUMNW c{};
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | LVCF_SUBITEM;
         c.fmt = (id == ColSize) ? LVCFMT_RIGHT : LVCFMT_LEFT;
@@ -245,7 +249,7 @@ void FilePane::SetupColumns() {
             int need = ListView_GetStringWidth(list_, sample.c_str()) + ToPx(16);
             if (c.cx < need) c.cx = need;
         }
-        c.pszText = const_cast<wchar_t*>(kColumnTitles[id]);
+        c.pszText = const_cast<wchar_t*>(id == ColName && view_ == PaneView::Recursive ? L"Dateiname" : kColumnTitles[id]);
         c.iSubItem = id;
         ListView_InsertColumn(list_, pos++, &c);
         colIds_.push_back(id);  // Spaltenindex -> Spalten-ID (LVN_GETDISPINFO liefert den Index)
@@ -272,7 +276,8 @@ void FilePane::ApplyViewStyle() {
     if (o.showGridLines) ex |= LVS_EX_GRIDLINES;
     ListView_SetExtendedListViewStyle(list_, ex);
     switch (view_) {
-    case PaneView::Details: ListView_SetView(list_, LV_VIEW_DETAILS); break;
+    case PaneView::Details:
+    case PaneView::Recursive: ListView_SetView(list_, LV_VIEW_DETAILS); break;
     case PaneView::List: ListView_SetView(list_, LV_VIEW_LIST); break;
     case PaneView::Icons:
         ListView_SetImageList(list_, g_sysLarge, LVSIL_NORMAL);
@@ -682,13 +687,11 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
         up.e.attributes = FILE_ATTRIBUTE_DIRECTORY;
         items.push_back(up);
     }
+    (void)o;
+    bool recursive = view_ == PaneView::Recursive && !IsVirtualLocation(dir);
     for (auto& e : entries) {
-        if (!o.showHidden && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) continue;
-        if (!o.showSystem && (e.attributes & FILE_ATTRIBUTE_SYSTEM) && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) continue;
-        if (filter_.IsActive() && (!e.IsDir() || filter_.applyToDirs)) {
-            if (!filter_.include.empty() && !MatchAnyPattern(filter_.include, e.name)) continue;
-            if (!filter_.exclude.empty() && MatchAnyPattern(filter_.exclude, e.name)) continue;
-        }
+        if (!AcceptEntry(e)) continue;
+        if (recursive && e.IsDir()) continue;   // Unterverzeichnisse: deren Dateien kommen über StartTreeWalk
         Item it;
         it.e = std::move(e);
         auto m = marks_.find(ToLower(it.e.name));
@@ -700,6 +703,135 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
     if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
     items_ = std::move(items);
     return true;
+}
+
+// Sichtbarkeit eines Eintrags (versteckte/Systemdateien, Dateifilter)
+bool FilePane::AcceptEntry(const DirEntry& e) const {
+    const Options& o = App::Opt();
+    if (!o.showHidden && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) return false;
+    if (!o.showSystem && (e.attributes & FILE_ATTRIBUTE_SYSTEM) && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) return false;
+    if (filter_.IsActive() && (!e.IsDir() || filter_.applyToDirs)) {
+        if (!filter_.include.empty() && !MatchAnyPattern(filter_.include, e.name)) return false;
+        if (!filter_.exclude.empty() && MatchAnyPattern(filter_.exclude, e.name)) return false;
+    }
+    return true;
+}
+
+// ===================== Ansicht „Mit Unterverzeichnissen“ =====================
+
+struct FilePane::TreeWalk {
+    std::atomic<bool> cancel{false};
+    std::mutex m;
+    std::vector<Item> pending;   // gefundene, noch nicht übernommene Dateien
+    size_t dirs = 0;             // gelesene Unterverzeichnisse
+};
+
+void FilePane::StartTreeWalk() {
+    if (walk_) walk_->cancel = true;
+    auto w = std::make_shared<TreeWalk>();
+    walk_ = w;
+    unsigned gen = ++walkGen_;
+    walkRunning_ = true;
+    walkCancelled_ = false;
+    walkDirs_ = 0;
+    HWND hwnd = hwnd_;
+    std::wstring root = dir_;
+    bool showHidden = App::Opt().showHidden, showSystem = App::Opt().showSystem;
+    std::thread([w, gen, hwnd, root, showHidden, showSystem]() {
+        auto skipDir = [&](const DirEntry& e) {
+            if (e.attributes & FILE_ATTRIBUTE_REPARSE_POINT) return true;   // Verknüpfungen: keine Schleifen
+            if (!showHidden && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) return true;
+            if (!showSystem && (e.attributes & FILE_ATTRIBUTE_SYSTEM) && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) return true;
+            return false;
+        };
+        std::vector<std::wstring> stack;
+        std::vector<DirEntry> entries;
+        ListDirectory(root, entries);
+        for (auto it = entries.rbegin(); it != entries.rend(); ++it)
+            if (it->IsDir() && !skipDir(*it)) stack.push_back(it->name);
+        DWORD lastPost = GetTickCount();
+        while (!stack.empty() && !w->cancel) {
+            std::wstring sub = stack.back();
+            stack.pop_back();
+            entries.clear();
+            ListDirectory(PathCombine(root, sub), entries);
+            std::vector<Item> files;
+            for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
+                if (it->IsDir()) {
+                    if (!skipDir(*it)) stack.push_back(sub + L"\\" + it->name);
+                } else {
+                    Item f;
+                    f.e = std::move(*it);
+                    f.sub = sub;
+                    files.push_back(std::move(f));
+                }
+            }
+            {
+                std::lock_guard<std::mutex> lock(w->m);
+                for (auto& f : files) w->pending.push_back(std::move(f));
+                ++w->dirs;
+            }
+            if (GetTickCount() - lastPost > 400) {
+                lastPost = GetTickCount();
+                PostMessageW(hwnd, WM_APP_TREEBATCH, gen, 0);
+            }
+        }
+        PostMessageW(hwnd, WM_APP_TREEDONE, gen, w->cancel ? 1 : 0);
+    }).detach();
+    UpdateStatus();
+}
+
+void FilePane::OnTreeBatch(WPARAM gen) {
+    if ((unsigned)gen != walkGen_ || !walk_) return;
+    std::vector<Item> got;
+    {
+        std::lock_guard<std::mutex> lock(walk_->m);
+        got.swap(walk_->pending);
+        walkDirs_ = walk_->dirs;
+    }
+    if (got.empty()) {
+        UpdateStatus();
+        return;
+    }
+    std::wstring focus = FocusedName();
+    auto sel = SelectedNames();
+    int top = ListView_GetTopIndex(list_);
+    for (auto& it : got) {
+        if (!AcceptEntry(it.e)) continue;
+        auto m = marks_.find(ToLower(it.e.name));
+        if (m != marks_.end()) it.mark = m->second;
+        items_.push_back(std::move(it));
+    }
+    SortItems();
+    if (!walkFocus_.empty() && FindItem(walkFocus_) >= 0) {
+        focus = walkFocus_;
+        walkFocus_.clear();
+    }
+    for (auto s = walkSel_.begin(); s != walkSel_.end();) {
+        if (FindItem(*s) >= 0) {
+            sel.push_back(*s);
+            s = walkSel_.erase(s);
+        } else {
+            ++s;
+        }
+    }
+    bool hadFocus = GetFocus() == list_;
+    FillList(focus, sel, top);
+    if (hadFocus) SetFocus(list_);
+}
+
+void FilePane::OnTreeDone(WPARAM gen) {
+    if ((unsigned)gen != walkGen_) return;
+    OnTreeBatch(gen);
+    walkRunning_ = false;
+    walk_.reset();
+    walkFocus_.clear();
+    walkSel_.clear();
+    UpdateStatus();
+    std::vector<std::wstring> names;
+    for (auto& it : items_)
+        if (!it.isParent) names.push_back(RelName(it));
+    TestLogPane(index_, dir_ + L" (rekursiv)", names, statusText_);
 }
 
 void FilePane::SortItems() {
@@ -724,15 +856,17 @@ void FilePane::SortItems() {
         case SortKey::Date: c = CompareFileTime(&a.e.modified, &b.e.modified); break;
         case SortKey::Created: c = CompareFileTime(&a.e.created, &b.e.created); break;
         case SortKey::Attr: c = (int)(a.e.attributes & 0xFF) - (int)(b.e.attributes & 0xFF); break;
+        case SortKey::Subdir: c = CompareNatural(a.sub, b.sub); break;
         }
         if (c == 0) c = CompareNatural(a.e.name, b.e.name);
+        if (c == 0) c = CompareNatural(a.sub, b.sub);
         return desc ? c > 0 : c < 0;
     });
 }
 
 int FilePane::FindItem(const std::wstring& name) const {
     for (size_t i = 0; i < items_.size(); ++i)
-        if (EqualsI(items_[i].e.name, name)) return (int)i;
+        if (EqualsI(RelName(items_[i]), name)) return (int)i;
     return -1;
 }
 
@@ -808,7 +942,13 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
     } else {
         CancelScan();
         netCancelled_ = false;
+        walkCancelled_ = false;
         pendingFocus_.clear();
+        if (view_ == PaneView::Recursive && !IsVirtual()) {
+            walkFocus_ = FindItem(focus) < 0 ? focus : L"";
+            walkSel_.clear();
+            StartTreeWalk();
+        }
     }
     if (!sameDir) {
         if (addHistory) {
@@ -863,11 +1003,11 @@ void FilePane::Reload() {
     }
     std::wstring focus;
     int fi = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
-    if (fi >= 0 && fi < (int)items_.size()) focus = items_[fi].e.name;
+    if (fi >= 0 && fi < (int)items_.size()) focus = RelName(items_[fi]);
     std::vector<std::wstring> sel;
     int i = -1;
     while ((i = ListView_GetNextItem(list_, i, LVNI_SELECTED)) >= 0)
-        if (i < (int)items_.size()) sel.push_back(items_[i].e.name);
+        if (i < (int)items_.size()) sel.push_back(RelName(items_[i]));
     int top = ListView_GetTopIndex(list_);
     // Verzeichnisgrößen erhalten
     std::unordered_map<std::wstring, uint64_t> sizes;
@@ -897,9 +1037,18 @@ void FilePane::Reload() {
     }
     SortItems();
     // Fokus: gelöschtes Element -> Nachfolger an gleicher Position
-    if (!focus.empty() && FindItem(focus) < 0 && fi >= 0 && !items_.empty())
-        focus = items_[std::min<int>(fi, (int)items_.size() - 1)].e.name;
+    bool recursive = view_ == PaneView::Recursive && !IsVirtual();
+    if (recursive) {
+        // Dateien der Unterverzeichnisse kommen nach und nach; Fokus/Markierung dann wiederherstellen
+        walkFocus_ = FindItem(focus) < 0 ? focus : L"";
+        walkSel_.clear();
+        for (auto& n : sel)
+            if (FindItem(n) < 0) walkSel_.push_back(n);
+    } else if (!focus.empty() && FindItem(focus) < 0 && fi >= 0 && !items_.empty()) {
+        focus = RelName(items_[std::min<int>(fi, (int)items_.size() - 1)]);
+    }
     FillList(focus, sel, top);
+    if (recursive) StartTreeWalk();
     UpdateFreeSpace();
     UpdateStatus();
     if (host_) host_->OnPaneFocusItemChanged(this);
@@ -944,6 +1093,16 @@ bool FilePane::IsVirtual() const { return IsVirtualLocation(dir_); }
 std::wstring FilePane::Combine(const std::wstring& name) const { return LocationCombine(dir_, name); }
 
 void FilePane::CancelScan() {
+    if (walk_) {
+        walk_->cancel = true;
+        walk_.reset();
+        ++walkGen_;
+        if (walkRunning_) {
+            walkRunning_ = false;
+            walkCancelled_ = true;
+            UpdateStatus();
+        }
+    }
     if (netScan_) netScan_->cancel = true;
     netScan_.reset();
     if (netScanning_) {
@@ -1083,7 +1242,7 @@ void FilePane::UpdatePathCombo() {
 
 std::wstring FilePane::ItemFullPath(const Item& it) const {
     if (it.isParent) return LocationParent(dir_);
-    return Combine(it.e.name);
+    return Combine(RelName(it));
 }
 
 int FilePane::ItemIconIndex(Item& it) {
@@ -1108,7 +1267,7 @@ int FilePane::ItemIconIndex(Item& it) {
     }
     std::wstring ext = ToLower(ExtOf(it.e.name));
     if (HasOwnIcon(ext) && !IsVirtual()) {
-        if (SHGetFileInfoW(LongPath(PathCombine(dir_, it.e.name)).c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON))
+        if (SHGetFileInfoW(LongPath(PathCombine(dir_, RelName(it))).c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON))
             it.icon = sfi.iIcon;
         else
             it.icon = 0;
@@ -1136,6 +1295,7 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
         int colId = (sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub;
         switch (colId) {
         case ColName: s = it.e.name; break;
+        case ColSubdir: s = it.sub; break;
         case ColExt:
             if (it.isParent) s = L"";
             else if (it.netKind == 1) s = L"<Rechner>";
@@ -1240,14 +1400,22 @@ void FilePane::UpdateStatus() {
         }
     }
     std::wstring s = IntToStr((long long)dirs) + L" Verz., " + IntToStr((long long)files) + L" Dateien (" + FormatSize(total) + L")";
-    if (IsNetworkVirtual(dir_)) {
+    if (view_ == PaneView::Recursive && !IsVirtual()) {
+        s = IntToStr((long long)files) + L" Dateien in " + IntToStr((long long)walkDirs_ + 1) + L" Verzeichnissen (" +
+            FormatSize(total) + L")";
+        if (selFiles + selDirs)
+            s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
+        if (walkRunning_) s += L"  –  Unterverzeichnisse werden gelesen … (Esc bricht ab)";
+        else if (walkCancelled_) s += L"  –  Lesen abgebrochen";
+    } else if (IsNetworkVirtual(dir_)) {
         bool root = IsNetworkRoot(dir_);
         s = IntToStr((long long)dirs) + (root ? L" Rechner" : (dirs == 1 ? L" Freigabe" : L" Freigaben"));
         if (netScanning_) s += root ? L" – Netzwerk wird durchsucht … (Esc bricht ab)" : L" – wird gelesen … (Esc bricht ab)";
         else if (netCancelled_) s += L" – Suche abgebrochen";
         else if (!netError_.empty() && dirs == 0) s += L" – " + netError_;
     } else if (IsRemoteUrl(dir_)) {
-        s += StartsWithI(dir_, L"sftp://") ? L"  –  SFTP" : L"  –  FTP (unverschlüsselt)";
+        RemoteUrl u;
+        if (ParseRemoteUrl(dir_, u)) s += L"  –  " + std::wstring(RemoteProtoName(u.proto));
     }
     if (selFiles + selDirs)
         s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
@@ -1263,7 +1431,7 @@ std::vector<std::wstring> FilePane::SelectedNames() const {
     std::vector<std::wstring> r;
     int i = -1;
     while ((i = ListView_GetNextItem(list_, i, LVNI_SELECTED)) >= 0)
-        if (i < (int)items_.size() && !items_[i].isParent) r.push_back(items_[i].e.name);
+        if (i < (int)items_.size() && !items_[i].isParent) r.push_back(RelName(items_[i]));
     return r;
 }
 
@@ -1276,7 +1444,7 @@ std::vector<std::wstring> FilePane::SelectedPaths() const {
 std::wstring FilePane::FocusedName() const {
     int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
     if (i < 0 || i >= (int)items_.size() || items_[i].isParent) return L"";
-    return items_[i].e.name;
+    return RelName(items_[i]);
 }
 
 std::wstring FilePane::FocusedPath() const {
@@ -1406,9 +1574,20 @@ void FilePane::ToggleSelectFocused(bool moveDown) {
 // ===================== Darstellung =====================
 
 void FilePane::SetView(PaneView v) {
+    bool recursiveChanged = (v == PaneView::Recursive) != (view_ == PaneView::Recursive);
     view_ = v;
     if (v != PaneView::Thumbnails) StopThumbWorker();
     ApplyViewStyle();
+    if (recursiveChanged) {
+        // Spalten und Inhalt wechseln (Dateien der Unterverzeichnisse bzw. wieder nur dieses Verzeichnis)
+        if (walk_) CancelScan();
+        walkCancelled_ = false;
+        if (sortKey_ == SortKey::Subdir && v != PaneView::Recursive) sortKey_ = SortKey::Name;
+        SetupColumns();
+        Reload();
+        StartWatch();
+        return;
+    }
     int f = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
     InvalidateRect(list_, nullptr, TRUE);
     if (f >= 0) ListView_EnsureVisible(list_, f, FALSE);
@@ -1696,9 +1875,10 @@ void FilePane::StartWatch() {
     HANDLE stop = watchStop_;
     HWND hwnd = hwnd_;
     std::wstring dir = dir_;
-    watchThread_ = std::thread([stop, hwnd, dir]() {
+    BOOL subtree = view_ == PaneView::Recursive;
+    watchThread_ = std::thread([stop, hwnd, dir, subtree]() {
         HANDLE ch = FindFirstChangeNotificationW(
-            LongPath(dir).c_str(), FALSE,
+            LongPath(dir).c_str(), subtree,
             FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE |
                 FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_ATTRIBUTES);
         if (ch == INVALID_HANDLE_VALUE) return;
@@ -1725,8 +1905,8 @@ void FilePane::StopWatch() {
 // ===================== Einstellungen =====================
 
 void FilePane::LoadState(const Config& c, const std::wstring& s) {
-    view_ = (PaneView)std::clamp(c.GetInt(s, L"Ansicht", 0), 0, 3);
-    sortKey_ = (SortKey)std::clamp(c.GetInt(s, L"Sortierung", 0), 0, 5);
+    view_ = (PaneView)std::clamp(c.GetInt(s, L"Ansicht", 0), 0, 4);
+    sortKey_ = (SortKey)std::clamp(c.GetInt(s, L"Sortierung", 0), 0, 6);
     sortDesc_ = c.GetBool(s, L"Absteigend", false);
     auto widths = Split(c.Get(s, L"Spalten"), L',');
     for (int i = 0; i < ColCount && i < (int)widths.size(); ++i) {
@@ -1796,7 +1976,7 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
             }
             return 0;
         }
-        if (wp == VK_ESCAPE && self->netScanning_) {
+        if (wp == VK_ESCAPE && (self->netScanning_ || self->walkRunning_)) {
             self->CancelScan();
             return 0;
         }
@@ -1928,15 +2108,16 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         int i = di->item.iItem;
         if (!di->item.pszText || i < 0 || i >= (int)items_.size()) return FALSE;
         std::wstring newName = Trim(di->item.pszText);
-        std::wstring old = items_[i].e.name;
-        if (newName.empty() || newName == old) return FALSE;
+        std::wstring old = RelName(items_[i]);
+        if (newName.empty() || newName == items_[i].e.name) return FALSE;
         bool renamed = IsRemoteUrl(dir_) ? RemoteRename(GetAncestor(hwnd_, GA_ROOT), Combine(old), newName)
                                          : RenameItem(GetAncestor(hwnd_, GA_ROOT), PathCombine(dir_, old), newName);
         if (renamed) {
             items_[i].e.name = newName;
             items_[i].icon = -1;
             SortItems();
-            FillList(newName, {newName}, ListView_GetTopIndex(list_));
+            std::wstring rel = RelName(items_[i]);
+            FillList(rel, {rel}, ListView_GetTopIndex(list_));
             if (host_) host_->OnPaneFocusItemChanged(this);
         }
         return FALSE;
@@ -2111,7 +2292,15 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     case WM_APP_DIRCHANGED:
-        SetTimer(hwnd_, TIMER_REFRESH, 300, nullptr);
+        // Mit Unterverzeichnissen: seltener neu einlesen (ganzer Baum)
+        SetTimer(hwnd_, TIMER_REFRESH, view_ == PaneView::Recursive ? 2000 : 300, nullptr);
+        return 0;
+    case WM_APP_TREEBATCH:
+        OnTreeBatch(wp);
+        return 0;
+    case WM_APP_TREEDONE:
+        walkCancelled_ = lp != 0;
+        OnTreeDone(wp);
         return 0;
     case WM_APP_THUMB:
         OnThumbReady(wp, lp);
@@ -2156,6 +2345,7 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         StopWatch();
         StopThumbWorker();
         if (netScan_) netScan_->cancel = true;
+        if (walk_) walk_->cancel = true;
         return 0;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);

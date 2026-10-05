@@ -1,5 +1,6 @@
 #include "BookmarkList.h"
 #include "App.h"
+#include "Cloud.h"
 #include "Location.h"
 #include "Remote.h"
 #include "ShellMenu.h"
@@ -24,9 +25,11 @@ int StockIndex(SHSTOCKICONID id) {
 // (deutlich heller als die blaue Kopfzeile der aktiven Liste)
 const COLORREF kNetworkBack = RGB(255, 228, 228);   // hellrot: Netzwerkpfade
 const COLORREF kRemoteBack = RGB(220, 244, 220);    // hellgrün: FTP/SFTP
+const COLORREF kWebDavBack = RGB(234, 250, 234);    // noch heller grün: WebDAV
 const COLORREF kStandardBack = RGB(228, 240, 253);  // hellblau: Windows-Standardverzeichnisse
+const COLORREF kCloudBack = RGB(238, 228, 252);     // hell-lila: Dropbox, Google Drive, OneDrive
 
-enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3 };
+enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3, KindWebDav = 4, KindCloud = 5 };
 
 // Windows-Standardverzeichnisse (Benutzerordner, öffentliche Ordner, Systemordner)
 const std::vector<std::wstring>& StandardFolders() {
@@ -36,7 +39,7 @@ const std::vector<std::wstring>& StandardFolders() {
     done = true;
     const GUID* ids[] = {&FOLDERID_Desktop, &FOLDERID_Documents, &FOLDERID_Downloads, &FOLDERID_Pictures,
                          &FOLDERID_Music, &FOLDERID_Videos, &FOLDERID_Profile, &FOLDERID_Favorites, &FOLDERID_Links,
-                         &FOLDERID_SavedGames, &FOLDERID_SavedSearches, &FOLDERID_Contacts, &FOLDERID_SkyDrive,
+                         &FOLDERID_SavedGames, &FOLDERID_SavedSearches, &FOLDERID_Contacts,
                          &FOLDERID_CameraRoll, &FOLDERID_Screenshots, &FOLDERID_Public, &FOLDERID_PublicDesktop,
                          &FOLDERID_PublicDocuments, &FOLDERID_PublicDownloads, &FOLDERID_PublicPictures,
                          &FOLDERID_PublicMusic, &FOLDERID_PublicVideos, &FOLDERID_RoamingAppData,
@@ -53,12 +56,25 @@ const std::vector<std::wstring>& StandardFolders() {
 }
 
 int KindOf(const std::wstring& p) {
+    if (IsWebDavUrl(p)) return KindWebDav;
     if (IsRemoteUrl(p)) return KindRemote;
     if (IsNetworkPath(p)) return KindNetwork;
     std::wstring n = ToLower(NormalizeDir(p));
     for (auto& f : StandardFolders())
         if (f == n) return KindStandard;
+    if (IsCloudPath(p)) return KindCloud;
     return KindLocal;
+}
+
+COLORREF KindColor(int k) {
+    switch (k) {
+    case KindNetwork: return kNetworkBack;
+    case KindRemote: return kRemoteBack;
+    case KindWebDav: return kWebDavBack;
+    case KindStandard: return kStandardBack;
+    case KindCloud: return kCloudBack;
+    }
+    return CLR_DEFAULT;
 }
 }
 
@@ -114,7 +130,7 @@ void BookmarkList::Rebuild(int select) {
         const std::wstring& p = items_[i].path;
         int icon = folder;
         kinds_[i] = KindOf(p);
-        if (kinds_[i] == KindRemote) {
+        if (kinds_[i] == KindRemote || kinds_[i] == KindWebDav) {
             icon = StockIndex(SIID_WORLD);
         } else if (kinds_[i] == KindNetwork) {
             icon = IsNetworkRoot(p) ? StockIndex(SIID_MYNETWORK)
@@ -159,15 +175,17 @@ void BookmarkList::Append(const std::wstring& name, const std::wstring& path) {
 }
 
 void BookmarkList::SortByCategory() {
-    // Reihenfolge: „Netzwerk“, Standardverzeichnisse (blau), FTP/SFTP (grün), übrige Netzwerkpfade (rot), lokal;
-    // innerhalb jeder Gruppe alphabetisch nach Namen
+    // Reihenfolge: „Netzwerk“, Standardverzeichnisse (blau), Cloud (lila), FTP/SFTP/WebDAV (grün),
+    // übrige Netzwerkpfade (rot), lokal; innerhalb jeder Gruppe alphabetisch nach Namen
     auto rank = [](const Bookmark& b) {
         if (IsNetworkRoot(b.path)) return 0;
         switch (KindOf(b.path)) {
         case KindStandard: return 1;
-        case KindRemote: return 2;
-        case KindNetwork: return 3;
-        default: return 4;
+        case KindCloud: return 2;
+        case KindRemote:
+        case KindWebDav: return 3;
+        case KindNetwork: return 4;
+        default: return 5;
         }
     };
     int sel = Selected();
@@ -225,7 +243,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     AppendMenuW(m, has, MenuDelete, L"&Entfernen\tEntf");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, MenuAddCurrent, L"Aktuelles Verzeichnis &hinzufügen\tStrg+D");
-    AppendMenuW(m, MF_STRING, MenuNewFtp, L"Neuer &FTP/sFTP-Zugriff…");
+    AppendMenuW(m, MF_STRING, MenuNewFtp, L"Neuer &FTP/sFTP/WebDAV-Zugriff…");
     AppendMenuW(m, items_.size() > 1 ? MF_STRING : MF_GRAYED, MenuSort, L"&Sortieren…");
     UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, GetAncestor(list_, GA_ROOT), nullptr);
     DestroyMenu(m);
@@ -291,8 +309,11 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         if (ti->iItem >= 0 && ti->iItem < (int)items_.size()) {
             std::wstring s = LocationDisplay(items_[ti->iItem].path);
             // Netzwerk und FTP nicht prüfen (nicht erreichbare Server würden die Oberfläche blockieren)
-            if (kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == KindRemote)
-                s += StartsWithI(s, L"sftp://") ? L"\nSFTP-Zugang" : L"\nFTP-Zugang (unverschlüsselt)";
+            if (kinds_.size() > (size_t)ti->iItem && (kinds_[ti->iItem] == KindRemote || kinds_[ti->iItem] == KindWebDav))
+            {
+                RemoteUrl u;
+                if (ParseRemoteUrl(s, u)) s += L"\nZugang: " + std::wstring(RemoteProtoName(u.proto));
+            }
             else if (!(kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == KindNetwork) && !DirExists(s))
                 s += L"\n(nicht erreichbar)";
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
@@ -328,7 +349,7 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
             size_t i = (size_t)cd->nmcd.dwItemSpec;
             if (i < kinds_.size() && kinds_[i]) {
-                cd->clrTextBk = kinds_[i] == KindRemote ? kRemoteBack : kinds_[i] == KindStandard ? kStandardBack : kNetworkBack;
+                cd->clrTextBk = KindColor(kinds_[i]);
                 cd->clrText = RGB(0, 0, 0);
                 return CDRF_NEWFONT;
             }

@@ -52,6 +52,7 @@ enum : int {
     ViewList,
     ViewIcons,
     ViewThumbnails,
+    ViewRecursive,     // Mit Unterverzeichnissen
     SortName,
     SortExt,
     SortSize,
@@ -93,6 +94,7 @@ enum : int {
     BookmarkAdd = 40400,
     BookmarkNewRemote = 40401,  // Neuer FTP/sFTP-Zugriff
     BookmarkSort = 40402,       // Lesezeichen sortieren
+    BookmarkAddCloud = 40403,   // Cloud-Speicher (Dropbox, Google Drive, OneDrive) hinzufügen
     BookmarkFirst = 40410,    // dynamische Einträge
     BookmarkLast = 40499,
 

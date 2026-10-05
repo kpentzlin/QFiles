@@ -1,5 +1,5 @@
 #pragma once
-// Interne Schnittstelle der FTP/SFTP-Clients (nur Remote.cpp, FtpClient.cpp, SftpClient.cpp, Tests).
+// Interne Schnittstelle der FTP/SFTP/WebDAV-Clients (nur Remote.cpp, FtpClient.cpp, SftpClient.cpp, WebDavClient.cpp, Tests).
 //
 // Alle Pfade sind absolute Server-Pfade ("/pfad/datei"), UTF-16. Alle Aufrufe sind blockierend und nicht
 // thread-sicher; Remote.cpp serialisiert sie über mutex().
@@ -71,6 +71,9 @@ private:
 
 std::unique_ptr<RemoteFs> CreateFtpFs();
 std::unique_ptr<RemoteFs> CreateSftpFs();
+std::unique_ptr<RemoteFs> CreateWebDavFs();
+// Passender Client für das Protokoll
+std::unique_ptr<RemoteFs> CreateRemoteFs(RemoteProto proto);
 
 // ---- gemeinsame Hilfen ----
 bool WinsockInit();

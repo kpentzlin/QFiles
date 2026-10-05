@@ -239,6 +239,13 @@ Check-Alive "UNC-Freigabe"
 Shot "screenshot9.png"
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 1
 Check-Alive "Netzwerk"
+# Liste 1: Ansicht "Mit Unterverzeichnissen" (Strg+Umschalt+5) im Demo-Verzeichnis
+[System.Windows.Forms.SendKeys]::SendWait("^l"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("C:\QFilesDemo{ENTER}"); Start-Sleep -Seconds 2
+[System.Windows.Forms.SendKeys]::SendWait("^+5"); Start-Sleep -Seconds 3
+Shot "screenshot10.png"
+Check-Alive "Ansicht mit Unterverzeichnissen"
+[System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
@@ -254,6 +261,9 @@ if (-not $okFtp) { "FTP-Liste nicht wie erwartet" | Tee-Object -FilePath smoke-l
 if (-not $okShare) { Write-Output "::warning title=Netzwerk::Freigabe QFilesTest von \\localhost nicht gefunden (siehe pane-log.txt)" }
 if (-not $okUnc) { Write-Output "::warning title=Netzwerk::Inhalt von \\localhost\QFilesTest nicht gelesen (siehe pane-log.txt)" }
 if ($okFtp -and $okShare -and $okUnc) { Write-Output "::notice title=Netzwerk/FTP::Freigaben von \\localhost, UNC-Verzeichnis und FTP-Liste gelesen." }
+$recLine = $pl | Where-Object { $_ -match '^Liste 1 \| C:\\QFilesDemo \(rekursiv\) \|' } | Select-Object -Last 1
+if (-not $recLine -or $recLine -notmatch 'Grüße €\.txt') { "Ansicht mit Unterverzeichnissen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+Write-Output "::notice title=Mit Unterverzeichnissen::$recLine"
 $netLine = $pl | Where-Object { $_ -match '^Liste 1 \| \\\\ \|' } | Select-Object -Last 1
 if ($netLine) { Write-Output "::notice title=Netzwerk-Suche::$netLine" }
 

@@ -4,6 +4,7 @@
 //   Netzwerk (oberste Ebene)   "\\"                   – gefundene Rechner
 //   Rechner im Netzwerk        "\\Server"             – Freigaben des Rechners
 //   FTP/SFTP-Zugriff           "ftp://benutzer@host:21/pfad", "sftp://benutzer@host:22/pfad"
+//   WebDAV                     "davs://benutzer@host/pfad" (HTTPS), "dav://benutzer@host/pfad" (HTTP)
 //
 // UNC-Pfade (\\Server\Freigabe\…) sind gewöhnliche Verzeichnisse; über ".." geht es von der Freigabe zum Rechner
 // und weiter zur obersten Netzwerkebene.
@@ -19,7 +20,8 @@ bool IsNetworkRoot(const std::wstring& p);
 bool IsNetworkServer(const std::wstring& p);   // "\\Server" (ohne Freigabe)
 bool IsNetworkVirtual(const std::wstring& p);  // Netzwerk oder Rechner
 bool IsUncShareRoot(const std::wstring& p);    // "\\Server\Freigabe"
-bool IsRemoteUrl(const std::wstring& p);       // ftp:// oder sftp://
+bool IsRemoteUrl(const std::wstring& p);       // ftp://, sftp://, dav://, davs://
+bool IsWebDavUrl(const std::wstring& p);       // dav:// oder davs://
 bool IsVirtualLocation(const std::wstring& p); // Netzwerk, Rechner oder FTP/SFTP (kein Win32-Dateisystem)
 // Netzwerkpfad: UNC, Netzwerk/Rechner oder verbundenes Netzlaufwerk (für die Farbe in der Lesezeichenliste)
 bool IsNetworkPath(const std::wstring& p);
@@ -37,7 +39,11 @@ bool LocationHasParent(const std::wstring& p);
 std::wstring LocationDisplay(const std::wstring& p);
 
 // ---- FTP/SFTP-Adressen ----
-enum class RemoteProto { Ftp, Sftp };
+enum class RemoteProto { Ftp, Sftp, WebDav, WebDavs };
+
+const wchar_t* RemoteScheme(RemoteProto p);    // "ftp", "sftp", "dav", "davs"
+int RemoteDefaultPort(RemoteProto p);          // 21, 22, 80, 443
+const wchar_t* RemoteProtoName(RemoteProto p); // "FTP", "SFTP", "WebDAV (HTTP)", "WebDAV (HTTPS)"
 
 struct RemoteUrl {
     RemoteProto proto = RemoteProto::Ftp;
@@ -46,7 +52,7 @@ struct RemoteUrl {
     int port = 0;          // 0 = Standard (21/22)
     std::wstring path = L"/";
 
-    int EffectivePort() const { return port ? port : (proto == RemoteProto::Sftp ? 22 : 21); }
+    int EffectivePort() const { return port ? port : RemoteDefaultPort(proto); }
     // "sftp://benutzer@host:22" (ohne Pfad) – Schlüssel für Verbindungen und Zugangsdaten
     std::wstring ServerKey() const;
     std::wstring ToString() const;   // mit Pfad

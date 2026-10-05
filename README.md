@@ -80,10 +80,14 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 - Lesezeichenliste daneben:
   - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen.
   - Hintergrundfarben: Windows-Standardverzeichnisse (Desktop, Dokumente, Downloads, Bilder, Musik, Videos,
-    Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, FTP/SFTP-Zugänge **hellgrün**, Netzwerkpfade
-    (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**.
+    Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, Cloud-Speicher (Dropbox, Google Drive,
+    OneDrive) **hell-lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
+    Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**.
   - **Lesezeichen → Sortieren…** (nach Rückfrage): zuerst „Netzwerk“, dann die Standardverzeichnisse, die
-    FTP/SFTP-Zugänge, die übrigen Netzwerkpfade und zuletzt die lokalen Verzeichnisse – jeweils alphabetisch.
+    Cloud-Speicher, die FTP/SFTP/WebDAV-Zugänge (gemeinsam), die übrigen Netzwerkpfade und zuletzt die lokalen
+    Verzeichnisse – jeweils alphabetisch.
+  - **Lesezeichen → Cloud-Speicher hinzufügen…** findet die Ordner der Desktop-Programme von Dropbox, Google Drive und
+    Microsoft OneDrive (auch mehrere Konten, z. B. „OneDrive – Firma“) und legt sie als Lesezeichen an.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
   - Umbenennen mit F2, Entfernen mit Entf, Verschieben mit Alt+↑/↓, Pfad über das Kontextmenü ändern.
   - Dateien lassen sich auf ein Lesezeichen ziehen.
@@ -95,7 +99,14 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
   - Zurück/Vor, Übergeordnet, Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
     Verzeichnisse dieser Sitzung (zuletzt aufgerufene oben); die Zurück/Vor-Liste wird nicht gespeichert.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
-- Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar).
+- Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar) und
+  **Mit Unterverzeichnissen** (Strg+Umschalt+5): wie Details, aber statt „Name“ die Spalten „Dateiname“ und
+  „Unterverzeichnis“. Gezeigt werden alle Dateien des Verzeichnisses und seiner Unterverzeichnisse; „Unterverzeichnis“
+  enthält den relativen Teilpfad (leer für Dateien direkt im Verzeichnis). Das Einlesen läuft im Hintergrund, die
+  Einträge erscheinen nach und nach, **Esc** bricht ab. Versteckte Verzeichnisse werden nur mit „Versteckte Dateien
+  anzeigen“ durchsucht, Verknüpfungspunkte (Junctions/symbolische Links) nicht. Kopieren, Verschieben, Löschen,
+  Umbenennen, Anzeigen und Bearbeiten wirken auf die Dateien in ihren Unterverzeichnissen. Für lokale Verzeichnisse
+  und Netzwerkfreigaben; auf FTP/SFTP/WebDAV-Servern und in der Netzwerkübersicht zeigt sie den normalen Inhalt.
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
   (beides unter *Werkzeuge → Optionen → Anzeige*).
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
@@ -140,14 +151,21 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 - Die Suche läuft im Hintergrund, die Einträge erscheinen nach und nach. **Esc** bricht sie ab; angezeigt bleiben
   die bis dahin gefundenen Einträge. F5 sucht erneut.
 
-### FTP und SFTP
+### FTP, SFTP und WebDAV
 
-- **Lesezeichen → Neuer FTP/sFTP-Zugriff…** legt einen Zugang als Lesezeichen an: Protokoll (SFTP oder FTP),
+- **Lesezeichen → Neuer FTP/sFTP/WebDAV-Zugriff…** legt einen Zugang als Lesezeichen an: Protokoll (SFTP, FTP,
+  WebDAV über HTTPS oder WebDAV über HTTP),
   Server, Port, Benutzer, Kennwort, Startverzeichnis (leer = Anmeldeverzeichnis des Servers) und für SFTP optional
   eine Schlüsseldatei. „Verbindung testen“ prüft die Angaben. Bearbeiten über das Kontextmenü der Lesezeichenliste
   („Pfad ändern…“).
-- Adressen: `sftp://benutzer@server[:port]/pfad` bzw. `ftp://benutzer@server[:port]/pfad` – auch direkt im
-  Verzeichnisfeld; FTP ohne Benutzer meldet sich anonym an.
+- Adressen: `sftp://benutzer@server[:port]/pfad`, `ftp://benutzer@server[:port]/pfad`,
+  `davs://benutzer@server[:port]/pfad` (WebDAV über HTTPS) bzw. `dav://…` (über HTTP) – auch direkt im
+  Verzeichnisfeld; `https://…` und `http://…` werden als WebDAV-Adresse übernommen. FTP ohne Benutzer meldet sich
+  anonym an.
+- WebDAV (z. B. Nextcloud/ownCloud: Startverzeichnis `/remote.php/dav/files/benutzer`, Synology, QNAP, IIS, Apache):
+  über die Windows-HTTP-Schnittstelle (WinHTTP) mit Proxy-Einstellungen und Zertifikatsprüfung von Windows;
+  Anmeldung per Basic, Digest, NTLM oder Kerberos (Negotiate). Der Zeitstempel hochgeladener Dateien wird vom Server
+  gesetzt (WebDAV kennt kein Setzen des Änderungsdatums).
 - In der Liste: Verzeichnisse öffnen, Kopieren und Verschieben in die andere Liste (hoch- und herunterladen, auch
   zwischen zwei Servern, Verzeichnisse mit Inhalt, Zeitstempel bleiben erhalten), Löschen, Umbenennen (F2), neues
   Verzeichnis (F8), neue Datei (F9), Anzeigen (F11, auch in der Dateianzeige im anderen Fenster), Bearbeiten (F4) und
@@ -160,7 +178,15 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 - SFTP: Beim ersten Verbinden wird der Fingerabdruck des Hostschlüssels angezeigt und nach Bestätigung in
   `%ProgramData%\QFiles\QFiles-Hostschluessel.txt` gespeichert; ein geänderter Schlüssel wird deutlich gemeldet.
   Anmeldung mit Schlüsseldatei, SSH-Agent (Windows-OpenSSH-Agent, Pageant), Kennwort oder keyboard-interactive.
-- FTP überträgt Kennwort und Daten unverschlüsselt (Hinweis in der Statuszeile); FTP-Dateinamen in UTF-8.
+- FTP und WebDAV über HTTP übertragen Kennwort und Daten unverschlüsselt (Hinweis in der Statuszeile);
+  FTP-Dateinamen in UTF-8.
+
+### Cloud-Speicher
+
+Dropbox, Google Drive und OneDrive werden über die Ordner ihrer Windows-Programme eingebunden (Dropbox-Ordner,
+Google-Drive-Laufwerk mit „Meine Ablage“, OneDrive-Ordner); die Synchronisierung übernimmt das jeweilige Programm.
+Ein direkter Zugriff über die Web-Schnittstellen der Anbieter würde je Anbieter eine dort registrierte Anwendung mit
+Browser-Anmeldung erfordern und ist nicht eingebaut.
 
 ### Werkzeuge
 
@@ -265,6 +291,7 @@ Weitere:
 | Entf · Umschalt+Entf · Alt+Entf | Löschen (Papierkorb) · endgültig löschen · Radieren |
 | Umschalt+F11 · Alt+F11 | Anzeigefenster · Hex-Editor |
 | Strg+T | Split / Split aufheben |
+| Strg+Umschalt+1…5 | Ansicht: Details · Liste · Symbole · Miniaturen · Mit Unterverzeichnissen |
 | Strg+Q | Dateianzeige im anderen Fenster |
 | Strg+D | Gewähltes Verzeichnis den Lesezeichen hinzufügen |
 | Strg+Z | Rückgängig |
@@ -273,22 +300,6 @@ Weitere:
 | Alt+F1 · Alt+F2 | Verzeichnisbaum · Lesezeichenliste |
 | Leertaste / Einfg · Num+ / Num− / Num* | Markieren · Gruppe markieren / abwählen / umkehren |
 | Umschalt+F10 | Kontextmenü |
-| F1 | Vollständige Übersicht aller Tastenkürzel |
-
----|---|
-| Eingabe / Rücktaste | Öffnen / übergeordnetes Verzeichnis |
-| Tab, Strg+1…4 | Nächste Liste, Liste 1…4 |
-| F2 · F3 · F4 | Umbenennen · Anzeigen · Bearbeiten |
-| F5 · F6 · F7 · F8/Entf | Kopieren · Verschieben · Neues Verzeichnis · Löschen |
-| Umschalt+F3 · Alt+F3 · Umschalt+F4 | Anzeigefenster · Hex-Editor · Neue Textdatei |
-| Strg+T | Split / Split aufheben |
-| Strg+Q | Dateianzeige im anderen Fenster |
-| Strg+D | Gewähltes Verzeichnis den Lesezeichen hinzufügen |
-| Strg+Z | Rückgängig |
-| Strg+F · Strg+K · Strg+Umschalt+K | Suchen · Dateien vergleichen · Verzeichnisse vergleichen |
-| Strg+L / Strg+G · Strg+E | Verzeichnis eingeben · Befehlszeile |
-| Alt+F1 · Alt+F2 | Verzeichnisbaum · Lesezeichenliste |
-| Leertaste / Einfg · Num+ / Num− / Num* | Markieren · Gruppe markieren / abwählen / umkehren |
 | F1 | Vollständige Übersicht aller Tastenkürzel |
 
 ---
@@ -315,6 +326,13 @@ Speicherort:
 
 Weitere Befehlszeilenargumente: `QFiles.exe [Verzeichnis Liste 1] [Verzeichnis Liste 2]`.
 
+**Exportieren / Importieren** (*Werkzeuge → Optionen*, Knöpfe unten links): Der Export schreibt alle Optionen, die
+Lesezeichen und die FTP/SFTP/WebDAV-Zugangsdaten **ohne Kennwörter** in eine INI-Datei (UTF-8). Beim Import werden die
+Optionen übernommen; für die Lesezeichen fragt QFiles, ob sie die bisherigen **ersetzen** (Ja), **ergänzen** (Nein,
+vorhandene Pfade werden übersprungen) oder nicht übernommen werden sollen (Abbrechen). Kennwörter sind mit der
+Windows-Datenschutz-API an den Windows-Benutzer gebunden und lassen sich ohnehin nicht übertragen; QFiles fragt sie
+beim ersten Verbinden ab.
+
 ---
 
 ## Bauen
@@ -336,8 +354,9 @@ cmake --build build
 
 GitHub Actions (`.github/workflows/build.yml`) baut bei jedem Push mit MSVC und MinGW. Auf Windows laufen dabei die
 automatischen Tests (Kodierungen, Einstellungsdatei, Dateioperationen mit Unicode-Namen und langen Pfaden,
-Netzwerk- und FTP-Adressen, FTP gegen einen lokalen Testserver, SFTP/FTP lesend gegen den öffentlichen Testserver
-test.rebex.net) und ein Oberflächentest mit Bildschirmfotos (u. a. Freigaben von `\\localhost` und eine FTP-Liste). Wird auf GitHub ein Release veröffentlicht, hängt der Workflow `QFiles.exe` und `QFiles-x64.zip` an.
+Netzwerk-, FTP- und WebDAV-Adressen, FTP und WebDAV (Basic und Digest) gegen lokale Testserver, SFTP/FTP lesend gegen
+den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildschirmfotos (u. a. Freigaben von
+`\\localhost`, eine FTP-Liste und die Ansicht „Mit Unterverzeichnissen“). Wird auf GitHub ein Release veröffentlicht, hängt der Workflow `QFiles.exe` und `QFiles-x64.zip` an.
 
 ### Aufbau des Quelltexts
 
@@ -347,8 +366,9 @@ test.rebex.net) und ein Oberflächentest mit Bildschirmfotos (u. a. Freigaben vo
 | `src/FilePane.*` | Listenfenster mit Kopfzeile (Laufwerke, Split, Lesezeichen), Pfadzeile, virtueller ListView, Schnellansicht |
 | `src/DirTree.*`, `BookmarkList.*` | Verzeichnisbaum, Lesezeichenliste |
 | `src/FileOps.*`, `ShellMenu.*` | Dateioperationen mit Rückgängig, Zwischenablage, Kontextmenü, Drag & Drop |
-| `src/Location.*`, `Network.*` | Netzwerk- und FTP-Adressen, Suche nach Rechnern und Freigaben |
-| `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP: Zugänge, Verbindungen, Übertragungen |
+| `src/Location.*`, `Network.*` | Netzwerk-, FTP- und WebDAV-Adressen, Suche nach Rechnern und Freigaben |
+| `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `WebDavClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP/WebDAV: Zugänge, Verbindungen, Übertragungen |
+| `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
 | `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
 | `src/Settings.*`, `App.*` | Einstellungsdatei, Optionen, globale Dienste, Dateisystemmonitor |
 | `src/Util.*`, `Encoding.*`, `Dialog.*`, `Glyphs.*` | Hilfsfunktionen, Textkodierungen, Dialoge ohne Ressourcendatei, Symbole |
@@ -389,7 +409,13 @@ ausgeblendet. Ein leeres Feld schaltet den Ausschluss ab.
   Listenansicht verfälscht werden; „Alles entpacken“ ist davon nicht betroffen.
 - FTP: nur passiver Modus, kein verschlüsseltes FTPS (dafür SFTP verwenden). SFTP-Server, die ausschließlich
   Ed25519-Hostschlüssel anbieten, werden nicht unterstützt (RSA- und ECDSA-Schlüssel, wie bei OpenSSH üblich, schon).
-- Für FTP/SFTP-Verzeichnisse stehen nicht alle Werkzeuge zur Verfügung (z. B. Vergleichen, Synchronisieren, Suchen,
-  Attribute, Drag & Drop, Rückgängig); QFiles meldet das.
+- Für FTP/SFTP/WebDAV-Verzeichnisse stehen nicht alle Werkzeuge zur Verfügung (z. B. Vergleichen, Synchronisieren,
+  Suchen, Attribute, Drag & Drop, Rückgängig); QFiles meldet das.
+- WebDAV: Umbenennen und Verschieben auf dem Server über MOVE; Server, die Ordner nicht per PROPFIND auflisten
+  (reine HTTP-Downloadseiten), werden nicht unterstützt.
+- Cloud-Speicher nur über die installierten Desktop-Programme der Anbieter (siehe oben). Bei „Dateien bei Bedarf“
+  (OneDrive, Dropbox, Google Drive) lädt Windows eine nur online vorhandene Datei beim Öffnen oder Kopieren herunter.
+- Die Ansicht „Mit Unterverzeichnissen“ liest auf Wunsch ganze Laufwerke; das kann bei sehr vielen Dateien dauern
+  und Speicher belegen (Esc bricht ab).
 - Welche Rechner unter „Netzwerk“ erscheinen, hängt von der Netzwerkerkennung von Windows ab.
 - Die Oberfläche ist deutsch; eine Sprachumschaltung gibt es nicht.

@@ -4,6 +4,8 @@
 // Netzwerk-/FTP-Adressen; FTP/SFTP-Clients gegen Testserver, wenn die Umgebungsvariablen gesetzt sind:
 //   QFILES_TEST_FTP / QFILES_TEST_SFTP        = Adresse eines beschreibbaren Testkontos (z. B. ftp://test@127.0.0.1:2121/)
 //   QFILES_TEST_FTP_PASS / QFILES_TEST_SFTP_PASS = Kennwort
+//   QFILES_TEST_DAV / QFILES_TEST_DAV_PASS     = beschreibbarer WebDAV-Server (z. B. dav://test@127.0.0.1:8090/)
+//   QFILES_TEST_DAV_DIGEST / *_PASS            = dasselbe mit Digest-Anmeldung (Wine kann kein Digest)
 //   QFILES_TEST_FTP_RO / QFILES_TEST_SFTP_RO  = nur lesbarer Server (z. B. sftp://demo@test.rebex.net/), Kennwort in *_RO_PASS
 
 #include "RemoteFs.h"   // winsock2.h vor windows.h
@@ -230,7 +232,15 @@ static void TestLocations() {
     CHECK(u.ToString() == L"ftp://ftp.example.org/");
     CHECK(ParseRemoteUrl(L"ftp://a%40b@[::1]:21/x//y/../z/", u) && u.user == L"a@b" && u.host == L"::1" && u.path == L"/x/z");
     CHECK(u.ToString() == L"ftp://a%40b@[::1]/x/z");
-    CHECK(!ParseRemoteUrl(L"http://x/", u));
+    CHECK(!ParseRemoteUrl(L"gopher://x/", u));
+    CHECK(ParseRemoteUrl(L"https://karl@cloud.example.org/remote.php/dav/files/karl/", u));
+    CHECK(u.proto == RemoteProto::WebDavs && u.EffectivePort() == 443 && u.path == L"/remote.php/dav/files/karl");
+    CHECK(u.ToString() == L"davs://karl@cloud.example.org/remote.php/dav/files/karl");
+    CHECK(ParseRemoteUrl(L"http://nas:8080/webdav", u) && u.proto == RemoteProto::WebDav && u.port == 8080);
+    CHECK(u.ServerKey() == L"dav://nas:8080");
+    CHECK(ParseRemoteUrl(L"dav://h/", u) && u.EffectivePort() == 80 && IsWebDavUrl(L"davs://h/x") && !IsWebDavUrl(L"ftp://h/"));
+    CHECK(IsRemoteUrl(L"davs://h/") && IsVirtualLocation(L"dav://h/a"));
+    CHECK(LocationParent(L"davs://k@h/a/b") == L"davs://k@h/a");
     CHECK(LocationParent(L"sftp://k@h/a/b") == L"sftp://k@h/a");
     CHECK(LocationParent(L"sftp://k@h/a") == L"sftp://k@h/");
     CHECK(LocationParent(L"sftp://k@h/").empty());
@@ -259,7 +269,7 @@ static void TestRemoteServer(const std::wstring& urlText, const std::wstring& pa
         return;
     }
     Out(L"Server-Test: " + url.ToString() + (writable ? L" (schreibend)" : L" (lesend)"));
-    auto fs = url.proto == RemoteProto::Sftp ? remote::CreateSftpFs() : remote::CreateFtpFs();
+    auto fs = remote::CreateRemoteFs(url.proto);
     remote::ConnectSettings cs;
     cs.url = url;
     cs.password = password;
@@ -374,6 +384,8 @@ static void TestRemote(const std::wstring& base) {
         bool writable;
     } vars[] = {{L"QFILES_TEST_FTP", L"QFILES_TEST_FTP_PASS", true},
                 {L"QFILES_TEST_SFTP", L"QFILES_TEST_SFTP_PASS", true},
+                {L"QFILES_TEST_DAV", L"QFILES_TEST_DAV_PASS", true},
+                {L"QFILES_TEST_DAV_DIGEST", L"QFILES_TEST_DAV_DIGEST_PASS", true},
                 {L"QFILES_TEST_FTP_RO", L"QFILES_TEST_FTP_RO_PASS", false},
                 {L"QFILES_TEST_SFTP_RO", L"QFILES_TEST_SFTP_RO_PASS", false}};
     for (auto& v : vars) {

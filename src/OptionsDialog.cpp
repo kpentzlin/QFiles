@@ -27,6 +27,87 @@ constexpr int kTab = 100;
 constexpr int kCfgLabel = 150;
 constexpr int kCfgPath = 151;
 constexpr int kCfgOpen = 152;
+constexpr int kExport = 153;
+constexpr int kImport = 154;
+
+// Abschnitte, die exportiert bzw. importiert werden (Kennwörter werden nicht exportiert)
+const wchar_t* kAccessSection = L"FTP-Zugaenge";
+
+bool ExportSettings(HWND owner, const Options& opt) {
+    std::wstring file = SaveFileDialog(owner, L"Einstellungen exportieren",
+                                       PathCombine(GetKnownFolder(FOLDERID_Documents), L"QFiles-Einstellungen.ini"),
+                                       L"QFiles-Einstellungen (*.ini)|*.ini|Alle Dateien|*.*");
+    if (file.empty()) return false;
+    if (PathExtension(file).empty()) file += L".ini";
+    Config exp;
+    exp.SetFilePath(file);
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    exp.Set(L"QFiles", L"Version", L"" QFILES_VERSION_STRING);
+    exp.Set(L"QFiles", L"Exportiert", Format(L"%04d-%02d-%02d %02d:%02d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute));
+    opt.Save(exp);
+    SaveBookmarks(exp, LoadBookmarks(App::Cfg()));
+    for (auto& [k, v] : App::Cfg().GetSection(kAccessSection))
+        if (!EndsWithI(k, L"|Kennwort")) exp.Set(kAccessSection, k, v);
+    if (!exp.Save()) {
+        MsgError(owner, L"Die Datei kann nicht geschrieben werden:\n" + file);
+        return false;
+    }
+    auto b = LoadBookmarks(exp);
+    MsgInfo(owner, L"Exportiert: Optionen und " + std::to_wstring(b.size()) + L" Lesezeichen (ohne Kennwörter)\nnach " + file);
+    return true;
+}
+
+// Importiert Optionen und Lesezeichen; Rückgabe true = übernommen (opt enthält die neuen Optionen)
+bool ImportSettings(HWND owner, Options& opt) {
+    std::wstring file = OpenFileDialog(owner, L"Einstellungen importieren", GetKnownFolder(FOLDERID_Documents),
+                                       L"QFiles-Einstellungen (*.ini)|*.ini|Alle Dateien|*.*");
+    if (file.empty()) return false;
+    Config imp;
+    if (!imp.Load(file) || (imp.GetSection(L"Optionen").empty() && imp.GetSection(L"Lesezeichen").empty())) {
+        MsgError(owner, L"Die Datei enthält keine QFiles-Einstellungen:\n" + file);
+        return false;
+    }
+    bool hasOptions = !imp.GetSection(L"Optionen").empty();
+    auto imported = LoadBookmarks(imp);
+    int bookmarkMode = IDNO;   // IDYES = ersetzen, IDNO = ergänzen, IDCANCEL = nicht übernehmen
+    if (!imported.empty()) {
+        bookmarkMode = MsgYesNoCancel(owner, L"Die Datei enthält " + std::to_wstring(imported.size()) +
+                                                 L" Lesezeichen.\n\nJa = bisherige Lesezeichen ersetzen\nNein = ergänzen "
+                                                 L"(vorhandene Pfade werden übersprungen)\nAbbrechen = Lesezeichen nicht übernehmen");
+    }
+    if (!hasOptions && bookmarkMode == IDCANCEL) return false;
+    Config& cfg = App::Cfg();
+    if (hasOptions) {
+        Options o;
+        o.Load(imp);
+        opt = o;
+        App::Opt() = o;
+        o.Save(cfg);
+    }
+    int added = 0;
+    if (bookmarkMode != IDCANCEL && !imported.empty()) {
+        auto current = bookmarkMode == IDYES ? std::vector<Bookmark>{} : LoadBookmarks(cfg);
+        for (auto& b : imported) {
+            bool dup = false;
+            for (auto& c : current)
+                if (EqualsI(c.path, b.path)) dup = true;
+            if (!dup) {
+                current.push_back(b);
+                ++added;
+            }
+        }
+        SaveBookmarks(cfg, current);
+        // Zugangsdaten der FTP/SFTP/WebDAV-Lesezeichen (ohne Kennwörter; vorhandene bleiben erhalten)
+        for (auto& [k, v] : imp.GetSection(kAccessSection))
+            if (!EndsWithI(k, L"|Kennwort") && !cfg.Has(kAccessSection, k)) cfg.Set(kAccessSection, k, v);
+    }
+    if (!cfg.Save()) MsgError(owner, L"Die Einstellungen konnten nicht gespeichert werden:\n" + cfg.FilePath());
+    MsgInfo(owner, std::wstring(hasOptions ? L"Optionen übernommen. " : L"") +
+                       (bookmarkMode == IDCANCEL || imported.empty() ? std::wstring(L"")
+                                                                      : (std::to_wstring(added) + L" Lesezeichen übernommen.")));
+    return true;
+}
 
 constexpr int kPageCount = 5;
 const wchar_t* const kPageNames[kPageCount] = {L"Anzeige", L"Bedienung", L"Dateianzeige", L"Editor", L"Programme"};
@@ -190,6 +271,13 @@ protected:
             if (!dir.empty()) ShellOpen(hwnd_, dir);
             return TRUE;
         }
+        case kExport:
+            Store();   // aktueller Stand des Dialogs
+            ExportSettings(hwnd_, opt);
+            return TRUE;
+        case kImport:
+            if (ImportSettings(hwnd_, opt)) End(IDOK);   // übernommen: Dialog schließen, Optionen anwenden
+            return TRUE;
         case IDOK:
             Store();
             End(IDOK);
@@ -427,6 +515,8 @@ bool ShowOptionsDialog(HWND owner) {
     t.Label(kCfgLabel, L"Einstellungsdatei:", 7, 220, 70, 10);
     t.Edit(kCfgPath, 78, 218, W - 78 - 72, 13, ES_AUTOHSCROLL | ES_READONLY);
     t.Button(kCfgOpen, L"&Ordner öffnen", W - 67, 217, 60, 14);
+    t.Button(kExport, L"E&xportieren…", 7, H - 21, 60, 14);
+    t.Button(kImport, L"&Importieren…", 71, H - 21, 60, 14);
     t.DefButton(IDOK, L"OK", W - 121, H - 21, 54, 14);
     t.Button(IDCANCEL, L"Abbrechen", W - 61, H - 21, 54, 14);
 
