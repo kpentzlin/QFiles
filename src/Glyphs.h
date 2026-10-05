@@ -5,7 +5,7 @@
 
 namespace qf {
 
-enum class Glyph { Back, Forward, Up, Browse, Refresh, Split, Unsplit, Bookmark, Eraser };
+enum class Glyph { Back, Forward, Up, Browse, Refresh, Split, Unsplit, Bookmark, Eraser, TreeList };
 
 // Zeichnet das Symbol zentriert in rc. color = Linienfarbe.
 void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color);

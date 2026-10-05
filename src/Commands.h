@@ -11,7 +11,7 @@ enum : int {
     ViewWindow,        // Umschalt+F3 – eigenes Anzeigefenster
     HexEdit,           // Alt+F3
     Edit,              // F4
-    NewTextFile,       // Umschalt+F4
+    NewTextFile,       // Umschalt+F9
     NewFolder,         // F7
     Copy,              // F5
     Move,              // F6

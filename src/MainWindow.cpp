@@ -455,7 +455,7 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::HexEdit, L"Im &Hex-Editor bearbeiten\tAlt+F11");
     AddSep(m);
     AddItem(m, cmd::NewFile, L"&Neue Datei…\tF9");
-    AddItem(m, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F4");
+    AddItem(m, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F9");
     AddItem(m, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
     AddItem(m, cmd::Duplicate, L"D&uplizieren…\tF10");
     AddSep(m);
@@ -679,12 +679,13 @@ void MainWindow::BuildToolbar() {
     {
         int sz = large ? 24 : 16;
         BITMAPINFO bi{};
-        bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz * 2, -sz, 1, 32, BI_RGB};
+        const int cells = 3;   // Papierkorb, Radiergummi, Mit Unterverzeichnissen
+        bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz * cells, -sz, 1, 32, BI_RGB};
         void* bits = nullptr;
         HBITMAP strip = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
         if (strip && bits) {
             auto* px = (uint32_t*)bits;
-            memset(bits, 0, (size_t)sz * 2 * sz * 4);
+            memset(bits, 0, (size_t)sz * cells * sz * 4);
             HDC dc = CreateCompatibleDC(nullptr);
             HGDIOBJ old = SelectObject(dc, strip);
             // Zelle 0: Papierkorb
@@ -694,26 +695,30 @@ void MainWindow::BuildToolbar() {
                 DrawIconEx(dc, 0, 0, sii.hIcon, sz, sz, 0, nullptr, DI_NORMAL);
                 DestroyIcon(sii.hIcon);
             }
-            // Zelle 1: Radiergummi auf Schlüsselfarbe zeichnen, danach in Alpha umwandeln
+            // Zellen 1 und 2: Radiergummi und „Mit Unterverzeichnissen“ auf Schlüsselfarbe zeichnen, danach in Alpha
+            // umwandeln
             for (int y = 0; y < sz; ++y)
-                for (int x = sz; x < 2 * sz; ++x) px[y * sz * 2 + x] = 0x00FF00FF;
+                for (int x = sz; x < cells * sz; ++x) px[y * sz * cells + x] = 0x00FF00FF;
             GdiFlush();
             RECT cell{sz, 0, 2 * sz, sz};
             DrawGlyph(dc, Glyph::Eraser, cell, RGB(0, 0, 0));
+            RECT cell2{2 * sz, 0, 3 * sz, sz};
+            DrawGlyph(dc, Glyph::TreeList, cell2, RGB(0, 0, 0));
             GdiFlush();
             for (int y = 0; y < sz; ++y)
-                for (int x = sz; x < 2 * sz; ++x) {
-                    uint32_t& c = px[y * sz * 2 + x];
+                for (int x = sz; x < cells * sz; ++x) {
+                    uint32_t& c = px[y * sz * cells + x];
                     c = ((c & 0x00FFFFFF) == 0x00FF00FF) ? 0 : (c | 0xFF000000u);
                 }
             SelectObject(dc, old);
             DeleteDC(dc);
             TBADDBITMAP ac{nullptr, (UINT_PTR)strip};
-            custom = (int)SendMessageW(toolbar_, TB_ADDBITMAP, 2, (LPARAM)&ac);
+            custom = (int)SendMessageW(toolbar_, TB_ADDBITMAP, cells, (LPARAM)&ac);
         }
     }
     int imgRecycle = custom >= 0 ? custom : offStd + STD_DELETE;
     int imgEraser = custom >= 0 ? custom + 1 : offStd + STD_DELETE;
+    int imgRecursive = custom >= 0 ? custom + 2 : offView + VIEW_DETAILS;
 
     struct B {
         int image;
@@ -742,9 +747,12 @@ void MainWindow::BuildToolbar() {
         {offStd + STD_REPLACE, cmd::CompareDirs, L"Verzeichnisse vergleichen (F7)", false},
         {offStd + STD_REDOW, cmd::SyncDirs, L"Verzeichnisse synchronisieren (Strg+Umschalt+Y)", false},
         {-1, 0, nullptr, false},
-        {offView + VIEW_DETAILS, cmd::ViewDetails, L"Details", false},
-        {offView + VIEW_LIST, cmd::ViewList, L"Liste", false},
-        {offView + VIEW_LARGEICONS, cmd::ViewThumbnails, L"Miniaturansicht", false},
+        {offView + VIEW_DETAILS, cmd::ViewDetails, L"Details (Strg+Umschalt+1)", false},
+        {offView + VIEW_LIST, cmd::ViewList, L"Liste (Strg+Umschalt+2)", false},
+        {offView + VIEW_SMALLICONS, cmd::ViewIcons, L"Symbole (Strg+Umschalt+3)", false},
+        {offView + VIEW_LARGEICONS, cmd::ViewThumbnails, L"Miniaturansicht (Strg+Umschalt+4)", false},
+        {imgRecursive, cmd::ViewRecursive, L"Mit Unterverzeichnissen (Strg+Umschalt+5)", false},
+        {-1, 0, nullptr, false},
         {offHist + HIST_VIEWTREE, cmd::TwoPanes, L"Eine/zwei Dateilisten", false},
         {offView + VIEW_VIEWMENU, cmd::QuickView, L"Dateianzeige im anderen Fenster (Strg+Q)", false},
         {-1, 0, nullptr, false},
@@ -761,6 +769,7 @@ void MainWindow::BuildToolbar() {
             t.idCommand = b.cmd;
             t.fsState = TBSTATE_ENABLED;
             t.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
+            if (b.cmd >= cmd::ViewDetails && b.cmd <= cmd::ViewRecursive) t.fsStyle |= BTNS_CHECK;   // Zustand setzt UpdateViewButtons
             t.iString = -1;
             toolTips_.emplace_back(b.cmd, b.text);
         }
@@ -788,7 +797,7 @@ void MainWindow::BuildAccelerators() {
     // Weitere Belegungen
     add(FSHIFT, VK_F11, cmd::ViewWindow);
     add(FALT, VK_F11, cmd::HexEdit);
-    add(FSHIFT, VK_F4, cmd::NewTextFile);
+    add(FSHIFT, VK_F9, cmd::NewTextFile);
     add(FSHIFT, VK_F5, cmd::Copy);
     add(FSHIFT, VK_F6, cmd::Move);
     add(0, VK_DELETE, cmd::Delete);
@@ -1261,6 +1270,22 @@ void MainWindow::UpdateQuickView() {
 void MainWindow::UpdateTitle() {
     std::wstring t = L"QFiles – " + LocationDisplay(Active().Dir());
     SetWindowTextW(hwnd_, t.c_str());
+    UpdateViewButtons();
+}
+
+// Ansichtssymbole der Werkzeugleiste: Ansicht der aktiven Liste eingedrückt zeigen
+void MainWindow::UpdateViewButtons() {
+    if (!toolbar_ || !panes_[active_]) return;
+    int cur = cmd::ViewDetails + (int)Active().View();
+    bool changed = false;
+    for (int id = cmd::ViewDetails; id <= cmd::ViewRecursive; ++id) {
+        bool want = id == cur;
+        if (!!SendMessageW(toolbar_, TB_ISBUTTONCHECKED, id, 0) != want) {
+            SendMessageW(toolbar_, TB_CHECKBUTTON, id, MAKELONG(want, 0));
+            changed = true;
+        }
+    }
+    if (changed) InvalidateRect(toolbar_, nullptr, TRUE);
 }
 
 void MainWindow::UpdateCmdLabel() {
@@ -1395,7 +1420,7 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
     } else {
         AddItem(extra, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
         AddItem(extra, cmd::NewFile, L"&Neue Datei…\tF9");
-        AddItem(extra, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F4");
+        AddItem(extra, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F9");
         if (ClipboardHasFiles()) AddItem(extra, cmd::ClipPaste, L"&Einfügen\tStrg+V");
         AddItem(extra, cmd::Refresh, L"&Aktualisieren\tF5");
         AddItem(extra, cmd::BookmarkAdd, L"Den &Lesezeichen hinzufügen\tStrg+D");
@@ -1589,7 +1614,7 @@ void MainWindow::ShowShortcuts() {
         L"  F6\tMarkierung umkehren\r\n"
         L"  F7\tVerzeichnisse vergleichen (bei Split mit Auswahl der Vergleichsliste)\r\n"
         L"  F8\tNeues Verzeichnis\r\n"
-        L"  F9\tNeue Datei;  Umschalt+F4: neue Textdatei (öffnet den Editor)\r\n"
+        L"  F9\tNeue Datei;  Umschalt+F9: neue Textdatei (öffnet den Editor)\r\n"
         L"  F10\tDuplizieren (Name + „ - Kopie“, Knopf „Nummeriert“)\r\n"
         L"  F11\tAnzeigen (Dateianzeige im anderen Fenster);  Umschalt+F11: Anzeigefenster;  Alt+F11: Hex-Editor\r\n"
         L"\r\n"
@@ -1781,7 +1806,7 @@ void MainWindow::ShowVirtualContextMenu(FilePane& p, POINT pt, bool onItems) {
         } else {
             AddItem(m, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
             AddItem(m, cmd::NewFile, L"&Neue Datei…\tF9");
-            AddItem(m, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F4");
+            AddItem(m, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F9");
             AddItem(m, cmd::Refresh, L"&Aktualisieren\tF5");
         }
     }
@@ -1866,7 +1891,8 @@ bool MainWindow::HandleVirtualCommand(int id) {
         bool text = id == cmd::NewTextFile;
         std::wstring name = text ? L"Neue Textdatei.txt" : L"Neue Datei";
         if (!InputBox(hwnd_, text ? L"Neue Textdatei" : L"Neue Datei",
-                      L"Name der neuen " + std::wstring(text ? L"Textdatei" : L"(leeren) Datei") + L" in „" + a.Dir() + L"“:", name))
+                      L"Name der neuen " + std::wstring(text ? L"Textdatei" : L"(leeren) Datei") + L" in „" + a.Dir() + L"“:", name,
+                      L"", text ? FileStemLength(name) : -1))
             return true;
         name = Trim(name);
         if (name.empty()) return true;
@@ -1994,7 +2020,8 @@ void MainWindow::OnCommand(int id) {
     }
     case cmd::NewTextFile: {
         std::wstring name = MakeUniqueName(a.Dir(), L"Neue Textdatei.txt");
-        if (!InputBox(hwnd_, L"Neue Textdatei", L"Name der neuen Textdatei (UTF-8 ohne BOM):", name)) break;
+        if (!InputBox(hwnd_, L"Neue Textdatei", L"Name der neuen Textdatei (UTF-8 ohne BOM):", name, L"", FileStemLength(name)))
+            break;
         name = Trim(name);
         if (name.empty()) break;
         std::wstring full = PathCombine(a.Dir(), name);
@@ -2218,11 +2245,11 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::QuickView: SetQuickView(!quickView_); break;
-    case cmd::ViewDetails: a.SetView(PaneView::Details); break;
-    case cmd::ViewList: a.SetView(PaneView::List); break;
-    case cmd::ViewIcons: a.SetView(PaneView::Icons); break;
-    case cmd::ViewThumbnails: a.SetView(PaneView::Thumbnails); break;
-    case cmd::ViewRecursive: a.SetView(PaneView::Recursive); break;
+    case cmd::ViewDetails: a.SetView(PaneView::Details); UpdateViewButtons(); break;
+    case cmd::ViewList: a.SetView(PaneView::List); UpdateViewButtons(); break;
+    case cmd::ViewIcons: a.SetView(PaneView::Icons); UpdateViewButtons(); break;
+    case cmd::ViewThumbnails: a.SetView(PaneView::Thumbnails); UpdateViewButtons(); break;
+    case cmd::ViewRecursive: a.SetView(PaneView::Recursive); UpdateViewButtons(); break;
     case cmd::SortName: a.SetSort(SortKey::Name, a.SortDescending()); break;
     case cmd::SortExt: a.SetSort(SortKey::Ext, a.SortDescending()); break;
     case cmd::SortSize: a.SetSort(SortKey::Size, a.SortDescending()); break;

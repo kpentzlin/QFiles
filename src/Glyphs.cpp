@@ -165,6 +165,28 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
         Lines(dc, trail, 2, RGB(120, 120, 120), std::max(1, full / 16));
         break;
     }
+    case Glyph::TreeList: {
+        // Ansicht „Mit Unterverzeichnissen“: Ordner oben, darunter eingerückt zwei Dateien mit Verbindungslinien
+        int full = std::min(w, h);
+        int ox = rc.left + (w - full) / 2, oy = rc.top + (h - full) / 2;
+        auto P = [&](double x, double y) { return POINT{ox + (int)(x * full / 16.0 + 0.5), oy + (int)(y * full / 16.0 + 0.5)}; };
+        int lw = std::max(1, full / 16);
+        POINT folder[6] = {P(0.5, 1.5), P(3.5, 1.5), P(4.5, 2.5), P(8.5, 2.5), P(8.5, 6.5), P(0.5, 6.5)};
+        Poly(dc, folder, 6, RGB(244, 204, 90), RGB(160, 115, 30), lw);
+        POINT tree[3] = {P(3.0, 6.5), P(3.0, 13.5), P(6.0, 13.5)};
+        Lines(dc, tree, 3, RGB(110, 110, 110), lw);
+        POINT branch[2] = {P(3.0, 9.5), P(6.0, 9.5)};
+        Lines(dc, branch, 2, RGB(110, 110, 110), lw);
+        for (double y : {7.5, 11.5}) {
+            POINT sheet[5] = {P(6.5, y), P(9.0, y), P(10.5, y + 1.5), P(10.5, y + 4.0), P(6.5, y + 4.0)};
+            Poly(dc, sheet, 5, RGB(255, 255, 255), RGB(70, 100, 160), lw);
+            POINT text[2] = {P(12.0, y + 2.0), P(15.5, y + 2.0)};
+            Lines(dc, text, 2, RGB(60, 90, 150), lw);
+        }
+        POINT top[2] = {P(10.0, 4.5), P(15.5, 4.5)};
+        Lines(dc, top, 2, RGB(60, 90, 150), lw);
+        break;
+    }
     }
 }
 

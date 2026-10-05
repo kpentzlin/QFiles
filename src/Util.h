@@ -111,8 +111,11 @@ std::wstring OpenFileDialog(HWND owner, const std::wstring& title, const std::ws
 std::wstring SaveFileDialog(HWND owner, const std::wstring& title, const std::wstring& initialPath,
                             const std::wstring& filterSpec = L"Alle Dateien|*.*");
 // Einfache Eingabeabfrage (modal). Rückgabe false bei Abbruch.
+// selLength >= 0: nur die ersten selLength Zeichen markieren (z. B. Dateiname ohne Endung), sonst alles.
 bool InputBox(HWND owner, const std::wstring& title, const std::wstring& prompt, std::wstring& value,
-              const std::wstring& hint = L"");
+              const std::wstring& hint = L"", int selLength = -1);
+// Länge des Dateinamens ohne Endung („Neue Textdatei.txt“ → 14); ohne Endung die ganze Länge
+int FileStemLength(const std::wstring& name);
 
 // Startet ein Programm bzw. öffnet ein Dokument mit der Shell.
 bool ShellOpen(HWND owner, const std::wstring& file, const std::wstring& params = L"",

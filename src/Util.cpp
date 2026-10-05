@@ -668,11 +668,12 @@ namespace {
 class InputDlg : public DialogBase {
 public:
     std::wstring prompt, value, hint;
+    int selLength = -1;
     BOOL OnInit() override {
         SetText(101, prompt);
         SetText(102, value);
         SetText(103, hint);
-        SendMessageW(Item(102), EM_SETSEL, 0, -1);
+        SendMessageW(Item(102), EM_SETSEL, 0, selLength >= 0 ? selLength : -1);
         SetFocus(Item(102));
         return FALSE;
     }
@@ -683,8 +684,14 @@ public:
 };
 } // namespace
 
+int FileStemLength(const std::wstring& name) {
+    size_t dot = name.find_last_of(L'.');
+    if (dot == std::wstring::npos || dot == 0 || name.find_first_of(L"\\/", dot) != std::wstring::npos) return (int)name.size();
+    return (int)dot;
+}
+
 bool InputBox(HWND owner, const std::wstring& title, const std::wstring& prompt, std::wstring& value,
-              const std::wstring& hint) {
+              const std::wstring& hint, int selLength) {
     DialogTemplate t(title, 260, hint.empty() ? 70 : 90);
     t.Label(101, L"", 7, 7, 246, 10);
     t.Edit(102, 7, 20, 246, 14, ES_AUTOHSCROLL);
@@ -701,6 +708,7 @@ bool InputBox(HWND owner, const std::wstring& title, const std::wstring& prompt,
     dlg.prompt = prompt;
     dlg.value = value;
     dlg.hint = hint;
+    dlg.selLength = selLength;
     if (dlg.DoModal(owner, t) != IDOK) return false;
     value = dlg.value;
     return true;

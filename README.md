@@ -113,7 +113,7 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
   wie im Explorer.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
-- Werkzeugleiste.
+- Werkzeugleiste, u. a. mit je einem Symbol für die fünf Ansichten (die Ansicht der aktiven Liste ist eingedrückt).
 - Befehlszeile: führt Befehle im aktuellen Verzeichnis in einem Konsolenfenster aus. `cd` und `X:` wechseln das
   Verzeichnis der Liste. Mit Verlauf; Dateien lassen sich hineinziehen.
 - Funktionstastenleiste. Bei gedrückter Strg- bzw. Strg+Umschalt-Taste zeigt sie die Belegung der programmierbaren
@@ -125,7 +125,7 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 - Kopieren (Umschalt+F5) und Verschieben (Umschalt+F6) in die andere Liste.
 - Umbenennen mit F2: immer der vollständige Umbenennungsdialog (auch für eine einzelne Datei). Direkt in der Liste
   umbenennen: langsamer zweiter Klick auf den Namen.
-- Neues Verzeichnis (F8), neue leere Datei (F9), neue Textdatei mit Editor (Umschalt+F4).
+- Neues Verzeichnis (F8), neue leere Datei (F9), neue Textdatei mit Editor (Umschalt+F9; vorgeschlagen wird „Neue Textdatei.txt“, markiert ist nur der Name ohne „.txt“).
 - **Duplizieren** (F10): Namensvorschlag „Name - Kopie.ext“; der Knopf „Nummeriert“ setzt „Name (1).ext“ ein bzw.
   zählt hoch, wenn es den Namen schon gibt oder er bereits auf „(n)“ endet.
 - Löschen in den Papierkorb (Entf) oder endgültig (Umschalt+Entf). In der Werkzeugleiste stehen dafür drei Symbole:
@@ -277,7 +277,7 @@ Funktionstasten (auch in der Fußzeile anklickbar):
 | F6 | Markierung umkehren |
 | F7 | Vergleich (Verzeichnisse) |
 | F8 | Neues Verzeichnis |
-| F9 | Neue Datei (Umschalt+F4: neue Textdatei) |
+| F9 | Neue Datei (Umschalt+F9: neue Textdatei) |
 | F10 | Duplizieren |
 | F11 | Anzeigen |
 

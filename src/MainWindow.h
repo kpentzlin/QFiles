@@ -66,6 +66,7 @@ private:
     void BuildAccelerators();
     void BuildFKeyCells();
     void UpdateTitle();
+    void UpdateViewButtons();
     void UpdateStatusBar();
     void UpdateCmdLabel();
     void LoadState();
