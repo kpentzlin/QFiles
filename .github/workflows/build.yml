@@ -36,10 +36,28 @@ jobs:
           cmake --build build --config Release --parallel 2>&1 | Tee-Object -FilePath build-log.txt
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      - name: Tests ausführen
+      - name: FTP-Testserver vorbereiten
         run: |
+          python -m pip install --quiet pyftpdlib
+          New-Item -ItemType Directory -Force -Path C:\QFilesFtp | Out-Null
+
+      - name: Tests ausführen
+        env:
+          QFILES_TEST_FTP: ftp://test@127.0.0.1:2121/
+          QFILES_TEST_FTP_PASS: geheim
+          QFILES_TEST_SFTP_RO: sftp://demo@test.rebex.net/
+          QFILES_TEST_SFTP_RO_PASS: password
+          QFILES_TEST_FTP_RO: ftp://demo@test.rebex.net/
+          QFILES_TEST_FTP_RO_PASS: password
+        run: |
+          $ftpd = Start-Process python -ArgumentList 'tools\ci-ftpd.py','C:\QFilesFtp','2121' -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 3
           & build\Release\QFilesTests.exe 2>&1 | Tee-Object -FilePath test-log.txt
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $code = $LASTEXITCODE
+          Stop-Process -Id $ftpd.Id -Force -ErrorAction SilentlyContinue
+          $srv = Get-Content test-log.txt | Select-String -Pattern 'Server-Test|Hostschl|WARNUNG|Verbindung fehl|heruntergeladen|Startverzeichnis' | ForEach-Object { $_.Line.Trim() }
+          if ($srv) { Write-Output ("::notice title=FTP/SFTP-Tests::" + ($srv -join ' | ')) }
+          if ($code -ne 0) { exit 1 }
 
       - name: GUI-Test mit Bildschirmfotos
         run: |

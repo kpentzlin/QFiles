@@ -10,6 +10,8 @@
 
 #include "App.h"
 #include "MainWindow.h"
+#include "Location.h"
+#include "Remote.h"
 #include "Settings.h"
 #include "ShellMenu.h"
 #include "Util.h"
@@ -55,6 +57,17 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         add(L"Bilder", FOLDERID_Pictures);
         SaveBookmarks(App::Cfg(), b);
     }
+    // Standard-Lesezeichen „Netzwerk“ (oberste Ebene des Netzwerks) – einmalig auch in bestehenden Einstellungen
+    if (!App::Cfg().GetBool(L"Vorgaben", L"NetzwerkLesezeichen", false)) {
+        auto b = LoadBookmarks(App::Cfg());
+        bool has = false;
+        for (auto& x : b)
+            if (IsNetworkRoot(x.path)) has = true;
+        if (!has) b.push_back({kNetworkName, kNetworkRoot});
+        SaveBookmarks(App::Cfg(), b);
+        App::Cfg().SetBool(L"Vorgaben", L"NetzwerkLesezeichen", true);
+        if (!firstRun) App::Cfg().Save();
+    }
 
     MainWindow main;
     if (!main.Create(nCmdShow)) {
@@ -71,6 +84,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    RemoteDisconnectAll();
     OleUninitialize();
     return (int)msg.wParam;
 }

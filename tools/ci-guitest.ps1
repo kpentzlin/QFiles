@@ -212,6 +212,51 @@ $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 2
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 Remove-Item Env:\QFILES_TEST_SHELLFAULT
+
+# ---- Netzwerk und FTP ----
+# Freigabe auf diesem Rechner; Liste 1 zeigt \\localhost (Freigaben), Liste 2 einen anonymen FTP-Zugang.
+$paneLog = "$PWD\pane-log.txt"
+Remove-Item $paneLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_PANELOG = $paneLog
+try { New-SmbShare -Name "QFilesTest" -Path "C:\QFilesDemo" -ReadAccess "Everyone" -ErrorAction Stop | Out-Null } catch { Write-Output "Freigabe: $_" }
+New-Item -ItemType Directory -Force -Path "C:\QFilesFtp\Ordner Ä" | Out-Null
+Set-Content -Path "C:\QFilesFtp\Grüße vom FTP.txt" -Value "Hallo FTP – äöü" -Encoding UTF8
+$ftpd = Start-Process python -ArgumentList 'tools\ci-ftpd.py','C:\QFilesFtp','2121' -PassThru -WindowStyle Hidden
+Start-Sleep -Seconds 3
+$script:p = Start-Process -FilePath $Exe -ArgumentList '"\\localhost"','"ftp://127.0.0.1:2121/"' -PassThru
+Start-Sleep -Seconds 10
+Check-Alive "Start (Netzwerk/FTP)"
+Shot "screenshot8.png"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+# Liste 1: in die Freigabe wechseln
+[System.Windows.Forms.SendKeys]::SendWait("^1"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^l"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("\\localhost\QFilesTest{ENTER}"); Start-Sleep -Seconds 3
+Check-Alive "UNC-Freigabe"
+# Liste 1: Netzwerk durchsuchen (Esc bricht ab)
+[System.Windows.Forms.SendKeys]::SendWait("^l"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("Netzwerk{ENTER}"); Start-Sleep -Seconds 8
+Shot "screenshot9.png"
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 1
+Check-Alive "Netzwerk"
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Stop-Process -Id $ftpd.Id -Force -ErrorAction SilentlyContinue
+Remove-Item Env:\QFILES_TEST_PANELOG
+if (-not (Test-Path $paneLog)) { "Listenprotokoll fehlt" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+$pl = Get-Content $paneLog -Encoding UTF8
+$pl | ForEach-Object { Write-Output $_ }
+$okShare = $pl | Where-Object { $_ -match '^Liste 1 \| \\\\localhost \|.*QFilesTest' }
+$okFtp = $pl | Where-Object { $_ -match '^Liste 2 \| ftp://127\.0\.0\.1:2121/ \|.*Grüße vom FTP\.txt' }
+$okUnc = $pl | Where-Object { $_ -match '^Liste 1 \| \\\\localhost\\QFilesTest \|.*liesmich\.txt' }
+if (-not $okFtp) { "FTP-Liste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+if (-not $okShare) { Write-Output "::warning title=Netzwerk::Freigabe QFilesTest von \\localhost nicht gefunden (siehe pane-log.txt)" }
+if (-not $okUnc) { Write-Output "::warning title=Netzwerk::Inhalt von \\localhost\QFilesTest nicht gelesen (siehe pane-log.txt)" }
+if ($okFtp -and $okShare -and $okUnc) { Write-Output "::notice title=Netzwerk/FTP::Freigaben von \\localhost, UNC-Verzeichnis und FTP-Liste gelesen." }
+$netLine = $pl | Where-Object { $_ -match '^Liste 1 \| \\\\ \|' } | Select-Object -Last 1
+if ($netLine) { Write-Output "::notice title=Netzwerk-Suche::$netLine" }
+
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
 }

@@ -16,9 +16,11 @@
 #include <deque>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "Modules.h"
+#include "Network.h"
 #include "Util.h"
 
 namespace qf {
@@ -68,11 +70,17 @@ public:
     bool CanGoBack() const { return histPos_ > 0; }
     bool CanGoForward() const { return histPos_ + 1 < (int)hist_.size(); }
     const std::wstring& Dir() const { return dir_; }
+    bool IsRemote() const;              // FTP/SFTP-Verzeichnis
+    bool IsNetworkLevel() const;        // Netzwerk bzw. Rechner (Liste der Rechner/Freigaben)
+    bool IsVirtual() const;             // eines von beiden (keine gewöhnlichen Dateioperationen)
+    bool ScanRunning() const { return netScanning_; }
+    void CancelScan();                  // Netzwerksuche abbrechen (Esc)
 
     // Auswahl
     std::vector<std::wstring> SelectedNames() const;       // ohne ".."
     std::vector<std::wstring> SelectedPaths() const;
     std::wstring FocusedName() const;                       // "" bei ".." oder nichts
+    bool FocusedEntry(DirEntry& out) const;                 // Daten des Fokuselements (ohne "..")
     std::wstring FocusedPath() const;
     bool FocusedIsDir() const;
     bool FocusedIsParent() const;
@@ -132,6 +140,7 @@ private:
         int thumb = -1;                // Index in der Miniatur-Bildliste, -1 = nicht angefordert, -2 = angefordert
         uint64_t dirSize = UINT64_MAX; // berechnete Verzeichnisgröße
         CompareMark mark = CompareMark::None;
+        int netKind = 0;               // 1 = Rechner, 2 = Freigabe (Netzwerkebenen)
     };
     enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Browse, Active };
     struct HitRect {
@@ -183,6 +192,10 @@ private:
     void OnThumbReady(WPARAM wp, LPARAM lp);
     int AddThumbnail(HBITMAP bmp);
     int ToPx(int v) const { return DpiScale(hwnd_, v); }
+    void StartNetScan();
+    void OnNetItem(LPARAM lp);
+    void OnNetDone(LPARAM lp);
+    std::wstring Combine(const std::wstring& name) const;
 
     HWND hwnd_ = nullptr;
     HWND list_ = nullptr;
@@ -223,7 +236,9 @@ private:
     RECT rcHeader_{}, rcPath_{}, rcList_{}, rcStatus_{};
     std::wstring statusText_;
     uint64_t freeBytes_ = 0;
+    uint64_t usedBytes_ = 0;
     bool freeKnown_ = false;
+    void UpdateFreeSpace();
 
     // Verzeichnisüberwachung
     std::thread watchThread_;
@@ -244,6 +259,16 @@ private:
 
     // Verzeichnisgrößen
     std::shared_ptr<std::atomic<bool>> sizeCancel_;
+
+    // Netzwerksuche (Rechner bzw. Freigaben)
+    std::shared_ptr<NetworkScan> netScan_;
+    unsigned netGen_ = 0;
+    bool netScanning_ = false;
+    bool netCancelled_ = false;
+    std::wstring netError_;
+    std::wstring pendingFocus_;      // Element, das nach dem Finden den Fokus erhält
+    std::unordered_map<std::wstring, std::wstring> netComments_;  // Beschreibung je Rechner/Freigabe
+    std::wstring remoteError_;       // letzter Fehler beim Lesen eines FTP/SFTP-Verzeichnisses
 };
 
 } // namespace qf

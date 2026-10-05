@@ -1,5 +1,6 @@
 #include "DirTree.h"
 #include "App.h"
+#include "Location.h"
 #include "ShellMenu.h"
 #include "Util.h"
 
@@ -11,6 +12,18 @@
 namespace qf {
 
 namespace {
+enum : UINT { WM_TREE_SCANITEM = WM_APP + 30, WM_TREE_SCANDONE = WM_APP + 31 };
+struct TreeScanItem {
+    HTREEITEM parent;
+    unsigned gen;
+    NetworkItem item;
+};
+struct TreeScanDone {
+    HTREEITEM parent;
+    unsigned gen;
+    bool ok;
+    DWORD error;
+};
 int StockIconIndex(SHSTOCKICONID id) {
     SHSTOCKICONINFO sii{sizeof(sii)};
     if (SUCCEEDED(SHGetStockIconInfo(id, SHGSI_SYSICONINDEX | SHGSI_SMALLICON, &sii))) return sii.iSysImageIndex;
@@ -76,7 +89,11 @@ void DirTree::Populate() {
         default: break;
         }
         std::wstring label = root.substr(0, 2);
-        if (type == DRIVE_FIXED || type == DRIVE_RAMDISK) {
+        if (type == DRIVE_REMOTE) {
+            // Netzlaufwerk: verbundene Freigabe anzeigen (wie Idoswin Pro)
+            std::wstring target = MappedDriveTarget(root);
+            if (!target.empty()) label += L"  " + target;
+        } else if (type == DRIVE_FIXED || type == DRIVE_RAMDISK || type == DRIVE_REMOVABLE) {
             wchar_t name[MAX_PATH + 1] = {};
             UINT oldMode = SetErrorMode(SEM_FAILCRITICALERRORS);
             if (GetVolumeInformationW(root.c_str(), name, MAX_PATH + 1, nullptr, nullptr, nullptr, nullptr, 0) && name[0])
@@ -86,6 +103,9 @@ void DirTree::Populate() {
         int icon = StockIconIndex(sid);
         AddItem(TVI_ROOT, label, root, icon, icon, true);
     }
+    // Netzwerk (aufklappbar: Rechner, darunter deren Freigaben)
+    int net = StockIconIndex(SIID_MYNETWORK);
+    AddItem(TVI_ROOT, kNetworkName, kNetworkRoot, net, net, true);
     SendMessageW(tree_, WM_SETREDRAW, TRUE, 0);
     suppress_ = false;
     if (!sel.empty()) SelectPath(sel);
@@ -106,6 +126,10 @@ void DirTree::FillChildren(HTREEITEM item) {
         c = next;
     }
     std::wstring path = ItemPath(item);
+    if (IsNetworkVirtual(path)) {
+        StartScan(item);
+        return;
+    }
     std::vector<DirEntry> entries;
     UINT oldMode = SetErrorMode(SEM_FAILCRITICALERRORS);
     ListDirectory(path, entries);
@@ -127,6 +151,98 @@ void DirTree::FillChildren(HTREEITEM item) {
         it.cChildren = 0;
         TreeView_SetItem(tree_, &it);
     }
+}
+
+void DirTree::StartScan(HTREEITEM item) {
+    auto old = scans_.find(item);
+    if (old != scans_.end() && old->second.scan) old->second.scan->cancel = true;
+    std::wstring path = ItemPath(item);
+    // Platzhalter während der Suche (ohne Pfad: führt nirgendwohin)
+    TVINSERTSTRUCTW ins{};
+    ins.hParent = item;
+    ins.hInsertAfter = TVI_LAST;
+    ins.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_CHILDREN;
+    std::wstring text = IsNetworkRoot(path) ? L"Suche Rechner … (Esc bricht ab)" : L"Lese Freigaben … (Esc bricht ab)";
+    ins.item.pszText = const_cast<wchar_t*>(text.c_str());
+    ins.item.lParam = 0;
+    ins.item.cChildren = 0;
+    HTREEITEM placeholder = TreeView_InsertItem(tree_, &ins);
+    unsigned gen = ++scanGen_;
+    HWND tree = tree_;
+    Scan sc;
+    sc.gen = gen;
+    sc.placeholder = placeholder;
+    sc.scan = StartNetworkScan(
+        path, App::Opt().showHidden,
+        [tree, item, gen](const NetworkItem& it) {
+            auto* m = new TreeScanItem{item, gen, it};
+            if (!PostMessageW(tree, WM_TREE_SCANITEM, 0, (LPARAM)m)) delete m;
+        },
+        [tree, item, gen](bool ok, DWORD error) {
+            auto* m = new TreeScanDone{item, gen, ok, error};
+            if (!PostMessageW(tree, WM_TREE_SCANDONE, 0, (LPARAM)m)) delete m;
+        });
+    scans_[item] = sc;
+}
+
+void DirTree::OnScanItem(LPARAM lp) {
+    std::unique_ptr<TreeScanItem> m((TreeScanItem*)lp);
+    auto it = scans_.find(m->parent);
+    if (it == scans_.end() || it->second.gen != m->gen) return;
+    std::wstring parentPath = ItemPath(m->parent);
+    bool servers = IsNetworkRoot(parentPath);
+    std::wstring path = servers ? (L"\\\\" + m->item.name) : (parentPath + L"\\" + m->item.name);
+    int icon = StockIconIndex(servers ? SIID_SERVER : SIID_SERVERSHARE);
+    TVINSERTSTRUCTW ins{};
+    ins.hParent = m->parent;
+    ins.hInsertAfter = TVI_SORT;
+    ins.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN;
+    ins.item.pszText = const_cast<wchar_t*>(m->item.name.c_str());
+    ins.item.lParam = (LPARAM) new std::wstring(path);
+    ins.item.iImage = ins.item.iSelectedImage = icon;
+    ins.item.cChildren = 1;
+    TreeView_InsertItem(tree_, &ins);
+}
+
+void DirTree::OnScanDone(LPARAM lp) {
+    std::unique_ptr<TreeScanDone> m((TreeScanDone*)lp);
+    auto it = scans_.find(m->parent);
+    if (it == scans_.end() || it->second.gen != m->gen) return;
+    HTREEITEM placeholder = it->second.placeholder;
+    scans_.erase(it);
+    if (placeholder) TreeView_DeleteItem(tree_, placeholder);
+    if (!TreeView_GetChild(tree_, m->parent)) {
+        // Nichts gefunden bzw. Rechner nicht erreichbar
+        TVINSERTSTRUCTW ins{};
+        ins.hParent = m->parent;
+        ins.hInsertAfter = TVI_LAST;
+        ins.item.mask = TVIF_TEXT | TVIF_PARAM;
+        std::wstring text = m->ok ? L"(nichts gefunden)" : (L"(nicht erreichbar: " + LastErrorMessage(m->error) + L")");
+        ins.item.pszText = const_cast<wchar_t*>(text.c_str());
+        ins.item.lParam = 0;
+        TreeView_InsertItem(tree_, &ins);
+    }
+}
+
+void DirTree::CancelScans() {
+    for (auto& [item, sc] : scans_) {
+        if (sc.scan) sc.scan->cancel = true;
+        if (sc.placeholder) {
+            TVITEMW t{};
+            t.mask = TVIF_TEXT;
+            t.hItem = sc.placeholder;
+            std::wstring text = L"(Suche abgebrochen)";
+            t.pszText = const_cast<wchar_t*>(text.c_str());
+            TreeView_SetItem(tree_, &t);
+        }
+    }
+    scans_.clear();
+}
+
+HTREEITEM DirTree::NetworkNode() const {
+    for (HTREEITEM c = TreeView_GetRoot(tree_); c; c = TreeView_GetNextSibling(tree_, c))
+        if (IsNetworkRoot(ItemPath(c))) return c;
+    return nullptr;
 }
 
 std::wstring DirTree::ItemPath(HTREEITEM item) const {
@@ -153,8 +269,38 @@ HTREEITEM DirTree::FindChild(HTREEITEM parent, const std::wstring& name) const {
 
 void DirTree::SelectPath(const std::wstring& path) {
     if (path.empty()) return;
+    if (IsNetworkRoot(path) || StartsWithI(path, L"\\\\")) {
+        // Netzwerk: nur bereits gefundene Knoten markieren (keine neue Suche anstoßen)
+        HTREEITEM item = NetworkNode();
+        if (!item) return;
+        if (!IsNetworkRoot(path)) {
+            for (auto& part : Split(path.substr(2), L'\\')) {
+                HTREEITEM child = nullptr;
+                for (HTREEITEM c = TreeView_GetChild(tree_, item); c; c = TreeView_GetNextSibling(tree_, c)) {
+                    TVITEMW t{};
+                    wchar_t buf[512] = {};
+                    t.mask = TVIF_TEXT;
+                    t.hItem = c;
+                    t.pszText = buf;
+                    t.cchTextMax = 511;
+                    TreeView_GetItem(tree_, &t);
+                    if (EqualsI(buf, part) && !ItemPath(c).empty()) {
+                        child = c;
+                        break;
+                    }
+                }
+                if (!child) break;
+                item = child;
+            }
+        }
+        suppress_ = true;
+        TreeView_SelectItem(tree_, item);
+        TreeView_EnsureVisible(tree_, item);
+        suppress_ = false;
+        return;
+    }
     std::wstring root = PathRoot(path);
-    if (root.empty() || StartsWithI(root, L"\\\\")) return; // UNC nicht im Baum
+    if (root.empty()) return;
     suppress_ = true;
     HTREEITEM item = FindChild(nullptr, root);
     if (item) {
@@ -186,6 +332,7 @@ void DirTree::RefreshPath(const std::wstring& path) {
     std::wstring sel = SelectedPath();
     HTREEITEM item = nullptr;
     std::wstring root = PathRoot(path);
+    if (root.empty() || StartsWithI(root, L"\\\\")) return;
     item = FindChild(nullptr, root);
     if (!item) return;
     std::wstring rest = path.substr(std::min(root.size(), path.size()));
@@ -222,7 +369,8 @@ std::wstring DirTree::DropDirAt(POINT screenPt) const {
     ScreenToClient(tree_, &ht.pt);
     HTREEITEM item = TreeView_HitTest(tree_, &ht);
     if (!item || !(ht.flags & TVHT_ONITEM)) return L"";
-    return ItemPath(item);
+    std::wstring p = ItemPath(item);
+    return IsNetworkVirtual(p) ? L"" : p;
 }
 
 LRESULT DirTree::OnNotify(NMHDR* nm) {
@@ -248,6 +396,11 @@ LRESULT DirTree::OnNotify(NMHDR* nm) {
     case TVN_DELETEITEMW: {
         auto* tv = (NMTREEVIEWW*)nm;
         delete (std::wstring*)tv->itemOld.lParam;
+        auto sc = scans_.find(tv->itemOld.hItem);
+        if (sc != scans_.end()) {
+            if (sc->second.scan) sc->second.scan->cancel = true;
+            scans_.erase(sc);
+        }
         return 0;
     }
     case TVN_SELCHANGEDW: {
@@ -276,7 +429,7 @@ LRESULT DirTree::OnNotify(NMHDR* nm) {
         HTREEITEM item = TreeView_HitTest(tree_, &ht);
         if (item) {
             std::wstring p = ItemPath(item);
-            if (!p.empty()) {
+            if (!p.empty() && !IsNetworkVirtual(p)) {
                 bool rename = false;
                 if (IsRootPath(p))
                     ShowShellContextMenu(GetAncestor(tree_, GA_ROOT), p, {}, pt, nullptr, &rename);
@@ -310,6 +463,18 @@ LRESULT CALLBACK DirTree::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_
             KillTimer(h, 1);
             std::wstring p = self->SelectedPath();
             if (!p.empty() && self->onNavigate_) self->onNavigate_(p);
+            return 0;
+        }
+        break;
+    case WM_TREE_SCANITEM:
+        self->OnScanItem(lp);
+        return 0;
+    case WM_TREE_SCANDONE:
+        self->OnScanDone(lp);
+        return 0;
+    case WM_KEYDOWN:
+        if (wp == VK_ESCAPE && !self->scans_.empty()) {
+            self->CancelScans();
             return 0;
         }
         break;

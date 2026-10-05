@@ -75,8 +75,13 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 ### Oberfläche
 
 - Verzeichnisbaum links. Er folgt der aktiven Liste; ein Klick öffnet das Verzeichnis in der aktiven Liste.
+- Im Baum unten der aufklappbare Knoten **Netzwerk** (wie in Idoswin Pro), Netzlaufwerke mit ihrer Freigabe
+  (z. B. `N:  \\fritz.box\FRITZ.NAS\media1`), Wechseldatenträger mit ihrer Bezeichnung.
 - Lesezeichenliste daneben:
   - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen.
+  - Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) erscheinen mit **hellroter**, FTP/SFTP-Zugänge mit
+    **hellblauer** Hintergrundfarbe.
+  - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
   - Umbenennen mit F2, Entfernen mit Entf, Verschieben mit Alt+↑/↓, Pfad über das Kontextmenü ändern.
   - Dateien lassen sich auf ein Lesezeichen ziehen.
 - Eine oder zwei Dateilisten (Strg+Umschalt+L), jede teilbar (Split). Die aktive Liste ist farbig markiert.
@@ -85,7 +90,7 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
     Kontextmenü des Laufwerks.
   - Verzeichnis-Textfeld mit Verlauf und Autovervollständigung; Umgebungsvariablen wie `%USERPROFILE%` sind erlaubt.
   - Zurück/Vor, Übergeordnet, Verzeichnis wählen.
-  - Statuszeile: Anzahl, Größe, Markierung, Filter, freier Speicher.
+  - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar).
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
   (beides unter *Werkzeuge → Optionen → Anzeige*).
@@ -121,6 +126,37 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
 - Explorer-Kontextmenü, „Öffnen mit“, Eigenschaften (Alt+Eingabe).
 - Attribute und Zeitstempel ändern, auch rekursiv. Das Datum lässt sich aus dem EXIF-Aufnahmedatum übernehmen.
 - Verzeichnisgrößen berechnen (Leertaste auf einem Verzeichnis oder Alt+Umschalt+Eingabe für alle).
+
+### Netzwerk
+
+- Netzwerkpfade (`\\Server\Freigabe\…`) funktionieren überall wie lokale Verzeichnisse.
+- **Netzwerk** (Baumknoten, Lesezeichen oder Eingabe `Netzwerk` bzw. `\\` im Verzeichnisfeld) zeigt die gefundenen
+  Rechner: Rechner verbundener Netzlaufwerke, die klassische Netzwerkumgebung und die Netzwerkerkennung von Windows.
+  Ein Rechner (`\\Server`) zeigt seine Freigaben, eine Freigabe ihren Inhalt; „..“ führt wieder nach oben.
+- Die Suche läuft im Hintergrund, die Einträge erscheinen nach und nach. **Esc** bricht sie ab; angezeigt bleiben
+  die bis dahin gefundenen Einträge. F5 sucht erneut.
+
+### FTP und SFTP
+
+- **Lesezeichen → Neuer FTP/sFTP-Zugriff…** legt einen Zugang als Lesezeichen an: Protokoll (SFTP oder FTP),
+  Server, Port, Benutzer, Kennwort, Startverzeichnis (leer = Anmeldeverzeichnis des Servers) und für SFTP optional
+  eine Schlüsseldatei. „Verbindung testen“ prüft die Angaben. Bearbeiten über das Kontextmenü der Lesezeichenliste
+  („Pfad ändern…“).
+- Adressen: `sftp://benutzer@server[:port]/pfad` bzw. `ftp://benutzer@server[:port]/pfad` – auch direkt im
+  Verzeichnisfeld; FTP ohne Benutzer meldet sich anonym an.
+- In der Liste: Verzeichnisse öffnen, Kopieren und Verschieben in die andere Liste (hoch- und herunterladen, auch
+  zwischen zwei Servern, Verzeichnisse mit Inhalt, Zeitstempel bleiben erhalten), Löschen, Umbenennen (F2), neues
+  Verzeichnis (F8), neue Datei (F9), Anzeigen (F11, auch in der Dateianzeige im anderen Fenster), Bearbeiten (F4) und
+  Öffnen: Die Datei wird in ein temporäres Verzeichnis geladen; nach dem Speichern lädt QFiles sie automatisch wieder
+  hoch.
+- Ist ein FTP/SFTP-Verzeichnis gewählt, entfällt in der Kopfzeile der Liste das Lesezeichensymbol (Zugänge entstehen
+  über den Menüpunkt; Strg+D öffnet den Zugangsdialog mit dem aktuellen Verzeichnis).
+- Kennwörter werden nur gespeichert, wenn gewünscht – verschlüsselt mit der Windows-Datenschutz-API (DPAPI), nur für
+  den angemeldeten Windows-Benutzer lesbar. Sonst fragt QFiles einmal je Sitzung.
+- SFTP: Beim ersten Verbinden wird der Fingerabdruck des Hostschlüssels angezeigt und nach Bestätigung in
+  `%ProgramData%\QFiles\QFiles-Hostschluessel.txt` gespeichert; ein geänderter Schlüssel wird deutlich gemeldet.
+  Anmeldung mit Schlüsseldatei, SSH-Agent (Windows-OpenSSH-Agent, Pageant), Kennwort oder keyboard-interactive.
+- FTP überträgt Kennwort und Daten unverschlüsselt (Hinweis in der Statuszeile); FTP-Dateinamen in UTF-8.
 
 ### Werkzeuge
 
@@ -295,8 +331,9 @@ cmake --build build
 ```
 
 GitHub Actions (`.github/workflows/build.yml`) baut bei jedem Push mit MSVC und MinGW. Auf Windows laufen dabei die
-automatischen Tests (Kodierungen, Einstellungsdatei, Dateioperationen mit Unicode-Namen und langen Pfaden) und ein
-Starttest mit Bildschirmfoto. Wird auf GitHub ein Release veröffentlicht, hängt der Workflow `QFiles.exe` und `QFiles-x64.zip` an.
+automatischen Tests (Kodierungen, Einstellungsdatei, Dateioperationen mit Unicode-Namen und langen Pfaden,
+Netzwerk- und FTP-Adressen, FTP gegen einen lokalen Testserver, SFTP/FTP lesend gegen den öffentlichen Testserver
+test.rebex.net) und ein Oberflächentest mit Bildschirmfotos (u. a. Freigaben von `\\localhost` und eine FTP-Liste). Wird auf GitHub ein Release veröffentlicht, hängt der Workflow `QFiles.exe` und `QFiles-x64.zip` an.
 
 ### Aufbau des Quelltexts
 
@@ -306,6 +343,9 @@ Starttest mit Bildschirmfoto. Wird auf GitHub ein Release veröffentlicht, häng
 | `src/FilePane.*` | Listenfenster mit Kopfzeile (Laufwerke, Split, Lesezeichen), Pfadzeile, virtueller ListView, Schnellansicht |
 | `src/DirTree.*`, `BookmarkList.*` | Verzeichnisbaum, Lesezeichenliste |
 | `src/FileOps.*`, `ShellMenu.*` | Dateioperationen mit Rückgängig, Zwischenablage, Kontextmenü, Drag & Drop |
+| `src/Location.*`, `Network.*` | Netzwerk- und FTP-Adressen, Suche nach Rechnern und Freigaben |
+| `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP: Zugänge, Verbindungen, Übertragungen |
+| `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
 | `src/Settings.*`, `App.*` | Einstellungsdatei, Optionen, globale Dienste, Dateisystemmonitor |
 | `src/Util.*`, `Encoding.*`, `Dialog.*`, `Glyphs.*` | Hilfsfunktionen, Textkodierungen, Dialoge ohne Ressourcendatei, Symbole |
 | `src/TextEditor.*` | Texteditor |
@@ -343,6 +383,9 @@ ausgeblendet. Ein leeres Feld schaltet den Ausschluss ab.
 - ACE-Archive werden nicht unterstützt. RAR, 7z und andere Formate lassen sich nur anzeigen und entpacken, und nur
   soweit `tar.exe` (ab Windows 10 1803) sie kennt. Dabei können Namen außerhalb der Systemcodepage in der
   Listenansicht verfälscht werden; „Alles entpacken“ ist davon nicht betroffen.
-- Netzwerkfreigaben werden über UNC-Pfade (`\\Server\Freigabe`) im Verzeichnis-Textfeld geöffnet; einen eigenen
-  Netzwerk-Browser im Baum gibt es nicht.
+- FTP: nur passiver Modus, kein verschlüsseltes FTPS (dafür SFTP verwenden). SFTP-Server, die ausschließlich
+  Ed25519-Hostschlüssel anbieten, werden nicht unterstützt (RSA- und ECDSA-Schlüssel, wie bei OpenSSH üblich, schon).
+- Für FTP/SFTP-Verzeichnisse stehen nicht alle Werkzeuge zur Verfügung (z. B. Vergleichen, Synchronisieren, Suchen,
+  Attribute, Drag & Drop, Rückgängig); QFiles meldet das.
+- Welche Rechner unter „Netzwerk“ erscheinen, hängt von der Netzwerkerkennung von Windows ab.
 - Die Oberfläche ist deutsch; eine Sprachumschaltung gibt es nicht.

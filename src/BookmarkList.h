@@ -40,6 +40,7 @@ private:
     HWND list_ = nullptr;
     Callbacks cb_;
     std::vector<Bookmark> items_;
+    std::vector<int> kinds_;   // 0 = lokal, 1 = Netzwerk (hellrot), 2 = FTP/SFTP (hellblau)
 };
 
 } // namespace qf

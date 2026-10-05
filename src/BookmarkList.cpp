@@ -1,5 +1,7 @@
 #include "BookmarkList.h"
 #include "App.h"
+#include "Location.h"
+#include "Remote.h"
 #include "ShellMenu.h"
 #include "Util.h"
 
@@ -11,7 +13,16 @@
 namespace qf {
 
 namespace {
-enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent };
+enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent, MenuNewFtp };
+
+int StockIndex(SHSTOCKICONID id) {
+    SHSTOCKICONINFO sii{sizeof(sii)};
+    return SUCCEEDED(SHGetStockIconInfo(id, SHGSI_SYSICONINDEX | SHGSI_SMALLICON, &sii)) ? sii.iSysImageIndex : 0;
+}
+
+// Hintergrundfarben der Lesezeichenliste
+const COLORREF kNetworkBack = RGB(255, 214, 214);  // hellrot: Netzwerkpfade
+const COLORREF kRemoteBack = RGB(208, 228, 255);   // hellblau: FTP/SFTP
 }
 
 bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
@@ -39,7 +50,7 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
             ht.pt = pt;
             ScreenToClient(list_, &ht.pt);
             int i = ListView_HitTest(list_, &ht);
-            if (i >= 0 && i < (int)items_.size()) return items_[i].path;
+            if (i >= 0 && i < (int)items_.size() && !IsVirtualLocation(items_[i].path)) return items_[i].path;
             return L"";
         },
         []() { App::RefreshPanes(); });
@@ -60,17 +71,28 @@ void BookmarkList::Set(const std::vector<Bookmark>& b) {
 void BookmarkList::Rebuild(int select) {
     SendMessageW(list_, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(list_);
-    SHSTOCKICONINFO sii{sizeof(sii)};
-    int folder = 0;
-    if (SUCCEEDED(SHGetStockIconInfo(SIID_FOLDER, SHGSI_SYSICONINDEX | SHGSI_SMALLICON, &sii))) folder = sii.iSysImageIndex;
-    int drive = folder;
-    if (SUCCEEDED(SHGetStockIconInfo(SIID_DRIVEFIXED, SHGSI_SYSICONINDEX | SHGSI_SMALLICON, &sii))) drive = sii.iSysImageIndex;
+    int folder = StockIndex(SIID_FOLDER), drive = StockIndex(SIID_DRIVEFIXED);
+    kinds_.assign(items_.size(), 0);
     for (size_t i = 0; i < items_.size(); ++i) {
+        const std::wstring& p = items_[i].path;
+        int icon = folder;
+        if (IsRemoteUrl(p)) {
+            kinds_[i] = 2;
+            icon = StockIndex(SIID_WORLD);
+        } else if (IsNetworkPath(p)) {
+            kinds_[i] = 1;
+            icon = IsNetworkRoot(p) ? StockIndex(SIID_MYNETWORK)
+                   : IsNetworkServer(p) ? StockIndex(SIID_SERVER)
+                   : IsUncShareRoot(p) ? StockIndex(SIID_SERVERSHARE)
+                   : (IsRootPath(p) ? StockIndex(SIID_DRIVENET) : folder);
+        } else if (IsRootPath(p)) {
+            icon = drive;
+        }
         LVITEMW it{};
         it.mask = LVIF_TEXT | LVIF_IMAGE;
         it.iItem = (int)i;
         it.pszText = const_cast<wchar_t*>(items_[i].name.c_str());
-        it.iImage = IsRootPath(items_[i].path) ? drive : folder;
+        it.iImage = icon;
         ListView_InsertItem(list_, &it);
     }
     if (select >= 0 && select < (int)items_.size()) {
@@ -84,8 +106,13 @@ void BookmarkList::Rebuild(int select) {
 int BookmarkList::Selected() const { return ListView_GetNextItem(list_, -1, LVNI_SELECTED); }
 
 int BookmarkList::FindPath(const std::wstring& path) const {
+    auto norm = [](const std::wstring& p) {
+        std::wstring s = NormalizeSpecialLocation(p);
+        return s.empty() ? NormalizeDir(p) : s;
+    };
+    std::wstring target = norm(path);
     for (size_t i = 0; i < items_.size(); ++i)
-        if (EqualsI(NormalizeDir(items_[i].path), NormalizeDir(path))) return (int)i;
+        if (EqualsI(norm(items_[i].path), target)) return (int)i;
     return -1;
 }
 
@@ -134,6 +161,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     AppendMenuW(m, has, MenuDelete, L"&Entfernen\tEntf");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, MenuAddCurrent, L"Aktuelles Verzeichnis &hinzufügen\tStrg+D");
+    AppendMenuW(m, MF_STRING, MenuNewFtp, L"Neuer &FTP/sFTP-Zugriff…");
     UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, GetAncestor(list_, GA_ROOT), nullptr);
     DestroyMenu(m);
     switch (id) {
@@ -146,7 +174,20 @@ void BookmarkList::ContextMenu(POINT pt) {
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
         if (i < 0) break;
-        std::wstring p = BrowseForFolder(GetAncestor(list_, GA_ROOT), L"Neuer Pfad für „" + items_[i].name + L"“", items_[i].path);
+        if (IsRemoteUrl(items_[i].path)) {
+            // FTP/SFTP: Zugangsdialog
+            RemoteAccess a = LoadRemoteAccess(items_[i].path);
+            a.name = items_[i].name;
+            if (EditRemoteAccess(GetAncestor(list_, GA_ROOT), a, false)) {
+                items_[i].name = a.name;
+                items_[i].path = a.url.ToString();
+                Rebuild(i);
+                if (cb_.changed) cb_.changed();
+            }
+            break;
+        }
+        std::wstring start = IsVirtualLocation(items_[i].path) ? L"" : items_[i].path;
+        std::wstring p = BrowseForFolder(GetAncestor(list_, GA_ROOT), L"Neuer Pfad für „" + items_[i].name + L"“", start);
         if (!p.empty()) {
             items_[i].path = p;
             Rebuild(i);
@@ -158,6 +199,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     case MenuDown: MoveSelected(1); break;
     case MenuDelete: DeleteSelected(); break;
     case MenuAddCurrent: PostMessageW(App::MainWindow(), WM_COMMAND, 40400 /* cmd::BookmarkAdd */, 0); break;
+    case MenuNewFtp: PostMessageW(App::MainWindow(), WM_COMMAND, 40401 /* cmd::BookmarkNewRemote */, 0); break;
     }
 }
 
@@ -181,8 +223,12 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
     case LVN_GETINFOTIPW: {
         auto* ti = (NMLVGETINFOTIPW*)nm;
         if (ti->iItem >= 0 && ti->iItem < (int)items_.size()) {
-            std::wstring s = items_[ti->iItem].path;
-            if (!DirExists(s)) s += L"\n(nicht erreichbar)";
+            std::wstring s = LocationDisplay(items_[ti->iItem].path);
+            // Netzwerk und FTP nicht prüfen (nicht erreichbare Server würden die Oberfläche blockieren)
+            if (kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == 2)
+                s += StartsWithI(s, L"sftp://") ? L"\nSFTP-Zugang" : L"\nFTP-Zugang (unverschlüsselt)";
+            else if (!(kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == 1) && !DirExists(s))
+                s += L"\n(nicht erreichbar)";
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         }
         return 0;
@@ -210,6 +256,19 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
     case NM_SETFOCUS:
         if (cb_.activated) cb_.activated();
         return 0;
+    case NM_CUSTOMDRAW: {
+        auto* cd = (NMLVCUSTOMDRAW*)nm;
+        if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+        if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+            size_t i = (size_t)cd->nmcd.dwItemSpec;
+            if (i < kinds_.size() && kinds_[i]) {
+                cd->clrTextBk = kinds_[i] == 2 ? kRemoteBack : kNetworkBack;
+                cd->clrText = RGB(0, 0, 0);
+                return CDRF_NEWFONT;
+            }
+        }
+        return CDRF_DODEFAULT;
+    }
     }
     return 0;
 }

@@ -3,6 +3,8 @@
 #include "Commands.h"
 #include "FileOps.h"
 #include "Glyphs.h"
+#include "Location.h"
+#include "Remote.h"
 #include "ShellMenu.h"
 
 #include <shlobj.h>
@@ -29,6 +31,18 @@ enum : UINT {
     WM_APP_DIRSIZE = WM_APP + 3,
     WM_APP_RENAMESEL = WM_APP + 4,
     WM_APP_DIRSIZE_DONE = WM_APP + 5,
+    WM_APP_NETITEM = WM_APP + 6,
+    WM_APP_NETDONE = WM_APP + 7,
+};
+
+struct NetItemMsg {
+    unsigned gen;
+    NetworkItem item;
+};
+struct NetDoneMsg {
+    unsigned gen;
+    bool ok;
+    DWORD error;
 };
 
 enum : UINT_PTR { TIMER_REFRESH = 1, TIMER_STATUS = 2 };
@@ -93,6 +107,17 @@ std::wstring ExtOf(const std::wstring& name) {
     size_t p = name.find_last_of(L'.');
     if (p == std::wstring::npos || p == 0) return L"";
     return name.substr(p);
+}
+
+// Nur für automatische Tests (Umgebungsvariable QFILES_TEST_PANELOG = Datei): Inhalt der Liste protokollieren
+void TestLogPane(int index, const std::wstring& dir, const std::vector<std::wstring>& names, const std::wstring& status) {
+    wchar_t path[MAX_PATH] = {};
+    if (!GetEnvironmentVariableW(L"QFILES_TEST_PANELOG", path, MAX_PATH)) return;
+    std::wstring line = L"Liste " + std::to_wstring(index + 1) + L" | " + dir + L" | " + Join(names, L", ") + L" | " + status + L"\r\n";
+    std::vector<uint8_t> old;
+    ReadFileBytes(path, old);
+    std::string u = std::string(old.begin(), old.end()) + WideToUtf8(line);
+    WriteFileBytes(path, u.data(), u.size());
 }
 
 void CopyToBuf(wchar_t* buf, int cch, const std::wstring& s) {
@@ -374,8 +399,12 @@ void FilePane::BuildHitRects() {
     // ganz rechts: Split, links daneben: Lesezeichen
     hits_.push_back({HitArea::Split, -1, {x - bs, pad, x, pad + bs}});
     x -= bs + pad;
-    hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
-    int rightLimit = x - bs - ToPx(6);
+    // Lesezeichensymbol entfällt bei FTP/SFTP (Zugänge entstehen über „Lesezeichen → Neuer FTP/sFTP-Zugriff“)
+    if (!IsRemoteUrl(dir_)) {
+        hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
+        x -= bs + pad;
+    }
+    int rightLimit = x - ToPx(6);
     // Laufwerke von links
     HDC dc = GetDC(hwnd_);
     HGDIOBJ old = SelectObject(dc, App::UIFont());
@@ -462,7 +491,7 @@ void FilePane::DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot) {
     switch (area) {
     case HitArea::Back: g = Glyph::Back; enabled = CanGoBack(); break;
     case HitArea::Forward: g = Glyph::Forward; enabled = CanGoForward(); break;
-    case HitArea::Up: g = Glyph::Up; enabled = !dir_.empty() && !IsRootPath(dir_); break;
+    case HitArea::Up: g = Glyph::Up; enabled = !dir_.empty() && LocationHasParent(dir_); break;
     case HitArea::Browse: g = Glyph::Browse; break;
     case HitArea::Split: g = splitButton_ == SplitButton::Split ? Glyph::Split : Glyph::Unsplit; break;
     case HitArea::Bookmark: g = Glyph::Bookmark; break;
@@ -619,7 +648,7 @@ void FilePane::OnClickArea(const HitRect& h) {
     case HitArea::Forward: GoForward(); break;
     case HitArea::Up: GoUp(); break;
     case HitArea::Browse: {
-        std::wstring d = BrowseForFolder(GetAncestor(hwnd_, GA_ROOT), L"Verzeichnis wählen", dir_);
+        std::wstring d = BrowseForFolder(GetAncestor(hwnd_, GA_ROOT), L"Verzeichnis wählen", IsVirtual() ? L"" : dir_);
         if (!d.empty()) Navigate(d);
         break;
     }
@@ -632,11 +661,21 @@ void FilePane::OnClickArea(const HitRect& h) {
 
 bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
     std::vector<DirEntry> entries;
-    if (!ListDirectory(dir, entries, err)) return false;
+    if (IsNetworkVirtual(dir)) {
+        // Rechner bzw. Freigaben werden im Hintergrund gesucht (StartNetScan)
+    } else if (IsRemoteUrl(dir)) {
+        remoteError_.clear();
+        if (!RemoteListDirectory(GetAncestor(hwnd_, GA_ROOT), dir, entries, remoteError_)) {
+            if (err) *err = ERROR_BAD_NETPATH;
+            return false;
+        }
+    } else if (!ListDirectory(dir, entries, err)) {
+        return false;
+    }
     const Options& o = App::Opt();
     std::vector<Item> items;
     items.reserve(entries.size() + 1);
-    if (!IsRootPath(dir)) {
+    if (LocationHasParent(dir)) {
         Item up;
         up.isParent = true;
         up.e.name = L"..";
@@ -730,20 +769,22 @@ void FilePane::FillList(const std::wstring& focusName, const std::vector<std::ws
 }
 
 bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusName, bool addHistory, bool showErrors) {
-    std::wstring dir = NormalizeDir(rawDir);
+    std::wstring special = NormalizeSpecialLocation(rawDir);
+    std::wstring dir = special.empty() ? NormalizeDir(rawDir) : special;
     if (dir.empty()) return false;
     // Datei angegeben -> deren Verzeichnis, Datei fokussieren
     std::wstring focus = focusName;
-    if (FileExists(dir)) {
+    if (special.empty() && FileExists(dir)) {
         focus = PathFileName(dir);
         dir = PathParent(dir);
     }
-    bool sameDir = EqualsI(dir, dir_);
+    bool sameDir = IsRemoteUrl(dir) ? dir == dir_ : EqualsI(dir, dir_);
     std::wstring oldDir = dir_;
     DWORD err = 0;
     if (!ReadDirectory(dir, &err)) {
         if (showErrors) {
-            std::wstring msg = L"Das Verzeichnis „" + dir + L"“ kann nicht geöffnet werden:\n" + LastErrorMessage(err);
+            std::wstring msg = L"Das Verzeichnis „" + dir + L"“ kann nicht geöffnet werden:\n" +
+                               (IsRemoteUrl(dir) ? remoteError_ : LastErrorMessage(err));
             MsgError(GetAncestor(hwnd_, GA_ROOT), msg);
         }
         // items_ ist unverändert (ReadDirectory ändert bei Fehler nichts) und passt weiter zur ListView.
@@ -754,11 +795,21 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         ClearMarks();
         for (auto& it : items_) it.mark = CompareMark::None;
         // Beim Wechsel nach oben: das bisherige Unterverzeichnis fokussieren
-        if (focus.empty() && !oldDir.empty() && EqualsI(PathParent(oldDir), dir)) focus = PathFileName(oldDir);
+        if (focus.empty() && !oldDir.empty() && EqualsI(LocationParent(oldDir), dir)) focus = LocationFileName(oldDir);
     }
+    bool remoteChanged = IsRemoteUrl(dir) != IsRemoteUrl(dir_);
     dir_ = dir;
+    if (remoteChanged) BuildHitRects();
     SortItems();
     FillList(focus, {}, 0);
+    if (IsNetworkVirtual(dir_)) {
+        pendingFocus_ = focus;
+        StartNetScan();
+    } else {
+        CancelScan();
+        netCancelled_ = false;
+        pendingFocus_.clear();
+    }
     if (!sameDir) {
         if (addHistory) {
             // Vorwärtsliste abschneiden
@@ -769,23 +820,26 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         }
         AddHistory(dir_);
         // Letztes Verzeichnis je Laufwerk merken
-        std::wstring root = PathRoot(dir_);
+        std::wstring root = IsVirtual() ? L"" : PathRoot(dir_);
         bool found = false;
         for (auto& p : lastDirPerDrive_)
             if (EqualsI(p.first, root)) {
                 p.second = dir_;
                 found = true;
             }
-        if (!found) lastDirPerDrive_.emplace_back(root, dir_);
+        if (!found && !root.empty()) lastDirPerDrive_.emplace_back(root, dir_);
         StartWatch();
         if (sizeCancel_) *sizeCancel_ = true;
     }
-    // Freier Speicher
-    ULARGE_INTEGER freeAvail{};
-    freeKnown_ = GetDiskFreeSpaceExW(dir_.c_str(), &freeAvail, nullptr, nullptr) != 0;
-    freeBytes_ = freeAvail.QuadPart;
+    UpdateFreeSpace();
     UpdatePathCombo();
     UpdateStatus();
+    if (!IsNetworkVirtual(dir_)) {
+        std::vector<std::wstring> names;
+        for (auto& it : items_)
+            if (!it.isParent) names.push_back(it.e.name);
+        TestLogPane(index_, dir_, names, statusText_);
+    }
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
     InvalidateRect(hwnd_, &rcPath_, FALSE);
     if (host_) {
@@ -797,6 +851,16 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
 
 void FilePane::Reload() {
     if (dir_.empty()) return;
+    if (IsNetworkVirtual(dir_)) {
+        // Netzwerk erneut durchsuchen
+        std::wstring focus = FocusedName();
+        DWORD e = 0;
+        ReadDirectory(dir_, &e);
+        FillList(L"", {}, 0);
+        pendingFocus_ = focus;
+        StartNetScan();
+        return;
+    }
     std::wstring focus;
     int fi = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
     if (fi >= 0 && fi < (int)items_.size()) focus = items_[fi].e.name;
@@ -811,6 +875,12 @@ void FilePane::Reload() {
         if (it.dirSize != UINT64_MAX) sizes[ToLower(it.e.name)] = it.dirSize;
     DWORD err = 0;
     if (!ReadDirectory(dir_, &err)) {
+        if (IsRemoteUrl(dir_)) {
+            // FTP/SFTP: Inhalt behalten, Fehler in der Statuszeile
+            statusText_ = L"Fehler: " + remoteError_;
+            InvalidateRect(hwnd_, &rcStatus_, FALSE);
+            return;
+        }
         // Verzeichnis existiert nicht mehr: zum nächsten vorhandenen Elternverzeichnis
         std::wstring old = dir_;
         // Vorhandenes, aber nicht lesbares Verzeichnis (z. B. Zugriff verweigert): zum Elternverzeichnis
@@ -830,21 +900,111 @@ void FilePane::Reload() {
     if (!focus.empty() && FindItem(focus) < 0 && fi >= 0 && !items_.empty())
         focus = items_[std::min<int>(fi, (int)items_.size() - 1)].e.name;
     FillList(focus, sel, top);
-    ULARGE_INTEGER freeAvail{};
-    freeKnown_ = GetDiskFreeSpaceExW(dir_.c_str(), &freeAvail, nullptr, nullptr) != 0;
-    freeBytes_ = freeAvail.QuadPart;
+    UpdateFreeSpace();
     UpdateStatus();
     if (host_) host_->OnPaneFocusItemChanged(this);
 }
 
+// Belegter und freier Speicher des Laufwerks bzw. der Freigabe
+void FilePane::UpdateFreeSpace() {
+    ULARGE_INTEGER freeAvail{}, total{}, totalFree{};
+    freeKnown_ = !IsVirtualLocation(dir_) &&
+                 GetDiskFreeSpaceExW(dir_.c_str(), &freeAvail, &total, &totalFree) != 0;
+    freeBytes_ = freeKnown_ ? freeAvail.QuadPart : 0;
+    usedBytes_ = freeKnown_ && total.QuadPart >= totalFree.QuadPart ? total.QuadPart - totalFree.QuadPart : 0;
+}
+
 void FilePane::GoUp() {
-    if (dir_.empty() || IsRootPath(dir_)) return;
-    Navigate(PathParent(dir_), PathFileName(dir_));
+    if (dir_.empty()) return;
+    std::wstring parent = LocationParent(dir_);
+    if (parent.empty()) return;
+    Navigate(parent, LocationFileName(dir_));
 }
 
 void FilePane::GoRoot() {
+    if (IsRemoteUrl(dir_)) {
+        RemoteUrl u;
+        if (ParseRemoteUrl(dir_, u)) {
+            u.path = L"/";
+            Navigate(u.ToString());
+        }
+        return;
+    }
+    if (IsNetworkVirtual(dir_)) {
+        Navigate(kNetworkRoot);
+        return;
+    }
     std::wstring r = PathRoot(dir_);
     if (!r.empty()) Navigate(r);
+}
+
+bool FilePane::IsRemote() const { return IsRemoteUrl(dir_); }
+bool FilePane::IsNetworkLevel() const { return IsNetworkVirtual(dir_); }
+bool FilePane::IsVirtual() const { return IsVirtualLocation(dir_); }
+std::wstring FilePane::Combine(const std::wstring& name) const { return LocationCombine(dir_, name); }
+
+void FilePane::CancelScan() {
+    if (netScan_) netScan_->cancel = true;
+    netScan_.reset();
+    if (netScanning_) {
+        netScanning_ = false;
+        netCancelled_ = true;
+        ++netGen_;
+        UpdateStatus();
+    }
+}
+
+void FilePane::StartNetScan() {
+    if (netScan_) netScan_->cancel = true;
+    unsigned gen = ++netGen_;
+    HWND hwnd = hwnd_;
+    netScanning_ = true;
+    netCancelled_ = false;
+    netError_.clear();
+    netScan_ = StartNetworkScan(
+        dir_, App::Opt().showHidden,
+        [hwnd, gen](const NetworkItem& it) {
+            auto* m = new NetItemMsg{gen, it};
+            if (!PostMessageW(hwnd, WM_APP_NETITEM, 0, (LPARAM)m)) delete m;
+        },
+        [hwnd, gen](bool ok, DWORD error) {
+            auto* m = new NetDoneMsg{gen, ok, error};
+            if (!PostMessageW(hwnd, WM_APP_NETDONE, 0, (LPARAM)m)) delete m;
+        });
+    UpdateStatus();
+}
+
+void FilePane::OnNetItem(LPARAM lp) {
+    std::unique_ptr<NetItemMsg> m((NetItemMsg*)lp);
+    if (m->gen != netGen_ || !IsNetworkVirtual(dir_)) return;
+    if (FindItem(m->item.name) >= 0) return;
+    std::wstring focus = FocusedName();
+    if (focus.empty() && !pendingFocus_.empty() && EqualsI(pendingFocus_, m->item.name)) focus = pendingFocus_;
+    auto sel = SelectedNames();
+    int top = ListView_GetTopIndex(list_);
+    Item it;
+    it.e.name = m->item.name;
+    it.e.attributes = FILE_ATTRIBUTE_DIRECTORY;
+    it.netKind = IsNetworkRoot(dir_) ? 1 : 2;
+    netComments_[ToLower(it.e.name)] = m->item.comment;
+    items_.push_back(it);
+    SortItems();
+    bool hadFocus = GetFocus() == list_;
+    FillList(focus, sel, top);
+    if (hadFocus) SetFocus(list_);
+}
+
+void FilePane::OnNetDone(LPARAM lp) {
+    std::unique_ptr<NetDoneMsg> m((NetDoneMsg*)lp);
+    if (m->gen != netGen_) return;
+    netScanning_ = false;
+    netScan_.reset();
+    if (!m->ok) netError_ = m->error ? LastErrorMessage(m->error) : L"Keine Freigaben gefunden.";
+    UpdateStatus();
+    std::vector<std::wstring> names;
+    for (auto& it : items_)
+        if (!it.isParent) names.push_back(it.e.name);
+    TestLogPane(index_, dir_, names, statusText_);
 }
 
 void FilePane::GoBack() {
@@ -874,8 +1034,8 @@ void FilePane::AddHistory(const std::wstring& dir) {
 
 void FilePane::UpdatePathCombo() {
     SendMessageW(pathCombo_, CB_RESETCONTENT, 0, 0);
-    for (auto& r : recent_) SendMessageW(pathCombo_, CB_ADDSTRING, 0, (LPARAM)r.c_str());
-    SetWindowTextW(pathCombo_, dir_.c_str());
+    for (auto& r : recent_) SendMessageW(pathCombo_, CB_ADDSTRING, 0, (LPARAM)LocationDisplay(r).c_str());
+    SetWindowTextW(pathCombo_, LocationDisplay(dir_).c_str());
     // Keine Markierung im Textfeld, Schreibmarke ans Ende (zeigt das letzte Glied des Pfads)
     if (pathEdit_ && GetFocus() != pathEdit_) {
         int len = GetWindowTextLengthW(pathEdit_);
@@ -884,8 +1044,8 @@ void FilePane::UpdatePathCombo() {
 }
 
 std::wstring FilePane::ItemFullPath(const Item& it) const {
-    if (it.isParent) return PathParent(dir_);
-    return PathCombine(dir_, it.e.name);
+    if (it.isParent) return LocationParent(dir_);
+    return Combine(it.e.name);
 }
 
 int FilePane::ItemIconIndex(Item& it) {
@@ -893,6 +1053,10 @@ int FilePane::ItemIconIndex(Item& it) {
     SHFILEINFOW sfi{};
     if (it.isParent) {
         it.icon = StockIcon(SIID_FOLDERBACK);
+        return it.icon;
+    }
+    if (it.netKind) {
+        it.icon = StockIcon(it.netKind == 1 ? SIID_SERVER : SIID_SERVERSHARE);
         return it.icon;
     }
     if (it.e.IsDir()) {
@@ -905,7 +1069,7 @@ int FilePane::ItemIconIndex(Item& it) {
         return it.icon;
     }
     std::wstring ext = ToLower(ExtOf(it.e.name));
-    if (HasOwnIcon(ext)) {
+    if (HasOwnIcon(ext) && !IsVirtual()) {
         if (SHGetFileInfoW(LongPath(PathCombine(dir_, it.e.name)).c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON))
             it.icon = sfi.iIcon;
         else
@@ -936,6 +1100,8 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
         case ColName: s = it.e.name; break;
         case ColExt:
             if (it.isParent) s = L"";
+            else if (it.netKind == 1) s = L"<Rechner>";
+            else if (it.netKind == 2) s = L"<Freigabe>";
             else if (it.e.IsDir()) s = L"<Verz>";
             else {
                 s = ExtOf(it.e.name);
@@ -965,7 +1131,7 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
                 di->item.iImage = it.thumb;
             } else {
                 di->item.iImage = 0;
-                if (it.thumb == -1 && !it.isParent) {
+                if (it.thumb == -1 && !it.isParent && !IsVirtual()) {
                     it.thumb = -2;
                     RequestThumb(i);
                 }
@@ -1036,10 +1202,19 @@ void FilePane::UpdateStatus() {
         }
     }
     std::wstring s = IntToStr((long long)dirs) + L" Verz., " + IntToStr((long long)files) + L" Dateien (" + FormatSize(total) + L")";
+    if (IsNetworkVirtual(dir_)) {
+        bool root = IsNetworkRoot(dir_);
+        s = IntToStr((long long)dirs) + (root ? L" Rechner" : (dirs == 1 ? L" Freigabe" : L" Freigaben"));
+        if (netScanning_) s += root ? L" – Netzwerk wird durchsucht … (Esc bricht ab)" : L" – wird gelesen … (Esc bricht ab)";
+        else if (netCancelled_) s += L" – Suche abgebrochen";
+        else if (!netError_.empty() && dirs == 0) s += L" – " + netError_;
+    } else if (IsRemoteUrl(dir_)) {
+        s += StartsWithI(dir_, L"sftp://") ? L"  –  SFTP" : L"  –  FTP (unverschlüsselt)";
+    }
     if (selFiles + selDirs)
         s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
     if (filter_.IsActive()) s += L"  –  Filter: " + filter_.include + (filter_.exclude.empty() ? L"" : (L" ohne " + filter_.exclude));
-    if (freeKnown_) s += L"  –  frei: " + FormatSize(freeBytes_);
+    if (freeKnown_) s += L"  –  belegt: " + FormatSize(usedBytes_) + L", frei: " + FormatSize(freeBytes_);
     statusText_ = s;
     InvalidateRect(hwnd_, &rcStatus_, FALSE);
 }
@@ -1056,7 +1231,7 @@ std::vector<std::wstring> FilePane::SelectedNames() const {
 
 std::vector<std::wstring> FilePane::SelectedPaths() const {
     std::vector<std::wstring> r;
-    for (auto& n : SelectedNames()) r.push_back(PathCombine(dir_, n));
+    for (auto& n : SelectedNames()) r.push_back(Combine(n));
     return r;
 }
 
@@ -1068,7 +1243,14 @@ std::wstring FilePane::FocusedName() const {
 
 std::wstring FilePane::FocusedPath() const {
     std::wstring n = FocusedName();
-    return n.empty() ? L"" : PathCombine(dir_, n);
+    return n.empty() ? L"" : Combine(n);
+}
+
+bool FilePane::FocusedEntry(DirEntry& out) const {
+    int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
+    if (i < 0 || i >= (int)items_.size() || items_[i].isParent) return false;
+    out = items_[i].e;
+    return true;
 }
 
 bool FilePane::FocusedIsDir() const {
@@ -1092,7 +1274,7 @@ std::vector<std::wstring> FilePane::SelectedOrFocusedNames() const {
 
 std::vector<std::wstring> FilePane::SelectedOrFocusedPaths() const {
     std::vector<std::wstring> r;
-    for (auto& n : SelectedOrFocusedNames()) r.push_back(PathCombine(dir_, n));
+    for (auto& n : SelectedOrFocusedNames()) r.push_back(Combine(n));
     return r;
 }
 
@@ -1250,14 +1432,14 @@ void FilePane::OpenFocused() {
         return;
     }
     if (items_[i].e.IsDir()) {
-        Navigate(PathCombine(dir_, items_[i].e.name));
+        Navigate(Combine(items_[i].e.name));
         return;
     }
     if (host_) host_->OnPaneOpenItem(this);
 }
 
 std::wstring FilePane::DropTargetDirAt(POINT screenPt) const {
-    if (dir_.empty()) return L"";
+    if (dir_.empty() || IsVirtual()) return L"";
     LVHITTESTINFO ht{};
     ht.pt = screenPt;
     ScreenToClient(list_, &ht.pt);
@@ -1301,6 +1483,7 @@ void FilePane::QuickViewLoad(const std::wstring& path) {
 // ===================== Verzeichnisgrößen =====================
 
 void FilePane::ComputeDirSizes(bool selectedOnly) {
+    if (IsVirtual()) return;
     std::vector<std::wstring> names;
     if (selectedOnly) {
         for (auto& n : SelectedOrFocusedNames()) {
@@ -1470,7 +1653,7 @@ void FilePane::OnThumbReady(WPARAM, LPARAM lp) {
 
 void FilePane::StartWatch() {
     StopWatch();
-    if (!App::Opt().autoRefresh || dir_.empty()) return;
+    if (!App::Opt().autoRefresh || dir_.empty() || IsVirtual()) return;
     watchStop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE stop = watchStop_;
     HWND hwnd = hwnd_;
@@ -1568,10 +1751,15 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
             if (GetKeyState(VK_SHIFT) < 0) {
                 // Umschalt+Eingabe: mit Standardprogramm öffnen
                 std::wstring p = self->FocusedPath();
-                if (!p.empty()) ShellOpen(GetAncestor(h, GA_ROOT), p, L"", self->dir_);
+                if (self->IsVirtual()) self->OpenFocused();
+                else if (!p.empty()) ShellOpen(GetAncestor(h, GA_ROOT), p, L"", self->dir_);
             } else {
                 self->OpenFocused();
             }
+            return 0;
+        }
+        if (wp == VK_ESCAPE && self->netScanning_) {
+            self->CancelScan();
             return 0;
         }
         if (wp == VK_INSERT && GetKeyState(VK_CONTROL) >= 0 && GetKeyState(VK_SHIFT) >= 0) {
@@ -1613,7 +1801,7 @@ LRESULT CALLBACK FilePane::PathEditSubclass(HWND h, UINT msg, WPARAM wp, LPARAM 
             return 0;
         }
         if (wp == VK_ESCAPE) {
-            SetWindowTextW(self->pathCombo_, self->dir_.c_str());
+            SetWindowTextW(self->pathCombo_, LocationDisplay(self->dir_).c_str());
             self->FocusList();
             return 0;
         }
@@ -1689,6 +1877,7 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
     case LVN_BEGINLABELEDITW: {
         auto* di = (NMLVDISPINFOW*)nm;
         if (di->item.iItem < 0 || di->item.iItem >= (int)items_.size() || items_[di->item.iItem].isParent) return TRUE;
+        if (IsNetworkVirtual(dir_)) return TRUE;
         HWND edit = ListView_GetEditControl(list_);
         if (edit) {
             SendMessageW(edit, EM_LIMITTEXT, 255, 0);
@@ -1703,7 +1892,9 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         std::wstring newName = Trim(di->item.pszText);
         std::wstring old = items_[i].e.name;
         if (newName.empty() || newName == old) return FALSE;
-        if (RenameItem(GetAncestor(hwnd_, GA_ROOT), PathCombine(dir_, old), newName)) {
+        bool renamed = IsRemoteUrl(dir_) ? RemoteRename(GetAncestor(hwnd_, GA_ROOT), Combine(old), newName)
+                                         : RenameItem(GetAncestor(hwnd_, GA_ROOT), PathCombine(dir_, old), newName);
+        if (renamed) {
             items_[i].e.name = newName;
             items_[i].icon = -1;
             SortItems();
@@ -1715,7 +1906,7 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
     case LVN_BEGINDRAG:
     case LVN_BEGINRDRAG: {
         auto names = SelectedNames();
-        if (names.empty()) return 0;
+        if (names.empty() || IsVirtual()) return 0;
         StartFileDrag(hwnd_, dir_, names);
         Reload();
         if (host_) host_->OnPaneFilesDropped(this);
@@ -1736,8 +1927,15 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         auto* ti = (NMLVGETINFOTIPW*)nm;
         if (ti->iItem >= 0 && ti->iItem < (int)items_.size() && !items_[ti->iItem].isParent) {
             const Item& it = items_[ti->iItem];
-            std::wstring s = it.e.name + L"\n" + FormatFileTime(it.e.modified, true);
-            if (!it.e.IsDir()) s += L"\n" + FormatSizeBytes(it.e.size) + L" Bytes";
+            std::wstring s = it.e.name;
+            if (it.netKind) {
+                auto c = netComments_.find(ToLower(it.e.name));
+                s = Combine(it.e.name);
+                if (c != netComments_.end() && !c->second.empty()) s += L"\n" + c->second;
+            } else {
+                s += L"\n" + FormatFileTime(it.e.modified, true);
+                if (!it.e.IsDir()) s += L"\n" + FormatSizeBytes(it.e.size) + L" Bytes";
+            }
             CopyToBuf(ti->pszText, ti->cchTextMax, s);
         }
         return 0;
@@ -1885,6 +2083,12 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         delete r;
         return 0;
     }
+    case WM_APP_NETITEM:
+        OnNetItem(lp);
+        return 0;
+    case WM_APP_NETDONE:
+        OnNetDone(lp);
+        return 0;
     case WM_APP_DIRSIZE_DONE:
         if ((unsigned)wp == generation_) {
             if (sortKey_ == SortKey::Size) SetSort(sortKey_, sortDesc_);
@@ -1906,6 +2110,7 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY:
         StopWatch();
         StopThumbWorker();
+        if (netScan_) netScan_->cancel = true;
         return 0;
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);

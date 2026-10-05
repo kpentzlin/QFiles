@@ -5,7 +5,9 @@
 #include "FileOps.h"
 #include "Glyphs.h"
 #include "HexView.h"
+#include "Location.h"
 #include "Modules.h"
+#include "Remote.h"
 #include "ShellMenu.h"
 #include "TextEditor.h"
 #include "Util.h"
@@ -27,7 +29,7 @@ namespace {
 const wchar_t* kMainClass = L"QFilesMain";
 MainWindow* g_main = nullptr;
 
-enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2 };
+enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3 };
 constexpr int kSplitterW = 5;
 constexpr int kCaptionH = 26;  // = Kopfzeile der Listen
 constexpr int kFKeyH = 26;
@@ -359,6 +361,8 @@ bool MainWindow::Create(int nCmdShow) {
     for (int i = 0; i < 4; ++i) {
         std::wstring d = c.Get(L"Liste" + std::to_wstring(i + 1), L"Verzeichnis");
         if (i < 2 && i < (int)dirs.size()) d = dirs[i];
+        // FTP/SFTP beim Start nur mit gespeicherter Anmeldung (keine Kennwortabfrage beim Programmstart)
+        if (IsRemoteUrl(d) && !HasSavedRemoteLogin(d)) d.clear();
         if (d.empty() || !panes_[i]->Navigate(d, L"", true, false)) {
             if (!panes_[i]->Navigate(defaults[i], L"", true, false)) panes_[i]->Navigate(L"C:\\", L"", true, false);
         }
@@ -372,6 +376,7 @@ bool MainWindow::Create(int nCmdShow) {
     UpdateWindow(hwnd_);
     SetActive(active_, true);
     SetTimer(hwnd_, TIMER_FKEYMODE, 150, nullptr);
+    SetTimer(hwnd_, TIMER_REMOTEEDIT, 2000, nullptr);
     return true;
 }
 
@@ -565,12 +570,13 @@ void MainWindow::BuildMenu() {
 void MainWindow::BuildBookmarkMenu(HMENU m) {
     while (GetMenuItemCount(m) > 0) DeleteMenu(m, 0, MF_BYPOSITION);
     AddItem(m, cmd::BookmarkAdd, L"Gewähltes Verzeichnis &hinzufügen…\tStrg+D");
+    AddItem(m, cmd::BookmarkNewRemote, L"Neuer &FTP/sFTP-Zugriff…");
     AddItem(m, cmd::FocusBookmarks, L"Lesezeichenliste &bearbeiten\tAlt+F2");
     const auto& b = bookmarks_.Get();
     if (!b.empty()) AddSep(m);
     for (size_t i = 0; i < b.size() && i <= (size_t)(cmd::BookmarkLast - cmd::BookmarkFirst); ++i) {
         std::wstring t = (i < 9 ? (L"&" + std::to_wstring(i + 1) + L"  ") : L"    ") + ReplaceAll(b[i].name, L"&", L"&&") +
-                         L"\t" + b[i].path;
+                         L"\t" + ReplaceAll(LocationDisplay(b[i].path), L"&", L"&&");
         AddItem(m, cmd::BookmarkFirst + (int)i, t.c_str());
     }
 }
@@ -609,7 +615,19 @@ void MainWindow::UpdateMenu(HMENU m) {
     enable(cmd::OpenArchive, focusedFile && IsArchive(a.FocusedName()));
     enable(cmd::GoBack, a.CanGoBack());
     enable(cmd::GoForward, a.CanGoForward());
-    enable(cmd::GoUp, !IsRootPath(a.Dir()));
+    enable(cmd::GoUp, LocationHasParent(a.Dir()));
+    if (a.IsVirtual()) {
+        // Netzwerkebenen und FTP/SFTP: nicht unterstützte Befehle sperren
+        std::vector<int> off = {cmd::Wipe, cmd::Duplicate, cmd::ClipCut, cmd::ClipCopy, cmd::ClipPaste, cmd::Attributes,
+                                cmd::CreateZip, cmd::Properties, cmd::SplitFile, cmd::JoinFiles, cmd::OpenArchive,
+                                cmd::PrintList, cmd::FindFiles, cmd::FindDuplicates, cmd::CompareFiles, cmd::CompareDirs,
+                                cmd::SyncDirs, cmd::DirSizes, cmd::Undo};
+        if (a.IsNetworkLevel())
+            for (int id : {cmd::Copy, cmd::Move, cmd::Delete, cmd::DeletePermanent, cmd::Rename, cmd::BatchRename, cmd::Edit,
+                           cmd::HexEdit, cmd::ViewWindow, cmd::OpenWith, cmd::NewFolder, cmd::NewFile, cmd::NewTextFile})
+                off.push_back(id);
+        for (int id : off) enable(id, false);
+    }
     enable(cmd::GoOtherSame, Other() != nullptr);
     enable(cmd::SwapPanes, Other() != nullptr);
     enable(cmd::CompareDirs, Other() != nullptr);
@@ -1139,8 +1157,9 @@ FilePane* MainWindow::Other() {
 }
 
 std::wstring MainWindow::OtherDir() {
+    // Nur gewöhnliche Verzeichnisse (Ziel für Entpacken, Teilen usw.); FTP/Netzwerkebenen -> ""
     FilePane* o = Other();
-    return o ? o->Dir() : L"";
+    return o && !o->IsVirtual() ? o->Dir() : L"";
 }
 
 void MainWindow::SetActive(int index, bool focus) {
@@ -1163,7 +1182,8 @@ void MainWindow::SetSplit(int column, bool on) {
     if (on) {
         // Untere Liste zeigt zunächst dasselbe Verzeichnis
         FilePane& bottom = *panes_[column + 2];
-        if (bottom.Dir().empty() || !DirExists(bottom.Dir())) bottom.Navigate(panes_[column]->Dir(), L"", true, false);
+        if (bottom.Dir().empty() || (!bottom.IsVirtual() && !DirExists(bottom.Dir())))
+            bottom.Navigate(panes_[column]->Dir(), L"", true, false);
     } else if (active_ == column + 2) {
         active_ = column;
     }
@@ -1220,12 +1240,12 @@ void MainWindow::UpdateQuickView() {
 }
 
 void MainWindow::UpdateTitle() {
-    std::wstring t = L"QFiles – " + Active().Dir();
+    std::wstring t = L"QFiles – " + LocationDisplay(Active().Dir());
     SetWindowTextW(hwnd_, t.c_str());
 }
 
 void MainWindow::UpdateCmdLabel() {
-    std::wstring t = Active().Dir() + L">";
+    std::wstring t = LocationDisplay(Active().Dir()) + L">";
     SetWindowTextW(cmdLabel_, t.c_str());
 }
 
@@ -1233,7 +1253,14 @@ void MainWindow::UpdateStatusBar() {
     FilePane& a = Active();
     std::wstring left;
     std::wstring p = a.FocusedPath();
-    if (!p.empty()) {
+    DirEntry fe;
+    if (a.IsVirtual() && a.FocusedEntry(fe)) {
+        left = fe.name;
+        if (!a.IsNetworkLevel()) {
+            if (!fe.IsDir()) left += L"   " + FormatSizeBytes(fe.size) + L" Bytes";
+            left += L"   " + FormatFileTime(fe.modified, true);
+        }
+    } else if (!p.empty()) {
         WIN32_FILE_ATTRIBUTE_DATA d{};
         if (GetFileAttributesExW(LongPath(p).c_str(), GetFileExInfoStandard, &d)) {
             uint64_t size = ((uint64_t)d.nFileSizeHigh << 32) | d.nFileSizeLow;
@@ -1281,15 +1308,23 @@ void MainWindow::OnPaneBookmarkButton(FilePane* p) {
 void MainWindow::AddBookmarkFor(FilePane& p) {
     std::wstring dir = p.Dir();
     if (dir.empty()) return;
-    std::wstring name = LastPathElement(dir);
+    if (p.IsRemote()) {
+        // FTP/SFTP: Lesezeichen über den Zugangsdialog (mit diesem Verzeichnis als Start)
+        RemoteAccess a = LoadRemoteAccess(dir);
+        a.name = LocationFileName(dir);
+        if (EditRemoteAccess(hwnd_, a, true)) bookmarks_.Append(a.name, a.url.ToString());
+        return;
+    }
+    std::wstring name = IsVirtualLocation(dir) ? LocationFileName(dir) : LastPathElement(dir);
     std::wstring hint;
     int existing = bookmarks_.FindPath(dir);
     if (existing >= 0)
         hint = L"Hinweis: Dieses Verzeichnis steht bereits als „" + bookmarks_.Get()[existing].name +
                L"“ in der Lesezeichenliste.";
-    if (!InputBox(hwnd_, L"Lesezeichen hinzufügen", L"Name des Lesezeichens für „" + dir + L"“:", name, hint)) return;
+    if (!InputBox(hwnd_, L"Lesezeichen hinzufügen", L"Name des Lesezeichens für „" + LocationDisplay(dir) + L"“:", name, hint))
+        return;
     name = Trim(name);
-    if (name.empty()) name = LastPathElement(dir);
+    if (name.empty()) name = IsVirtualLocation(dir) ? LocationFileName(dir) : LastPathElement(dir);
     bookmarks_.Append(name, dir);
 }
 
@@ -1298,6 +1333,10 @@ void MainWindow::OnPaneOpenItem(FilePane* p) { OpenFileItem(*p); }
 void MainWindow::OpenFileItem(FilePane& p) {
     std::wstring path = p.FocusedPath();
     if (path.empty()) return;
+    if (p.IsRemote()) {
+        RemoteOpenFocused(p, RemoteOpenMode::Open);
+        return;
+    }
     const Options& o = App::Opt();
     std::wstring name = PathFileName(path);
     if (IsArchive(name)) {
@@ -1314,6 +1353,10 @@ void MainWindow::OpenFileItem(FilePane& p) {
 
 void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
     SetActive(p->Index(), false);
+    if (p->IsVirtual()) {
+        ShowVirtualContextMenu(*p, pt, onItems);
+        return;
+    }
     HMENU extra = CreatePopupMenu();
     std::vector<std::wstring> names;
     if (onItems) {
@@ -1497,7 +1540,7 @@ void MainWindow::RunCommandLine() {
     STARTUPINFOW si{sizeof(si)};
     PROCESS_INFORMATION pi{};
     if (CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
-                       nullptr, a.Dir().c_str(), &si, &pi)) {
+                       nullptr, a.IsVirtual() ? nullptr : a.Dir().c_str(), &si, &pi)) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         LogOperation(L"Befehl in " + a.Dir() + L": " + cmdText);
@@ -1589,8 +1632,274 @@ void MainWindow::ShowShortcuts() {
     dlg.DoModal(hwnd_, t);
 }
 
+// ===================== Netzwerkebenen und FTP/SFTP =====================
+
+void MainWindow::RemoteOpenFocused(FilePane& p, RemoteOpenMode mode) {
+    std::wstring url = p.FocusedPath();
+    if (url.empty() || p.FocusedIsDir()) return;
+    std::wstring local, err;
+    if (!RemoteDownloadTemp(hwnd_, url, local, err)) {
+        if (err != L"Abgebrochen.") MsgError(hwnd_, L"„" + LocationFileName(url) + L"“ kann nicht geladen werden:\n" + err);
+        return;
+    }
+    const Options& o = App::Opt();
+    switch (mode) {
+    case RemoteOpenMode::Open:
+        if (IsArchive(local)) {
+            std::wstring target = OtherDir();
+            ShowArchive(hwnd_, local, target.empty() ? PathParent(local) : target);
+        } else if (o.enterOpensEditorForText && MatchAnyPattern(o.textExtensions, PathFileName(local))) {
+            RemoteEditRegister(local, url);
+            OpenTextEditor(local);
+        } else {
+            // Mit dem Standardprogramm öffnen; Änderungen werden nach dem Speichern hochgeladen
+            RemoteEditRegister(local, url);
+            ShellOpen(hwnd_, local, L"", PathParent(local));
+        }
+        break;
+    case RemoteOpenMode::View:
+        if (!o.externalViewer.empty()) RunProcess(Quote(o.externalViewer) + L" \"" + local + L"\"", PathParent(local));
+        else OpenViewerWindow(local);
+        break;
+    case RemoteOpenMode::Edit:
+        RemoteEditRegister(local, url);
+        if (!o.externalEditor.empty()) RunProcess(L"\"" + o.externalEditor + L"\" \"" + local + L"\"", PathParent(local));
+        else OpenTextEditor(local);
+        break;
+    case RemoteOpenMode::Hex:
+        RemoteEditRegister(local, url);
+        OpenHexEditor(local);
+        break;
+    case RemoteOpenMode::OpenWith: {
+        RemoteEditRegister(local, url);
+        OPENASINFO oi{};
+        oi.pcszFile = local.c_str();
+        oi.oaifInFlags = OAIF_ALLOW_REGISTRATION | OAIF_EXEC;
+        SHOpenWithDialog(hwnd_, &oi);
+        break;
+    }
+    }
+}
+
+void MainWindow::RemoteCopyOrMove(bool move) {
+    FilePane& a = Active();
+    auto sources = a.SelectedOrFocusedPaths();
+    if (sources.empty()) return;
+    FilePane* o = Other();
+    std::wstring target;
+    if (o && !o->IsNetworkLevel() && !(quickView_ && o->Index() == quickViewPane_)) target = o->Dir();
+    std::wstring what = sources.size() == 1 ? (L"„" + LocationFileName(sources[0]) + L"“") : (std::to_wstring(sources.size()) + L" Elemente");
+    if (!InputBox(hwnd_, move ? L"Verschieben" : L"Kopieren",
+                  what + (move ? L" verschieben nach (Verzeichnis oder ftp://…, sftp://…):" : L" kopieren nach (Verzeichnis oder ftp://…, sftp://…):"),
+                  target))
+        return;
+    target = Trim(target);
+    if (target.size() >= 2 && target.front() == L'"' && target.back() == L'"') target = target.substr(1, target.size() - 2);
+    if (target.empty()) return;
+    if (IsNetworkVirtual(target)) {
+        MsgError(hwnd_, L"Bitte eine Freigabe bzw. ein Verzeichnis als Ziel angeben.");
+        return;
+    }
+    if (!IsRemoteUrl(target)) {
+        if (!(target.size() >= 2 && (target[1] == L':' || StartsWithI(target, L"\\\\")))) {
+            if (a.IsVirtual()) {
+                MsgError(hwnd_, L"Bitte einen vollständigen Zielpfad angeben.");
+                return;
+            }
+            target = PathCombine(a.Dir(), target);
+        }
+        target = NormalizeDir(target);
+        if (!DirExists(target)) {
+            if (!MsgConfirm(hwnd_, L"Das Zielverzeichnis „" + target + L"“ existiert nicht. Anlegen?")) return;
+            if (SHCreateDirectoryExW(hwnd_, target.c_str(), nullptr) != ERROR_SUCCESS) {
+                MsgError(hwnd_, L"Das Verzeichnis kann nicht angelegt werden.");
+                return;
+            }
+        }
+        if (!a.IsRemote()) {
+            // lokal -> lokal: gewöhnliches Kopieren
+            if (move) MoveItems(hwnd_, sources, target);
+            else CopyItems(hwnd_, sources, target);
+            a.SelectNone();
+            ReloadVisible();
+            return;
+        }
+    } else {
+        target = NormalizeSpecialLocation(target);
+    }
+    RemoteTransfer(hwnd_, sources, target, move);
+    a.SelectNone();
+    ReloadVisible();
+}
+
+void MainWindow::ShowVirtualContextMenu(FilePane& p, POINT pt, bool onItems) {
+    HMENU m = CreatePopupMenu();
+    if (p.IsNetworkLevel()) {
+        if (onItems) {
+            AddItem(m, cmd::Open, L"Ö&ffnen\tEingabe");
+            AddItem(m, cmd::CopyPaths, L"&Pfad kopieren");
+            AddSep(m);
+        }
+        AddItem(m, cmd::Refresh, L"&Aktualisieren (erneut suchen)\tF5");
+        AddItem(m, cmd::BookmarkAdd, L"Den &Lesezeichen hinzufügen\tStrg+D");
+    } else {
+        if (onItems) {
+            bool file = !p.FocusedIsDir();
+            AddItem(m, cmd::Open, L"Ö&ffnen\tEingabe");
+            if (file) {
+                AddItem(m, cmd::View, L"&Anzeigen\tF11");
+                AddItem(m, cmd::Edit, L"&Bearbeiten\tF4");
+                AddItem(m, cmd::OpenWith, L"Öffnen &mit…");
+            }
+            AddSep(m);
+            AddItem(m, cmd::Copy, L"&Kopieren in andere Liste\tUmschalt+F5");
+            AddItem(m, cmd::Move, L"&Verschieben in andere Liste\tUmschalt+F6");
+            AddItem(m, cmd::Rename, L"&Umbenennen…\tF2");
+            AddItem(m, cmd::Delete, L"&Löschen\tEntf");
+            AddSep(m);
+            AddItem(m, cmd::CopyPaths, L"&Pfad kopieren");
+            AddItem(m, cmd::CopyNames, L"&Name kopieren");
+        } else {
+            AddItem(m, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
+            AddItem(m, cmd::NewFile, L"&Neue Datei…\tF9");
+            AddItem(m, cmd::NewTextFile, L"Neue &Textdatei…\tUmschalt+F4");
+            AddItem(m, cmd::Refresh, L"&Aktualisieren\tF5");
+        }
+    }
+    UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, hwnd_, nullptr);
+    DestroyMenu(m);
+    if (id) OnCommand((int)id);
+}
+
+bool MainWindow::HandleVirtualCommand(int id) {
+    FilePane& a = Active();
+    FilePane* o = Other();
+    FocusArea area = CurrentFocusArea();
+    bool paneFocus = area == FocusArea::Pane || area == FocusArea::Other || area == FocusArea::CommandLine;
+    // Kopieren/Verschieben mit einem FTP/SFTP-Verzeichnis auf einer Seite
+    if ((id == cmd::Copy || id == cmd::Move) && (a.IsRemote() || (o && o->IsRemote() && !a.IsNetworkLevel()))) {
+        RemoteCopyOrMove(id == cmd::Move);
+        return true;
+    }
+    if (!a.IsVirtual()) {
+        if ((id == cmd::Copy || id == cmd::Move) && o && o->IsNetworkLevel()) {
+            MsgInfo(hwnd_, L"Die andere Liste zeigt die Netzwerkübersicht. Bitte dort zuerst eine Freigabe öffnen.");
+            return true;
+        }
+        return false;
+    }
+    if (!paneFocus && (id == cmd::Delete || id == cmd::DeletePermanent || id == cmd::Rename || id == cmd::Properties))
+        return false;   // Baum bzw. Lesezeichenliste
+    if ((id >= cmd::BookmarkFirst && id <= cmd::BookmarkLast) || (id >= cmd::GoSpecialFirst && id <= cmd::GoSpecialLast) ||
+        (id >= cmd::FKeyFirst && id <= cmd::FKeyLast))
+        return false;
+    switch (id) {
+    // überall erlaubt: Navigation, Ansicht, Markierung, Lesezeichen, Einstellungen
+    case cmd::GoBack: case cmd::GoForward: case cmd::GoUp: case cmd::GoRoot: case cmd::GoPath: case cmd::FocusPath:
+    case cmd::GoOtherSame: case cmd::SwapPanes: case cmd::NextPane: case cmd::FocusPane1: case cmd::FocusPane2:
+    case cmd::FocusPane3: case cmd::FocusPane4: case cmd::FocusTree: case cmd::FocusBookmarks: case cmd::FocusCommandLine:
+    case cmd::CmdLineInsertName: case cmd::TwoPanes: case cmd::SplitToggle: case cmd::QuickView: case cmd::ViewDetails:
+    case cmd::ViewList: case cmd::ViewIcons: case cmd::ViewThumbnails: case cmd::SortName: case cmd::SortExt:
+    case cmd::SortSize: case cmd::SortDate: case cmd::SortAttr: case cmd::SortCreated: case cmd::SortDescending:
+    case cmd::ShowHidden: case cmd::Filter: case cmd::Refresh: case cmd::ToggleToolbar: case cmd::ToggleFKeyBar:
+    case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
+    case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
+    case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::FunctionKeys:
+    case cmd::Options: case cmd::Shortcuts: case cmd::About: case cmd::Exit: case cmd::ClearCompareMarks: case cmd::OpLog:
+    case cmd::DriveOverview: case cmd::CommandPrompt:
+        return false;
+    case cmd::Open:
+        if (a.FocusedIsParent()) a.GoUp();
+        else if (a.FocusedIsDir()) a.Navigate(a.FocusedPath());
+        else if (a.IsRemote()) RemoteOpenFocused(a, RemoteOpenMode::Open);
+        return true;
+    case cmd::View:
+        if (App::Opt().quickViewTarget == QuickViewTarget::OtherPane && Other()) return false;  // Schnellansicht
+        if (a.IsRemote()) RemoteOpenFocused(a, RemoteOpenMode::View);
+        return true;
+    default: break;
+    }
+    if (a.IsNetworkLevel()) {
+        MsgInfo(hwnd_, L"Diese Funktion ist in der Netzwerkübersicht nicht verfügbar. Bitte eine Freigabe öffnen.");
+        return true;
+    }
+    // ---- FTP/SFTP ----
+    switch (id) {
+    case cmd::ViewWindow: RemoteOpenFocused(a, RemoteOpenMode::View); return true;
+    case cmd::Edit: RemoteOpenFocused(a, RemoteOpenMode::Edit); return true;
+    case cmd::HexEdit: RemoteOpenFocused(a, RemoteOpenMode::Hex); return true;
+    case cmd::OpenWith: RemoteOpenFocused(a, RemoteOpenMode::OpenWith); return true;
+    case cmd::NewFolder: {
+        std::wstring name = L"Neues Verzeichnis";
+        if (!InputBox(hwnd_, L"Neues Verzeichnis", L"Name des neuen Verzeichnisses in „" + a.Dir() + L"“:", name)) return true;
+        name = Trim(name);
+        if (name.empty()) return true;
+        if (RemoteMakeDir(hwnd_, a.Dir(), name)) {
+            a.Reload();
+            a.FocusName(Split(ReplaceAll(name, L"\\", L"/"), L'/')[0]);
+        }
+        return true;
+    }
+    case cmd::NewFile:
+    case cmd::NewTextFile: {
+        bool text = id == cmd::NewTextFile;
+        std::wstring name = text ? L"Neue Textdatei.txt" : L"Neue Datei";
+        if (!InputBox(hwnd_, text ? L"Neue Textdatei" : L"Neue Datei",
+                      L"Name der neuen " + std::wstring(text ? L"Textdatei" : L"(leeren) Datei") + L" in „" + a.Dir() + L"“:", name))
+            return true;
+        name = Trim(name);
+        if (name.empty()) return true;
+        std::wstring url = LocationCombine(a.Dir(), name);
+        if (RemoteExists(hwnd_, url)) {
+            if (!text) {
+                MsgError(hwnd_, L"„" + name + L"“ existiert bereits.");
+                return true;
+            }
+        } else if (!RemoteCreateFile(hwnd_, a.Dir(), name)) {
+            return true;
+        }
+        a.Reload();
+        a.FocusName(name);
+        if (text) RemoteOpenFocused(a, RemoteOpenMode::Edit);
+        return true;
+    }
+    case cmd::Rename:
+    case cmd::BatchRename: {
+        auto names = a.SelectedOrFocusedNames();
+        if (names.empty()) return true;
+        if (names.size() > 1) {
+            MsgInfo(hwnd_, L"Auf FTP/SFTP-Servern kann jeweils ein Element umbenannt werden.");
+            return true;
+        }
+        std::wstring name = names[0];
+        if (!InputBox(hwnd_, L"Umbenennen", L"Neuer Name für „" + names[0] + L"“:", name)) return true;
+        name = Trim(name);
+        if (name.empty() || name == names[0]) return true;
+        if (RemoteRename(hwnd_, LocationCombine(a.Dir(), names[0]), name)) {
+            a.Reload();
+            a.FocusName(name);
+        }
+        return true;
+    }
+    case cmd::Delete:
+    case cmd::DeletePermanent: {
+        auto names = a.SelectedOrFocusedNames();
+        if (names.empty()) return true;
+        RemoteDelete(hwnd_, a.Dir(), names, true);
+        ReloadVisible();
+        return true;
+    }
+    }
+    MsgInfo(hwnd_, L"Diese Funktion ist für FTP/SFTP-Verzeichnisse nicht verfügbar.");
+    return true;
+}
+
 void MainWindow::OnCommand(int id) {
     FilePane& a = Active();
+    if (HandleVirtualCommand(id)) {
+        UpdateStatusBar();
+        return;
+    }
     if (id >= cmd::BookmarkFirst && id <= cmd::BookmarkLast) {
         size_t i = (size_t)(id - cmd::BookmarkFirst);
         if (i < bookmarks_.Get().size()) {
@@ -1863,7 +2172,7 @@ void MainWindow::OnCommand(int id) {
         auto names = a.SelectedOrFocusedNames();
         if (names.empty()) break;
         std::vector<std::wstring> lines;
-        for (auto& n : names) lines.push_back(id == cmd::CopyPaths ? PathCombine(a.Dir(), n) : n);
+        for (auto& n : names) lines.push_back(id == cmd::CopyPaths ? LocationCombine(a.Dir(), n) : n);
         ClipboardSetText(hwnd_, Join(lines, L"\r\n"));
         break;
     }
@@ -1966,6 +2275,15 @@ void MainWindow::OnCommand(int id) {
 
     // ---- Lesezeichen ----
     case cmd::BookmarkAdd: AddBookmarkFor(a); break;
+    case cmd::BookmarkNewRemote: {
+        RemoteAccess acc;
+        acc.url.proto = RemoteProto::Sftp;
+        if (EditRemoteAccess(hwnd_, acc, true)) {
+            bookmarks_.Append(acc.name, acc.url.ToString());
+            if (a.Navigate(acc.url.ToString())) a.FocusList();
+        }
+        break;
+    }
 
     // ---- Werkzeuge ----
     case cmd::FindFiles: FindFiles(hwnd_, a.Dir()); break;
@@ -1994,6 +2312,10 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::CompareDirs: {
+        if (Other() && Other()->IsVirtual()) {
+            MsgInfo(hwnd_, L"Verzeichnisse auf FTP/SFTP-Servern bzw. die Netzwerkübersicht können nicht verglichen werden.");
+            break;
+        }
         // Vergleich der aktiven Liste mit einer anderen. Gibt es mehrere (Split), wird gefragt:
         // zuerst die andere Liste derselben Spalte, dann die gegenüberliegende.
         std::vector<int> cands;
@@ -2043,6 +2365,10 @@ void MainWindow::OnCommand(int id) {
     case cmd::SyncDirs: {
         FilePane* o = Other();
         if (!o) break;
+        if (o->IsVirtual()) {
+            MsgInfo(hwnd_, L"Mit FTP/SFTP-Verzeichnissen bzw. der Netzwerkübersicht kann nicht synchronisiert werden.");
+            break;
+        }
         FilePane* left = (active_ % 2 == 0) ? &a : o;
         FilePane* right = (left == &a) ? o : &a;
         if (SyncDirectories(hwnd_, left->Dir(), right->Dir())) ReloadVisible();
@@ -2057,7 +2383,8 @@ void MainWindow::OnCommand(int id) {
         std::wstring line = std::wstring(L"\"") + comspec + L"\"";
         STARTUPINFOW si{sizeof(si)};
         PROCESS_INFORMATION pi{};
-        if (CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE, nullptr, a.Dir().c_str(), &si, &pi)) {
+        if (CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE, nullptr,
+                           a.IsVirtual() ? nullptr : a.Dir().c_str(), &si, &pi)) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
         }
@@ -2285,11 +2612,21 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
                 BuildFKeyCells();
                 InvalidateRect(hwnd_, &rcFKeys_, FALSE);
             }
+        } else if (wp == TIMER_REMOTEEDIT) {
+            std::wstring msg = RemoteEditPoll(hwnd_);
+            if (!msg.empty()) SendMessageW(status_, SB_SETTEXTW, 0, (LPARAM)msg.c_str());
         } else if (wp == TIMER_QUICKVIEW) {
             KillTimer(hwnd_, TIMER_QUICKVIEW);
             if (quickView_ && quickViewPane_ >= 0) {
                 FilePane& a = Active();
-                std::wstring p = a.FocusedIsParent() ? L"" : a.FocusedPath();
+                std::wstring p = (a.FocusedIsParent() || (a.FocusedIsDir() && a.IsVirtual())) ? L"" : a.FocusedPath();
+                if (a.IsNetworkLevel()) p.clear();
+                if (a.IsRemote() && !p.empty()) {
+                    // FTP/SFTP: Datei (bis 50 MB) zwischenspeichern und anzeigen
+                    std::wstring local, err;
+                    if (RemoteDownloadTemp(hwnd_, p, local, err, 50ull * 1024 * 1024)) p = local;
+                    else p.clear();
+                }
                 panes_[quickViewPane_]->QuickViewLoad(p);
             }
             UpdateStatusBar();

@@ -89,6 +89,12 @@ private:
     void ShowShortcuts();
     void OpenSpecialFolder(int index);
     void OpenFileItem(FilePane& p);
+    // Netzwerkebenen und FTP/SFTP: eigene Behandlung der Befehle. true = behandelt.
+    bool HandleVirtualCommand(int id);
+    void RemoteCopyOrMove(bool move);
+    enum class RemoteOpenMode { Open, View, Edit, Hex, OpenWith };
+    void RemoteOpenFocused(FilePane& p, RemoteOpenMode mode);
+    void ShowVirtualContextMenu(FilePane& p, POINT pt, bool onItems);
     void ApplyOptionsAll();
     enum class FocusArea { Pane, Tree, Bookmarks, CommandLine, Other };
     FocusArea CurrentFocusArea() const;
