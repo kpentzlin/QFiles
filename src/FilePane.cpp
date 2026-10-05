@@ -251,8 +251,9 @@ void FilePane::SetupColumns() {
     if (view_ == PaneView::Recursive) {
         RECT rc{};
         GetClientRect(list_, &rc);
-        int avail = (rc.right - rc.left) - ToPx(150);
-        if (avail > ToPx(160) && nameCx + subCx > avail) {
+        int cw = rc.right - rc.left;
+        int avail = std::max(cw - ToPx(150), cw * 2 / 3);
+        if (cw > 0 && nameCx + subCx > avail) {
             int n = std::max(ToPx(80), avail * nameCx / (nameCx + subCx));
             subCx = std::max(ToPx(80), avail - n);
             nameCx = n;
