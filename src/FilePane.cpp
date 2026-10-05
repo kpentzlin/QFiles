@@ -222,13 +222,48 @@ void FilePane::CreateListFont() {
     listFont_ = font;
 }
 
+void FilePane::CaptureColumnWidths() {
+    HWND header = ListView_GetHeader(list_);
+    int n = Header_GetItemCount(header);
+    UINT dpi = colDpi_ ? colDpi_ : GetWindowDpi(hwnd_);
+    for (int i = 0; i < n; ++i) {
+        LVCOLUMNW col{};
+        col.mask = LVCF_SUBITEM | LVCF_WIDTH;
+        if (!ListView_GetColumn(list_, i, &col) || col.iSubItem < 0 || col.iSubItem >= ColCount) continue;
+        if (col.iSubItem == ColName && col.cx == fittedName_) continue;
+        if (col.iSubItem == ColSubdir && col.cx == fittedSub_) continue;
+        int w = MulDiv(col.cx, 96, (int)dpi);
+        if (w >= 20 && w <= 2000) colWidths_[col.iSubItem] = w;
+    }
+}
+
 void FilePane::SetupColumns() {
-    // Vorhandene Spalten entfernen
+    // Vorhandene Spalten entfernen (vom Benutzer geänderte Breiten vorher übernehmen)
+    CaptureColumnWidths();
     HWND header = ListView_GetHeader(list_);
     while (Header_GetItemCount(header) > 0) ListView_DeleteColumn(list_, 0);
     const Options& o = App::Opt();
     int pos = 0;
     colIds_.clear();
+    // Ansicht „Mit Unterverzeichnissen“: In schmalen Listen teilen sich Dateiname und Unterverzeichnis die Breite,
+    // damit beide sichtbar sind (die gespeicherten Breiten bleiben unverändert)
+    int nameCx = ToPx(colWidths_[ColName]), subCx = ToPx(colWidths_[ColSubdir]);
+    if (view_ == PaneView::Recursive) {
+        RECT rc{};
+        GetClientRect(list_, &rc);
+        int avail = (rc.right - rc.left) - ToPx(150);
+        if (avail > ToPx(160) && nameCx + subCx > avail) {
+            int n = std::max(ToPx(80), avail * nameCx / (nameCx + subCx));
+            subCx = std::max(ToPx(80), avail - n);
+            nameCx = n;
+            fittedName_ = nameCx;
+            fittedSub_ = subCx;
+        } else {
+            fittedName_ = fittedSub_ = -1;
+        }
+    } else {
+        fittedName_ = fittedSub_ = -1;
+    }
     for (int k = 0; k < ColCount; ++k) {
         int id = kColumnOrder[k];
         if (id == ColExt && !o.showExtensionsColumn) continue;
@@ -238,7 +273,7 @@ void FilePane::SetupColumns() {
         LVCOLUMNW c{};
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | LVCF_SUBITEM;
         c.fmt = (id == ColSize) ? LVCFMT_RIGHT : LVCFMT_LEFT;
-        c.cx = ToPx(colWidths_[id]);
+        c.cx = id == ColName ? nameCx : id == ColSubdir ? subCx : ToPx(colWidths_[id]);
         if (id == ColDate || id == ColCreated) {
             // Datumsspalten mindestens so breit, dass ein Datum (ggf. mit Sekunden) vollständig sichtbar ist
             SYSTEMTIME st{2026, 12, 0, 28, 23, 58, 58, 0};
@@ -254,6 +289,7 @@ void FilePane::SetupColumns() {
         ListView_InsertColumn(list_, pos++, &c);
         colIds_.push_back(id);  // Spaltenindex -> Spalten-ID (LVN_GETDISPINFO liefert den Index)
     }
+    colDpi_ = GetWindowDpi(hwnd_);
     // Sortierpfeil
     int n = Header_GetItemCount(header);
     for (int i = 0; i < n; ++i) {
@@ -1927,18 +1963,9 @@ void FilePane::SaveState(Config& c, const std::wstring& s) const {
     c.SetInt(s, L"Sortierung", (int)sortKey_);
     c.SetBool(s, L"Absteigend", sortDesc_);
     // Aktuelle Spaltenbreiten (in 96-DPI-Pixeln)
-    std::vector<int> widths = colWidths_;
-    HWND header = ListView_GetHeader(list_);
-    int n = Header_GetItemCount(header);
-    UINT dpi = GetWindowDpi(hwnd_);
-    for (int i = 0; i < n; ++i) {
-        LVCOLUMNW col{};
-        col.mask = LVCF_SUBITEM | LVCF_WIDTH;
-        if (ListView_GetColumn(list_, i, &col) && col.iSubItem >= 0 && col.iSubItem < ColCount)
-            widths[col.iSubItem] = MulDiv(col.cx, 96, (int)dpi);
-    }
+    const_cast<FilePane*>(this)->CaptureColumnWidths();
     std::vector<std::wstring> ws;
-    for (int w : widths) ws.push_back(std::to_wstring(w));
+    for (int w : colWidths_) ws.push_back(std::to_wstring(w));
     c.Set(s, L"Spalten", Join(ws, L","));
     c.Set(s, L"FilterEin", filter_.include);
     c.Set(s, L"FilterAus", filter_.exclude);

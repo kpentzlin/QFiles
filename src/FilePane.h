@@ -233,6 +233,9 @@ private:
     PaneFilter filter_;
     CompareMarks marks_;
     std::vector<int> colWidths_;   // in 96-DPI-Pixeln
+    int fittedName_ = -1, fittedSub_ = -1;   // automatisch angepasste Breiten (Pixel) der Ansicht „Mit Unterverzeichnissen“
+    void CaptureColumnWidths();              // Breiten aus der Liste übernehmen (angepasste nicht)
+    UINT colDpi_ = 0;                        // DPI, mit der die Spalten angelegt wurden
     std::vector<int> colIds_;      // Spaltenindex -> Spalten-ID
 
     std::vector<std::wstring> hist_;     // Zurück/Vor-Liste
