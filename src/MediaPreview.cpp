@@ -415,16 +415,16 @@ void RenderPdf(const std::wstring& path, int boxW, int boxH, const std::atomic<b
     std::vector<RECT> lines;
     if (layout == 1) {
         double s = std::min(boxW / (double)sz[0].Width, boxH / (double)sz[0].Height);
-        W = std::max(1, (int)std::lround(sz[0].Width * s));
-        H = std::max(1, (int)std::lround(sz[0].Height * s));
+        W = std::max(1, (int)std::floor(sz[0].Width * s));
+        H = std::max(1, (int)std::floor(sz[0].Height * s));
         pageRects[0] = RECT{0, 0, W, H};
     } else if (layout == 2) {
         double maxW = std::max(sz[0].Width, sz[1].Width), sumH = (double)sz[0].Height + sz[1].Height;
         double s = std::min(boxW / maxW, (boxH - kSep) / sumH);
-        W = std::max(1, (int)std::lround(maxW * s));
-        int h0 = std::max(1, (int)std::lround(sz[0].Height * s)), h1 = std::max(1, (int)std::lround(sz[1].Height * s));
+        W = std::max(1, (int)std::floor(maxW * s));
+        int h0 = std::max(1, (int)std::floor(sz[0].Height * s)), h1 = std::max(1, (int)std::floor(sz[1].Height * s));
         H = h0 + kSep + h1;
-        int w0 = std::max(1, (int)std::lround(sz[0].Width * s)), w1 = std::max(1, (int)std::lround(sz[1].Width * s));
+        int w0 = std::max(1, (int)std::floor(sz[0].Width * s)), w1 = std::max(1, (int)std::floor(sz[1].Width * s));
         pageRects[0] = RECT{(W - w0) / 2, 0, (W - w0) / 2 + w0, h0};
         pageRects[1] = RECT{(W - w1) / 2, h0 + kSep, (W - w1) / 2 + w1, H};
         lines.push_back(RECT{0, h0, W, h0 + kSep});
@@ -434,13 +434,13 @@ void RenderPdf(const std::wstring& path, int boxW, int boxH, const std::atomic<b
         double c0 = std::max(pw(0), pw(2)), c1 = std::max(pw(1), pw(3));
         double r0 = std::max(ph(0), ph(1)), r1 = std::max(ph(2), ph(3));
         double s = std::min((boxW - kSep) / (c0 + c1), (boxH - kSep) / (r0 + r1));
-        int cw0 = std::max(1, (int)std::lround(c0 * s)), cw1 = std::max(1, (int)std::lround(c1 * s));
-        int rh0 = std::max(1, (int)std::lround(r0 * s)), rh1 = std::max(1, (int)std::lround(r1 * s));
+        int cw0 = std::max(1, (int)std::floor(c0 * s)), cw1 = std::max(1, (int)std::floor(c1 * s));
+        int rh0 = std::max(1, (int)std::floor(r0 * s)), rh1 = std::max(1, (int)std::floor(r1 * s));
         W = cw0 + kSep + cw1;
         H = rh0 + kSep + rh1;
         RECT cells[4] = {{0, 0, cw0, rh0}, {cw0 + kSep, 0, W, rh0}, {0, rh0 + kSep, cw0, H}, {cw0 + kSep, rh0 + kSep, W, H}};
         for (int i = 0; i < shown; ++i) {
-            int w = std::max(1, (int)std::lround(sz[i].Width * s)), h = std::max(1, (int)std::lround(sz[i].Height * s));
+            int w = std::max(1, (int)std::floor(sz[i].Width * s)), h = std::max(1, (int)std::floor(sz[i].Height * s));
             const RECT& c = cells[i];
             int x = c.left + (c.right - c.left - w) / 2, y = c.top + (c.bottom - c.top - h) / 2;
             pageRects[i] = RECT{x, y, x + w, y + h};
@@ -818,7 +818,7 @@ void RenderVideo(const std::wstring& path, int boxW, int boxH, const std::atomic
     int fw = frames[0].w, fh = frames[0].h;
     int cols = frames.size() == 4 ? 2 : 1, rows = frames.size() == 4 ? 2 : (int)frames.size();
     double s = std::min((boxW - kSep * (cols - 1)) / (double)(fw * cols), (boxH - kSep * (rows - 1)) / (double)(fh * rows));
-    int cw = std::max(1, (int)std::lround(fw * s)), ch = std::max(1, (int)std::lround(fh * s));
+    int cw = std::max(1, (int)std::floor(fw * s)), ch = std::max(1, (int)std::floor(fh * s));
     int W = cw * cols + kSep * (cols - 1), H = ch * rows + kSep * (rows - 1);
     Canvas canvas;
     if (!canvas.Create(W, H)) return fail(L"Nicht genügend Speicher.");
