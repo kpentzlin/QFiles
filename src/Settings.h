@@ -56,6 +56,7 @@ struct Options {
     bool showSystem = false;
     bool dirsFirst = true;
     bool showGridLines = false;
+    bool grayInactive = false;          // nicht aktive Listen hellgrau hinterlegen
     bool sizeInBytes = false;          // Größe immer in Bytes statt automatischer Einheit
     bool fullRowSelect = true;
     bool showExtensionsColumn = true;

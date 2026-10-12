@@ -91,7 +91,7 @@ if(QFILES_BUILD_TESTS)
     add_executable(QFilesTests
         tests/QFilesTests.cpp
         src/Util.cpp src/Dialog.cpp src/Settings.cpp src/App.cpp src/Encoding.cpp src/FileOps.cpp
-        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp src/MediaPreview.cpp
+        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp src/MediaPreview.cpp src/DocText.cpp
     )
     target_include_directories(QFilesTests PRIVATE src res)
     target_compile_definitions(QFilesTests PRIVATE UNICODE _UNICODE NOMINMAX STRICT _WIN32_WINNT=0x0A00 WINVER=0x0A00

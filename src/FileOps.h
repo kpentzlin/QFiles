@@ -55,5 +55,10 @@ bool ClipboardSetFiles(HWND owner, const std::vector<std::wstring>& paths, bool 
 // Liefert Dateien aus der Zwischenablage; cut = true bei "Ausschneiden".
 bool ClipboardGetFiles(HWND owner, std::vector<std::wstring>& paths, bool& cut);
 bool ClipboardHasFiles();
+// Ausgeschnittene Dateien (für die graue Darstellung): Zwischenablage neu auswerten (Rückgabe false, wenn sie
+// gerade nicht geöffnet werden konnte) bzw. prüfen, ob ein Pfad zu den ausgeschnittenen Dateien gehört.
+bool ClipboardRefreshCut(HWND owner);
+bool ClipboardIsCut(const std::wstring& fullPath);
+bool ClipboardHasCut();
 
 } // namespace qf

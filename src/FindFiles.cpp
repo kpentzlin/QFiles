@@ -13,6 +13,7 @@
 #include "Modules.h"
 #include "App.h"
 #include "Dialog.h"
+#include "DocText.h"
 #include "Encoding.h"
 #include "FileOps.h"
 #include "Settings.h"
@@ -94,8 +95,14 @@ public:
     }
 
     // true, wenn die Datei den Suchtext enthält. buf wird als Lesepuffer wiederverwendet.
+    // Office-Dokumente (.docx, .xlsx, .pptx, .odt …) werden entpackt und ihr Text durchsucht.
     bool FileContains(const std::wstring& path, const std::atomic<bool>& stop, std::vector<uint8_t>& buf) const {
         if (needle_.empty()) return true;
+        if (IsDocumentContainer(path)) {
+            std::wstring text;
+            if (ExtractDocumentText(path, text, &stop)) return TextContains(text);
+            // kein gültiges Dokument: wie jede andere Datei durchsuchen
+        }
         HANDLE h = CreateFileW(LongPath(path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
         if (h == INVALID_HANDLE_VALUE) return false;
@@ -125,6 +132,15 @@ public:
         }
         CloseHandle(h);
         return found;
+    }
+
+    bool TextContains(std::wstring text) const {
+        if (!matchCase_) text = ToLower(text);
+        // Zeilenwechsel/Tabulatoren im Dokument wie Leerzeichen behandeln, damit absatzübergreifend nichts klebt
+        if (text.find(needle_) != std::wstring::npos) return true;
+        for (wchar_t& c : text)
+            if (c == L'\n' || c == L'\t' || c == 0xA0) c = L' ';
+        return text.find(needle_) != std::wstring::npos;
     }
 
 private:
@@ -378,6 +394,9 @@ BOOL FindFilesDialog::OnInit() {
     SetAnchor(CID_RESULTS, AnchorAll);
     SetAnchor(CID_STATUS, AnchorBottomLeftRight);
     EnableResizing();
+    // Größe/Position und Spaltenbreiten vom letzten Mal
+    RestorePlacement(L"SuchenFenster");
+    RestoreColumnWidths(CID_RESULTS, L"SuchenFenster", L"Spalten");
 
     SetRunning(false);
     SetText(CID_STATUS, L"Bereit.");
@@ -964,6 +983,9 @@ INT_PTR FindFilesDialog::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
 void FindFilesDialog::OnDestroy() {
     StopWorker();
     SaveSettings();
+    SavePlacement(L"SuchenFenster");
+    SaveColumnWidths(CID_RESULTS, L"SuchenFenster", L"Spalten");
+    App::Cfg().Save();
 }
 
 } // namespace

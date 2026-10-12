@@ -41,6 +41,9 @@ public:
     void OnPaneOpenItem(FilePane* p) override;
     void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) override;
     void OnPaneFilesDropped(FilePane* p) override;
+    void OnPaneLayoutChanged(FilePane* p) override;
+    void ScheduleStateSave();
+    void OnClipboardChanged();   // Fenster-/Listenzustand kurz nach einer Änderung speichern
     bool IsPaneActive(const FilePane* p) const override;
 
 private:
@@ -122,6 +125,7 @@ private:
     int bookmarkWidth_ = 150;
     bool showToolbar_ = true, showFKeys_ = true, showCmdLine_ = true, showStatus_ = true;
     bool quickView_ = false;
+    bool wasMaximized_ = false;
     int quickViewPane_ = -1;
 
     // Layout-Ergebnisse

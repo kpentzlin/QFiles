@@ -2,6 +2,9 @@
 #include "App.h"
 #include "Util.h"
 
+#include <algorithm>
+#include <commctrl.h>
+
 namespace qf {
 
 // DLGTEMPLATEEX-Aufbau:
@@ -235,6 +238,66 @@ void DialogBase::EnableResizing() {
     GetWindowRect(hwnd_, &rc);
     minTrack_ = {rc.right - rc.left, rc.bottom - rc.top};
     resizing_ = true;
+}
+
+void DialogBase::SavePlacement(const std::wstring& section) {
+    WINDOWPLACEMENT wp{sizeof(wp)};
+    if (!GetWindowPlacement(hwnd_, &wp)) return;
+    Config& c = App::Cfg();
+    const RECT& r = wp.rcNormalPosition;
+    c.SetInt(section, L"X", r.left);
+    c.SetInt(section, L"Y", r.top);
+    c.SetInt(section, L"B", r.right - r.left);
+    c.SetInt(section, L"H", r.bottom - r.top);
+    c.SetBool(section, L"Max", wp.showCmd == SW_SHOWMAXIMIZED || IsZoomed(hwnd_));
+}
+
+void DialogBase::RestorePlacement(const std::wstring& section) {
+    const Config& c = App::Cfg();
+    if (!c.Has(section, L"B")) return;
+    WINDOWPLACEMENT wp{sizeof(wp)};
+    if (!GetWindowPlacement(hwnd_, &wp)) return;
+    RECT cur = wp.rcNormalPosition;
+    int w = std::max<int>((int)c.GetInt(section, L"B", cur.right - cur.left), minTrack_.cx);
+    int h = std::max<int>((int)c.GetInt(section, L"H", cur.bottom - cur.top), minTrack_.cy);
+    RECT r{(LONG)c.GetInt(section, L"X", cur.left), (LONG)c.GetInt(section, L"Y", cur.top), 0, 0};
+    r.right = r.left + w;
+    r.bottom = r.top + h;
+    // Nur übernehmen, wenn das Fenster (größtenteils) auf einem vorhandenen Bildschirm liegt
+    HMONITOR mon = MonitorFromRect(&r, MONITOR_DEFAULTTONULL);
+    if (!mon) return;
+    MONITORINFO mi{sizeof(mi)};
+    if (GetMonitorInfoW(mon, &mi)) {
+        const RECT& wa = mi.rcWork;
+        w = std::min<int>(w, wa.right - wa.left);
+        h = std::min<int>(h, wa.bottom - wa.top);
+        r.left = std::clamp<LONG>(r.left, wa.left, wa.right - w);
+        r.top = std::clamp<LONG>(r.top, wa.top, wa.bottom - h);
+        r.right = r.left + w;
+        r.bottom = r.top + h;
+    }
+    SetWindowPos(hwnd_, nullptr, r.left, r.top, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    if (c.GetBool(section, L"Max", false)) PostMessageW(hwnd_, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+}
+
+void DialogBase::SaveColumnWidths(int listId, const std::wstring& section, const std::wstring& key) {
+    HWND lv = Item(listId);
+    int n = Header_GetItemCount(ListView_GetHeader(lv));
+    UINT dpi = GetWindowDpi(hwnd_);
+    std::vector<std::wstring> ws;
+    for (int i = 0; i < n; ++i) ws.push_back(std::to_wstring(MulDiv(ListView_GetColumnWidth(lv, i), 96, (int)dpi)));
+    App::Cfg().Set(section, key, Join(ws, L","));
+}
+
+void DialogBase::RestoreColumnWidths(int listId, const std::wstring& section, const std::wstring& key) {
+    HWND lv = Item(listId);
+    auto ws = Split(App::Cfg().Get(section, key), L',');
+    int n = Header_GetItemCount(ListView_GetHeader(lv));
+    UINT dpi = GetWindowDpi(hwnd_);
+    for (int i = 0; i < n && i < (int)ws.size(); ++i) {
+        long long w = StrToInt(ws[i], -1);
+        if (w >= 20 && w <= 3000) ListView_SetColumnWidth(lv, i, MulDiv((int)w, (int)dpi, 96));
+    }
 }
 
 INT_PTR CALLBACK DialogBase::StaticProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {

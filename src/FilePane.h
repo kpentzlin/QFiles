@@ -38,6 +38,7 @@ public:
     virtual void OnPaneOpenItem(FilePane* p) = 0;                       // Eingabe/Doppelklick auf Datei
     virtual void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) = 0;
     virtual void OnPaneFilesDropped(FilePane* p) = 0;                    // nach Drag & Drop: andere Listen aktualisieren
+    virtual void OnPaneLayoutChanged(FilePane*) {}                       // Ansicht/Spaltenbreiten geändert (speichern)
     virtual bool IsPaneActive(const FilePane* p) const = 0;
 };
 
@@ -65,6 +66,7 @@ public:
     bool Navigate(const std::wstring& dir, const std::wstring& focusName = L"", bool addHistory = true,
                   bool showErrors = true);
     void Reload();                         // neu einlesen, Markierung/Fokus erhalten
+    void RedrawList();                     // nur neu zeichnen (z. B. ausgeschnittene Dateien)
     void GoUp();
     void GoRoot();
     void GoBack();
@@ -194,7 +196,7 @@ private:
     void AddHistory(const std::wstring& dir);
     void ShowHistoryMenu(bool back, POINT screenPt);
     void CreateListFont();
-    void SetupColumns();
+    void SetupColumns(bool capture = true);   // capture: Breiten der vorhandenen Spalten übernehmen
     void ApplyViewStyle();
     void OpenFocused();
     void StartWatch();
@@ -245,6 +247,10 @@ private:
     std::vector<std::pair<std::wstring, std::wstring>> lastDirPerDrive_;
 
     HFONT listFont_ = nullptr;
+    HFONT driveFont_ = nullptr;   // Laufwerksbuchstaben in der Kopfzeile (größer, fett)
+    HFONT DriveFont();
+    void UpdateListColors();      // Hintergrund (Option: nicht aktive Listen hellgrau)
+    bool IsCutItem(const Item& it) const;
     HIMAGELIST thumbList_ = nullptr;
     int thumbSize_ = 0;
 

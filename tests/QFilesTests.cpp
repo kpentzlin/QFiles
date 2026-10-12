@@ -20,6 +20,7 @@
 #include "Encoding.h"
 #include "FileOps.h"
 #include "MediaPreview.h"
+#include "DocText.h"
 #include "Location.h"
 #include "Settings.h"
 #include "Util.h"
@@ -203,6 +204,35 @@ static void TestFileOps(const std::wstring& base) {
     CHECK(FileExists(longFile));
     std::vector<DirEntry> entries;
     CHECK(ListDirectory(longDir, entries) && entries.size() == 1);
+}
+
+#include "DocTextData.inc"
+
+static void TestDocText() {
+    auto extract = [](const wchar_t* name, const unsigned char* d, size_t n) {
+        std::wstring text;
+        std::vector<uint8_t> v(d, d + n);
+        bool ok = ExtractDocumentTextFromMemory(name, v, text);
+        return ok ? text : std::wstring(L"<Fehler>");
+    };
+    std::wstring docx = extract(L"brief.docx", kTestDocx, sizeof(kTestDocx));
+    CHECK(docx.find(L"Grüße aus Würzburg") != std::wstring::npos);          // über zwei Textläufe
+    CHECK(docx.find(L"A & B € ☺") != std::wstring::npos);                    // Entitäten
+    CHECK(docx.find(L"Füllzeile 299 mit etwas Text") != std::wstring::npos); // dynamischer Huffman-Code
+    CHECK(docx.find(L"Calibri") == std::wstring::npos);                      // Formatvorlagen nicht
+    CHECK(docx.find(L"WürzburgA") == std::wstring::npos);                    // Absätze getrennt
+    std::wstring xlsx = extract(L"tabelle.XLSX", kTestXlsx, sizeof(kTestXlsx));
+    CHECK(xlsx.find(L"Umsatz 2026") != std::wstring::npos && xlsx.find(L"4711") != std::wstring::npos);
+    std::wstring odt = extract(L"text.odt", kTestOdt, sizeof(kTestOdt));
+    CHECK(odt.find(L"Hallo ODF") != std::wstring::npos && odt.find(L"Zweite Zeile") != std::wstring::npos);
+    CHECK(!IsDocumentContainer(L"x.txt") && IsDocumentContainer(L"C:\\a\\B.PpTx"));
+    // Beschädigte Daten: kein Absturz, false
+    std::vector<uint8_t> broken(kTestDocx, kTestDocx + sizeof(kTestDocx));
+    for (size_t i = 200; i < 400; ++i) broken[i] ^= 0x5A;
+    std::wstring t;
+    ExtractDocumentTextFromMemory(L"kaputt.docx", broken, t);
+    std::string out;
+    CHECK(!InflateRaw((const uint8_t*)"\xff\xff\xff", 3, out, 1000));
 }
 
 static void TestMediaKinds() {
@@ -417,6 +447,7 @@ int wmain() {
     TestFileOps(base);
     TestLocations();
     TestMediaKinds();
+    TestDocText();
     TestRemote(base);
 
     Out(L"Bestanden: " + std::to_wstring(g_passed) + L", fehlgeschlagen: " + std::to_wstring(g_failed));

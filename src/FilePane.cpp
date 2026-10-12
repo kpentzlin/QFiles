@@ -144,6 +144,7 @@ FilePane::~FilePane() {
     StopThumbWorker();
     if (sizeCancel_) *sizeCancel_ = true;
     if (listFont_) DeleteObject(listFont_);
+    if (driveFont_) DeleteObject(driveFont_);
     if (thumbList_) ImageList_Destroy(thumbList_);
 }
 
@@ -190,6 +191,7 @@ bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
     CreateListFont();
     SetupColumns();
     ApplyViewStyle();
+    UpdateListColors();
 
     tooltip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0,
                                hwnd_, nullptr, App::Instance(), nullptr);
@@ -238,9 +240,10 @@ void FilePane::CaptureColumnWidths() {
     }
 }
 
-void FilePane::SetupColumns() {
-    // Vorhandene Spalten entfernen (vom Benutzer geänderte Breiten vorher übernehmen)
-    CaptureColumnWidths();
+void FilePane::SetupColumns(bool capture) {
+    // Vorhandene Spalten entfernen (vom Benutzer geänderte Breiten vorher übernehmen – nicht beim Laden der
+    // gespeicherten Breiten, sonst würden diese durch die Standardspalten überschrieben)
+    if (capture) CaptureColumnWidths();
     HWND header = ListView_GetHeader(list_);
     while (Header_GetItemCount(header) > 0) ListView_DeleteColumn(list_, 0);
     const Options& o = App::Opt();
@@ -359,6 +362,7 @@ void FilePane::ApplyViewStyle() {
 
 void FilePane::ApplyOptions() {
     CreateListFont();
+    UpdateListColors();
     SetupColumns();
     ApplyViewStyle();
     if (!dir_.empty()) Reload();
@@ -367,6 +371,9 @@ void FilePane::ApplyOptions() {
 
 void FilePane::OnDpiChanged() {
     CreateListFont();
+    if (driveFont_) DeleteObject(driveFont_);
+    driveFont_ = nullptr;
+    BuildHitRects();
     SetupColumns();
     if (view_ == PaneView::Thumbnails) {
         thumbSize_ = 0;
@@ -431,6 +438,19 @@ void FilePane::Layout() {
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
+// Schrift der Laufwerksbuchstaben: etwa 20 % größer als die Oberflächenschrift und fett
+HFONT FilePane::DriveFont() {
+    if (!driveFont_) {
+        LOGFONTW lf{};
+        GetObjectW(App::UIFont(), sizeof(lf), &lf);
+        lf.lfHeight = lf.lfHeight * 6 / 5;
+        if (lf.lfHeight == 0) lf.lfHeight = -ToPx(14);
+        lf.lfWeight = FW_BOLD;
+        driveFont_ = CreateFontIndirectW(&lf);
+    }
+    return driveFont_ ? driveFont_ : App::UIFont();
+}
+
 void FilePane::BuildHitRects() {
     hits_.clear();
     hot_ = nullptr;
@@ -450,7 +470,7 @@ void FilePane::BuildHitRects() {
     int rightLimit = x - ToPx(6);
     // Laufwerke von links
     HDC dc = GetDC(hwnd_);
-    HGDIOBJ old = SelectObject(dc, App::UIFont());
+    HGDIOBJ old = SelectObject(dc, DriveFont());
     int dx = pad + ToPx(2);
     for (int i = 0; i < (int)drives_.size(); ++i) {
         wchar_t letter[2] = {drives_[i].root[0], 0};
@@ -574,7 +594,9 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             tr.left += ToPx(3) + iconSize + ToPx(3);
             wchar_t letter[2] = {d.root[0], 0};
             SetTextColor(dc, GetSysColor(COLOR_BTNTEXT));
+            HGDIOBJ prev = SelectObject(dc, DriveFont());
             DrawTextW(dc, letter, 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
+            SelectObject(dc, prev);
         } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark) {
             DrawGlyph(dc, h.area, h.rc, hot_ == &h);
         }
@@ -655,9 +677,28 @@ void FilePane::Paint(HDC dc) {
     DeleteDC(mem);
 }
 
+void FilePane::RedrawList() {
+    if (list_) InvalidateRect(list_, nullptr, FALSE);
+}
+
+// Datei ist ausgeschnitten (Zwischenablage) und würde beim Einfügen verschoben
+bool FilePane::IsCutItem(const Item& it) const {
+    return !it.isParent && !IsVirtual() && ClipboardHasCut() && ClipboardIsCut(ItemFullPath(it));
+}
+
+void FilePane::UpdateListColors() {
+    if (!list_) return;
+    COLORREF bg = (!activeLook_ && App::Opt().grayInactive) ? GetSysColor(COLOR_BTNFACE) : GetSysColor(COLOR_WINDOW);
+    if (ListView_GetBkColor(list_) == bg) return;
+    ListView_SetBkColor(list_, bg);
+    ListView_SetTextBkColor(list_, bg);
+    InvalidateRect(list_, nullptr, TRUE);
+}
+
 void FilePane::SetActiveLook(bool active) {
     if (activeLook_ == active) return;
     activeLook_ = active;
+    UpdateListColors();
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
     InvalidateRect(hwnd_, &rcPath_, FALSE);
 }
@@ -1338,7 +1379,7 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
             if (it.isParent) s = L"";
             else if (it.netKind == 1) s = L"<Rechner>";
             else if (it.netKind == 2) s = L"<Freigabe>";
-            else if (it.e.IsDir()) s = L"<Verz>";
+            else if (it.e.IsDir()) s = L"";   // Verzeichnisse: Typ bleibt leer
             else {
                 s = ExtOf(it.e.name);
                 if (!s.empty()) s = s.substr(1);
@@ -1378,7 +1419,7 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
     }
     if (di->item.mask & LVIF_STATE) {
         di->item.state = 0;
-        if (!it.isParent && (it.e.attributes & FILE_ATTRIBUTE_HIDDEN)) di->item.state |= LVIS_CUT;
+        if (!it.isParent && ((it.e.attributes & FILE_ATTRIBUTE_HIDDEN) || IsCutItem(it))) di->item.state |= LVIS_CUT;
         di->item.stateMask |= LVIS_CUT;
     }
 }
@@ -1400,7 +1441,10 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
         case CompareMark::Duplicate: cd->clrTextBk = RGB(235, 215, 250); changed = true; break;
         default: break;
         }
-        if (!it.isParent && (it.e.attributes & FILE_ATTRIBUTE_HIDDEN)) {
+        if (IsCutItem(it)) {
+            cd->clrText = RGB(128, 128, 128);   // ausgeschnitten: mittelgrau, bis sie eingefügt (verschoben) sind
+            changed = true;
+        } else if (!it.isParent && (it.e.attributes & FILE_ATTRIBUTE_HIDDEN)) {
             cd->clrText = GetSysColor(COLOR_GRAYTEXT);
             changed = true;
         } else if (!it.isParent && (it.e.attributes & (FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED))) {
@@ -1616,6 +1660,7 @@ void FilePane::SetView(PaneView v) {
     view_ = v;
     if (v != PaneView::Thumbnails) StopThumbWorker();
     ApplyViewStyle();
+    if (host_) host_->OnPaneLayoutChanged(this);
     if (recursiveChanged) {
         // Spalten und Inhalt wechseln (Dateien der Unterverzeichnisse bzw. wieder nur dieses Verzeichnis)
         if (walk_) CancelScan();
@@ -1958,7 +2003,7 @@ void FilePane::LoadState(const Config& c, const std::wstring& s) {
     filter_.exclude = c.Get(s, L"FilterAus", L"");
     filter_.applyToDirs = c.GetBool(s, L"FilterVerzeichnisse", false);
     recent_ = c.GetList(s, L"Verlauf");
-    SetupColumns();
+    SetupColumns(false);
     ApplyViewStyle();
 }
 
@@ -2072,7 +2117,8 @@ LRESULT CALLBACK FilePane::PathEditSubclass(HWND h, UINT msg, WPARAM wp, LPARAM 
 LRESULT FilePane::OnNotify(NMHDR* nm) {
     if (nm->hwndFrom == ListView_GetHeader(list_)) {
         if (nm->code == HDN_ENDTRACKW || nm->code == HDN_DIVIDERDBLCLICKW) {
-            // Breiten werden beim Speichern ausgelesen
+            // Breiten werden beim Speichern ausgelesen; Speichern anstoßen
+            if (host_) host_->OnPaneLayoutChanged(this);
         }
         return 0;
     }

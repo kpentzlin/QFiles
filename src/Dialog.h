@@ -118,6 +118,12 @@ protected:
     void SetAnchor(int id, unsigned anchor);
     // Mindestgröße = Anfangsgröße
     void EnableResizing();
+    // Position/Größe (und maximiert) bzw. Spaltenbreiten einer ListView in der Einstellungsdatei speichern und
+    // wiederherstellen (Abschnitt section). RestorePlacement nach EnableResizing aufrufen.
+    void SavePlacement(const std::wstring& section);
+    void RestorePlacement(const std::wstring& section);
+    void SaveColumnWidths(int listId, const std::wstring& section, const std::wstring& key);
+    void RestoreColumnWidths(int listId, const std::wstring& section, const std::wstring& key);
 
     HWND hwnd_ = nullptr;
     bool modeless_ = false;

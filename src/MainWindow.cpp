@@ -30,7 +30,7 @@ namespace {
 const wchar_t* kMainClass = L"QFilesMain";
 MainWindow* g_main = nullptr;
 
-enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3 };
+enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3, TIMER_SAVESTATE = 4, TIMER_CLIPBOARD = 5 };
 constexpr int kSplitterW = 5;
 constexpr int kCaptionH = 26;  // = Kopfzeile der Listen
 constexpr int kFKeyH = 26;
@@ -392,6 +392,9 @@ bool MainWindow::Create(int nCmdShow) {
     SetActive(active_, true);
     SetTimer(hwnd_, TIMER_FKEYMODE, 150, nullptr);
     SetTimer(hwnd_, TIMER_REMOTEEDIT, 2000, nullptr);
+    // Ausgeschnittene Dateien grau darstellen: Änderungen der Zwischenablage beobachten
+    AddClipboardFormatListener(hwnd_);
+    OnClipboardChanged();
     return true;
 }
 
@@ -423,7 +426,8 @@ void MainWindow::SaveState() {
     c.SetInt(S, L"Y", wp.rcNormalPosition.top);
     c.SetInt(S, L"B", wp.rcNormalPosition.right - wp.rcNormalPosition.left);
     c.SetInt(S, L"H", wp.rcNormalPosition.bottom - wp.rcNormalPosition.top);
-    c.SetBool(S, L"Max", wp.showCmd == SW_SHOWMAXIMIZED || IsZoomed(hwnd_));
+    c.SetBool(S, L"Max", wp.showCmd == SW_SHOWMAXIMIZED || IsZoomed(hwnd_) ||
+                             (wp.showCmd == SW_SHOWMINIMIZED && (wp.flags & WPF_RESTORETOMAXIMIZED)));
     c.SetBool(S, L"ZweiListen", twoPanes_);
     c.SetBool(S, L"SplitLinks", split_[0]);
     c.SetBool(S, L"SplitRechts", split_[1]);
@@ -1438,6 +1442,26 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
 }
 
 void MainWindow::OnPaneFilesDropped(FilePane* p) { ReloadVisible(); }
+
+void MainWindow::OnPaneLayoutChanged(FilePane*) { ScheduleStateSave(); }
+
+// Zwischenablage geändert: ausgeschnittene Dateien neu bestimmen und die Listen neu zeichnen
+void MainWindow::OnClipboardChanged() {
+    bool had = ClipboardHasCut();
+    if (!ClipboardRefreshCut(hwnd_)) {
+        SetTimer(hwnd_, TIMER_CLIPBOARD, 250, nullptr);   // gerade von einem anderen Programm geöffnet
+        return;
+    }
+    if (!had && !ClipboardHasCut()) return;
+    for (auto& p : panes_)
+        if (p) p->RedrawList();
+}
+
+// Fensterposition und -größe, Ansichten und Spaltenbreiten werden nicht nur beim Beenden gespeichert, sondern auch
+// kurz nach jeder Änderung – so bleiben sie auch erhalten, wenn QFiles nicht regulär beendet wird.
+void MainWindow::ScheduleStateSave() {
+    if (hwnd_ && App::Opt().saveOnExit) SetTimer(hwnd_, TIMER_SAVESTATE, 1500, nullptr);
+}
 
 bool MainWindow::IsPaneActive(const FilePane* p) const { return p->Index() == active_; }
 
@@ -2568,6 +2592,11 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_SIZE:
         Layout();
+        if (wp == SIZE_MAXIMIZED || (wp == SIZE_RESTORED && wasMaximized_)) ScheduleStateSave();
+        if (wp != SIZE_MINIMIZED) wasMaximized_ = wp == SIZE_MAXIMIZED;
+        return 0;
+    case WM_EXITSIZEMOVE:
+        ScheduleStateSave();
         return 0;
     case WM_GETMINMAXINFO: {
         auto* mmi = (MINMAXINFO*)lp;
@@ -2655,6 +2684,7 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         if (dragging_ != Splitter::None) {
             dragging_ = Splitter::None;
             ReleaseCapture();
+            ScheduleStateSave();
             return 0;
         }
         if (fkeyPressed_ >= 0) {
@@ -2698,8 +2728,17 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_INITMENUPOPUP:
         UpdateMenu((HMENU)wp);
         return 0;
+    case WM_CLIPBOARDUPDATE:
+        OnClipboardChanged();
+        return 0;
     case WM_TIMER:
-        if (wp == TIMER_FKEYMODE) {
+        if (wp == TIMER_CLIPBOARD) {
+            KillTimer(hwnd_, TIMER_CLIPBOARD);
+            OnClipboardChanged();
+        } else if (wp == TIMER_SAVESTATE) {
+            KillTimer(hwnd_, TIMER_SAVESTATE);
+            App::SaveSettings();
+        } else if (wp == TIMER_FKEYMODE) {
             bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0, alt = GetKeyState(VK_MENU) < 0;
             int mode = (GetForegroundWindow() == hwnd_ && ctrl && !alt) ? (shift ? 2 : 1) : 0;
             if (mode != fkeyMode_) {

@@ -136,6 +136,9 @@ Für beide gilt:
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
   wie im Explorer.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
+- Spalte „Typ“: Endung der Datei; bei Verzeichnissen bleibt sie leer.
+- Optional (*Werkzeuge → Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
+  Listen mit hellgrauem Hintergrund wie Kopf- und Fußleiste.
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
 - Werkzeugleiste, u. a. mit je einem Symbol für die fünf Ansichten (die Ansicht der aktiven Liste ist eingedrückt).
 - Befehlszeile: führt Befehle im aktuellen Verzeichnis in einem Konsolenfenster aus. `cd` und `X:` wechseln das
@@ -164,7 +167,9 @@ Für beide gilt:
   nachgefragt (OK = verschieben, **Kopieren** = nur hochladen, Abbrechen). Auf Baum und Lesezeichen gilt die
   Explorer-Regel (gleiches Laufwerk verschieben, sonst kopieren). Die rechte Maustaste fragt nach Kopieren oder
   Verschieben.
-- Zwischenablage: Ausschneiden, Kopieren, Einfügen, kompatibel mit dem Explorer.
+- Zwischenablage: Ausschneiden, Kopieren, Einfügen, kompatibel mit dem Explorer. Ausgeschnittene Dateien erscheinen
+  in mittelgrauer Schrift (und mit blassem Symbol), solange „Einfügen“ sie verschieben würde – also bis sie eingefügt
+  sind oder etwas anderes in die Zwischenablage kommt (auch aus dem Explorer).
 - Explorer-Kontextmenü, „Öffnen mit“, Eigenschaften (Alt+Eingabe).
 - Attribute und Zeitstempel ändern, auch rekursiv. Das Datum lässt sich aus dem EXIF-Aufnahmedatum übernehmen.
 - Verzeichnisgrößen berechnen (Leertaste auf einem Verzeichnis oder Alt+Umschalt+Eingabe für alle).
@@ -220,7 +225,7 @@ Browser-Anmeldung erfordern und ist nicht eingebaut.
 | Werkzeug | Funktion |
 |---|---|
 | Dateigruppe umbenennen (Strg+M) | Masken mit Platzhaltern (siehe unten), Zähler, Suchen/Ersetzen (auch regulärer Ausdruck), Groß-/Kleinschreibung, Unterverzeichnisse, Live-Vorschau mit Konfliktprüfung; ein Rückgängig-Schritt |
-| Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI, Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“ |
+| Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI sowie in Office-Dokumenten (.docx, .xlsx, .pptx, OpenDocument .odt/.ods/.odp, EPUB), Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“; Fenstergröße, -position und Spaltenbreiten bleiben erhalten |
 | Doppelte Dateien | Gleicher Inhalt: Größe, dann Hash, dann byteweiser Vergleich |
 | Dateien vergleichen (Strg+K) | Text zeilenweise nebeneinander mit Farbmarkierung und zeichengenauer Hervorhebung; Binärvergleich |
 | Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); markiert gleiche, unterschiedliche, neuere und fehlende Dateien farbig und wählt sie zum Kopieren aus |
@@ -343,7 +348,13 @@ Gespeichert werden:
   Filter und Verlauf,
 - die Lesezeichen,
 - die Funktionstasten,
-- der Befehlszeilen-Verlauf.
+- der Befehlszeilen-Verlauf,
+- Größe, Position und Spaltenbreiten des Suchfensters.
+
+Fenster- und Listenzustand (Größe, Position, Ansicht, Spaltenbreiten, Teilungen) werden nicht erst beim Beenden,
+sondern jeweils kurz nach einer Änderung gespeichert; sie bleiben also auch erhalten, wenn QFiles nicht regulär
+beendet wird (z. B. beim Herunterfahren oder nach einem Absturz). Ausschalten lässt sich das zusammen mit
+„Einstellungen beim Beenden speichern“.
 
 Speicherort:
 

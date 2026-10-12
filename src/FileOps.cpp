@@ -7,6 +7,7 @@
 #include <shellapi.h>
 #include <sherrors.h>
 #include <deque>
+#include <unordered_set>
 
 namespace qf {
 
@@ -494,5 +495,41 @@ bool ClipboardGetFiles(HWND owner, std::vector<std::wstring>& paths, bool& cut) 
 }
 
 bool ClipboardHasFiles() { return IsClipboardFormatAvailable(CF_HDROP) != FALSE; }
+
+namespace {
+std::unordered_set<std::wstring>& CutSet() {
+    static std::unordered_set<std::wstring> set;   // klein geschriebene vollständige Pfade (nur UI-Thread)
+    return set;
+}
+} // namespace
+
+bool ClipboardRefreshCut(HWND owner) {
+    auto& set = CutSet();
+    // Nur Dateien, die beim Einfügen verschoben würden: CF_HDROP mit "Preferred DropEffect" = Verschieben
+    UINT fmtEffect = RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT);
+    if (!IsClipboardFormatAvailable(CF_HDROP) || !IsClipboardFormatAvailable(fmtEffect)) {
+        set.clear();
+        return true;
+    }
+    std::vector<std::wstring> paths;
+    bool cut = false;
+    if (!OpenClipboard(owner)) return false;
+    CloseClipboard();
+    if (!ClipboardGetFiles(owner, paths, cut)) {
+        set.clear();
+        return true;
+    }
+    set.clear();
+    if (cut)
+        for (auto& p : paths) set.insert(ToLower(p));
+    return true;
+}
+
+bool ClipboardIsCut(const std::wstring& fullPath) {
+    auto& set = CutSet();
+    return !set.empty() && set.count(ToLower(fullPath)) > 0;
+}
+
+bool ClipboardHasCut() { return !CutSet().empty(); }
 
 } // namespace qf

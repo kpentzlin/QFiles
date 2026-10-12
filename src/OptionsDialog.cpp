@@ -130,6 +130,7 @@ constexpr int kDateSeconds = 1015;
 constexpr int kColCreated = 1016;
 constexpr int kDisplayGroup1 = 1017;   // eigene IDs: 1015/1016 gehören den Kontrollkästchen
 constexpr int kDisplayGroup2 = 1018;
+constexpr int kGrayInactive = 1019;
 // ---- Seite 1: Bedienung ----
 constexpr int kConfirmDelete = 1101;
 constexpr int kRecycle = 1102;
@@ -205,6 +206,7 @@ protected:
         SetCheck(kShowSystem, opt.showSystem);
         SetCheck(kDirsFirst, opt.dirsFirst);
         SetCheck(kGridLines, opt.showGridLines);
+        SetCheck(kGrayInactive, opt.grayInactive);
         SetCheck(kSizeBytes, opt.sizeInBytes);
         SetCheck(kFullRow, opt.fullRowSelect);
         SetCheck(kColType, opt.showExtensionsColumn);
@@ -377,6 +379,7 @@ private:
         opt.showSystem = IsChecked(kShowSystem);
         opt.dirsFirst = IsChecked(kDirsFirst);
         opt.showGridLines = IsChecked(kGridLines);
+        opt.grayInactive = IsChecked(kGrayInactive);
         opt.sizeInBytes = IsChecked(kSizeBytes);
         opt.fullRowSelect = IsChecked(kFullRow);
         opt.showExtensionsColumn = IsChecked(kColType);
@@ -449,6 +452,7 @@ bool ShowOptionsDialog(HWND owner) {
     t.Label(kThumbLabel, L"&Miniaturgröße (32–256 Pixel):", px + 4, py + 86, 110, 10);
     t.Edit(kThumbEdit, px + 118, py + 84, 40, 13, ES_NUMBER);
     t.UpDown(kThumbSpin, 0, 0, 10, 13);
+    t.Check(kGrayInactive, L"Nicht aktive Listen gra&u hinterlegen", px + 160, py + 86, 150, 10);
     t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 112, pw + 8, 34);
     t.Edit(kListFontText, px + 4, py + 126, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
     t.Button(kListFontBtn, L"Sc&hriftart …", px + 200, py + 125, 70, 14);
