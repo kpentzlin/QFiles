@@ -126,6 +126,7 @@ public:
     void SetQuickView(bool on);
     bool QuickViewOn() const { return quickView_; }
     void QuickViewLoad(const std::wstring& path);
+    bool QuickViewCancelBuild();   // Esc: Aufbau einer PDF-/Video-Anzeige abbrechen
 
     // Einstellungen
     void LoadState(const Config& c, const std::wstring& section);

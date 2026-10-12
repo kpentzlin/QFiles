@@ -19,6 +19,7 @@
 #include "App.h"
 #include "Encoding.h"
 #include "FileOps.h"
+#include "MediaPreview.h"
 #include "Location.h"
 #include "Settings.h"
 #include "Util.h"
@@ -202,6 +203,14 @@ static void TestFileOps(const std::wstring& base) {
     CHECK(FileExists(longFile));
     std::vector<DirEntry> entries;
     CHECK(ListDirectory(longDir, entries) && entries.size() == 1);
+}
+
+static void TestMediaKinds() {
+    CHECK(MediaKindForPath(L"C:\\x\\Bericht.PDF") == MediaKind::Pdf);
+    CHECK(MediaKindForPath(L"C:\\x\\Urlaub ✓.mp4") == MediaKind::Video);
+    CHECK(MediaKindForPath(L"C:\\x\\clip.MOV") == MediaKind::Video);
+    CHECK(MediaKindForPath(L"C:\\x\\bild.jpg") == MediaKind::None);
+    CHECK(MediaKindForPath(L"C:\\x\\pdf") == MediaKind::None);
 }
 
 static void TestLocations() {
@@ -407,6 +416,7 @@ int wmain() {
     TestConfig(base);
     TestFileOps(base);
     TestLocations();
+    TestMediaKinds();
     TestRemote(base);
 
     Out(L"Bestanden: " + std::to_wstring(g_passed) + L", fehlgeschlagen: " + std::to_wstring(g_failed));

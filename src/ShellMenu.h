@@ -31,8 +31,11 @@ IDataObject* CreateShellDataObject(HWND owner, const std::wstring& dir, const st
 DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::wstring>& names);
 
 // Registriert hwnd als Ablageziel für Dateien. resolver liefert das Zielverzeichnis für einen Bildschirmpunkt
-// (leer = Ablage nicht möglich). done wird nach erfolgreicher Ablage aufgerufen.
-void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done);
+// (leer = Ablage nicht möglich; auch FTP/SFTP/WebDAV-Adressen). done wird nach erfolgreicher Ablage aufgerufen.
+// listPane: Regel der Dateilisten – Ziehen verschiebt, mit Umschalt oder Strg wird kopiert. Sonst wie im Explorer
+// (gleiches Laufwerk verschieben, anderes kopieren; Strg = kopieren, Umschalt = verschieben).
+void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done,
+                            bool listPane = false);
 void RevokeFileDropTarget(HWND hwnd);
 
 } // namespace qf

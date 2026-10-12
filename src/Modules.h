@@ -36,6 +36,8 @@ HWND CreateFileViewer(HWND parent, int id);
 void FileViewerLoad(HWND viewer, const std::wstring& path);
 void FileViewerSetMode(HWND viewer, ViewerMode mode);
 ViewerMode FileViewerGetMode(HWND viewer);
+// Esc: Aufbau einer PDF-/Video-Anzeige abbrechen (Rückgabe true, wenn einer lief)
+bool FileViewerCancelBuild(HWND viewer);
 // Eigenständiges Anzeigefenster (F3), nicht modal.
 void OpenViewerWindow(const std::wstring& path);
 // Hex-Editor-Fenster (nicht modal) zum Bearbeiten von Binärdateien.

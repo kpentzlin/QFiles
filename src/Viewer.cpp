@@ -8,6 +8,7 @@
 #include "Dialog.h"
 #include "Encoding.h"
 #include "HexView.h"
+#include "MediaPreview.h"
 #include "Modules.h"
 #include "Util.h"
 
@@ -35,6 +36,7 @@
 #include <cstring>
 #include <cwchar>
 #include <functional>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -51,6 +53,7 @@ constexpr wchar_t kViewerFrameClass[] = L"QFilesViewerFrame";
 constexpr wchar_t kViewerSection[] = L"Anzeige";
 
 constexpr UINT WM_QF_IMAGEDONE = WM_APP + 0x351;   // Hintergrund-Dekodierung fertig (wParam = Generation)
+constexpr UINT WM_QF_MEDIAPROGRESS = WM_APP + 0x352;   // PDF/Video: Fortschritt (wParam = Generation)
 
 constexpr size_t kTextLimitWindow = 8u * 1024 * 1024;     // Text im Anzeigefenster: max. 8 MB
 constexpr size_t kTextLimitEmbedded = 2u * 1024 * 1024;   // Text in der Schnellansicht: max. 2 MB (schneller Wechsel)
@@ -247,6 +250,11 @@ struct ImageJob {
     UINT frames = 0;
     std::wstring format;
     std::wstring error;
+    // PDF/Video (Gesamtbild aus Seiten bzw. Einzelbildern)
+    MediaKind media = MediaKind::None;
+    int boxW = 0, boxH = 0;
+    std::wstring band, message, progress;
+    bool cancelled = false, unavailable = false;
     ~ImageJob() {
         if (bmp) DeleteObject(bmp);
     }
@@ -405,9 +413,38 @@ void DecodeImage(ImageJob& j) {
     j.done = true;
 }
 
+void RenderMediaJob(ImageJob& j, HWND notify, UINT gen) {
+    MediaResult r;
+    RenderMediaPreview(j.media, j.path, j.boxW, j.boxH, j.cancel,
+                       [&](const std::wstring& text) {
+                           {
+                               std::lock_guard<std::mutex> lock(j.m);
+                               j.progress = text;
+                           }
+                           PostMessageW(notify, WM_QF_MEDIAPROGRESS, (WPARAM)gen, 0);
+                       },
+                       r);
+    std::lock_guard<std::mutex> lock(j.m);
+    j.bmp = r.bmp;
+    j.bits = r.bits;
+    j.w = j.origW = r.w;
+    j.h = j.origH = r.h;
+    j.format = r.format;
+    j.band = r.band;
+    j.message = r.message;
+    j.cancelled = r.cancelled;
+    j.unavailable = r.unavailable;
+    j.error = r.failed ? r.message : L"";
+    j.ok = r.bmp != nullptr || !r.message.empty();
+    j.done = true;
+}
+
 void DecodeWorker(std::shared_ptr<ImageJob> job, HWND notify, UINT gen) {
     HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    DecodeImage(*job);
+    if (job->media != MediaKind::None)
+        RenderMediaJob(*job, notify, gen);
+    else
+        DecodeImage(*job);
     if (SUCCEEDED(co)) CoUninitialize();
     PostMessageW(notify, WM_QF_IMAGEDONE, (WPARAM)gen, 0);
 }
@@ -454,6 +491,10 @@ struct ViewerState {
     bool imgAlpha = false, imgDownscaled = false;
     UINT imgFrames = 0;
     std::wstring imgFormat;
+    // PDF/Video: Gesamtbild (wird beim Vergrößern der Fläche auch vergrößert), Kopfzeile, Text statt Bild
+    MediaKind media = MediaKind::None;
+    bool composite = false;
+    std::wstring band, mediaMessage, mediaProgress, mediaKey;
     HBITMAP scaled = nullptr;
     int scaledW = 0, scaledH = 0;
     bool fit = true;
@@ -492,6 +533,15 @@ RECT ContentRect(ViewerState& s) {
     return rc;
 }
 
+// Bildfläche: Inhalt ohne die Kopfzeile des Videos (Auflösung und Dauer)
+int BandHeight(const ViewerState& s) { return s.band.empty() ? 0 : s.lineH + DpiScale(s.hwnd, 8); }
+
+RECT ImageRect(ViewerState& s) {
+    RECT rc = ContentRect(s);
+    rc.top = std::min<LONG>(rc.bottom, rc.top + BandHeight(s));
+    return rc;
+}
+
 HWND FocusTarget(ViewerState& s) {
     if (s.eff == Eff::Text && s.edit) return s.edit;
     if (s.eff == Eff::Hex && s.hex) return s.hex;
@@ -520,6 +570,10 @@ void FreeImage(ViewerState& s) {
     s.imgAlpha = s.imgDownscaled = false;
     s.imgFrames = 0;
     s.imgFormat.clear();
+    s.composite = false;
+    s.band.clear();
+    s.mediaMessage.clear();
+    s.mediaProgress.clear();
 }
 
 void CancelJob(ViewerState& s) {
@@ -532,7 +586,7 @@ void CancelJob(ViewerState& s) {
 double FitScale(const ViewerState& s, int cw, int ch) {
     if (!s.imgW || !s.imgH || cw <= 0 || ch <= 0) return 1.0;
     double f = std::min((double)cw / s.imgW, (double)ch / s.imgH);
-    return std::min(1.0, f);
+    return s.composite ? f : std::min(1.0, f);   // PDF/Video-Gesamtbild passt sich auch beim Vergrößern an
 }
 
 double CurrentScale(const ViewerState& s, int cw, int ch) { return s.fit ? FitScale(s, cw, ch) : s.zoom; }
@@ -544,7 +598,7 @@ struct ImageGeom {
 };
 
 ImageGeom ComputeGeom(ViewerState& s) {
-    RECT cr = ContentRect(s);
+    RECT cr = ImageRect(s);
     int cw = cr.right - cr.left, ch = cr.bottom - cr.top;
     ImageGeom g{};
     g.scale = CurrentScale(s, cw, ch);
@@ -619,7 +673,22 @@ void UpdateChecker(ViewerState& s) {
     ReleaseDC(nullptr, screen);
 }
 
-void PaintImage(ViewerState& s, HDC dc, const RECT& cr) {
+void PaintBand(ViewerState& s, HDC dc, const RECT& content) {
+    int bh = BandHeight(s);
+    if (!bh) return;
+    RECT br{content.left, content.top, content.right, std::min<LONG>(content.bottom, content.top + bh)};
+    FillRect(dc, &br, GetSysColorBrush(COLOR_WINDOW));
+    HGDIOBJ oldFont = SelectObject(dc, s.uiBold);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, GetSysColor(COLOR_WINDOWTEXT));
+    RECT tr{br.left + DpiScale(s.hwnd, 6), br.top, br.right - DpiScale(s.hwnd, 6), br.bottom};
+    DrawTextW(dc, s.band.c_str(), (int)s.band.size(), &tr, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+    SelectObject(dc, oldFont);
+}
+
+void PaintImage(ViewerState& s, HDC dc, const RECT& content) {
+    PaintBand(s, dc, content);
+    RECT cr = ImageRect(s);
     HBRUSH bg = CreateSolidBrush(RGB(0x40, 0x40, 0x40));
     FillRect(dc, &cr, bg);
     DeleteObject(bg);
@@ -673,8 +742,10 @@ void PaintImage(ViewerState& s, HDC dc, const RECT& cr) {
     DeleteDC(src);
 
     // Info unten links
-    std::wstring info = IntToStrGrouped((unsigned long long)s.origW) + L" × " + IntToStrGrouped((unsigned long long)s.origH);
-    if (!s.imgFormat.empty()) info += L"  ·  " + s.imgFormat;
+    std::wstring info = s.composite ? s.imgFormat
+                                    : IntToStrGrouped((unsigned long long)s.origW) + L" × " +
+                                          IntToStrGrouped((unsigned long long)s.origH);
+    if (!s.composite && !s.imgFormat.empty()) info += L"  ·  " + s.imgFormat;
     double shown = g.scale * (double)s.imgW / std::max(1, s.origW);
     info += L"  ·  " + std::to_wstring((int)std::lround(shown * 100.0)) + L" %";
     if (s.imgFrames > 1) info += L"  ·  " + std::to_wstring(s.imgFrames) + L" Bilder";
@@ -698,7 +769,7 @@ void ZoomAt(ViewerState& s, double newScale, POINT anchor) {
     if (!s.img) return;
     newScale = std::clamp(newScale, 0.01, 32.0);
     ImageGeom g = ComputeGeom(s);
-    RECT cr = ContentRect(s);
+    RECT cr = ImageRect(s);
     double ix = (anchor.x - g.x0) / g.scale, iy = (anchor.y - g.y0) / g.scale;
     s.fit = false;
     s.zoom = newScale;
@@ -710,7 +781,7 @@ void ZoomAt(ViewerState& s, double newScale, POINT anchor) {
 }
 
 POINT ContentCenter(ViewerState& s) {
-    RECT cr = ContentRect(s);
+    RECT cr = ImageRect(s);
     return POINT{(cr.left + cr.right) / 2, (cr.top + cr.bottom) / 2};
 }
 
@@ -742,7 +813,7 @@ void Pan(ViewerState& s, int dx, int dy) {
 bool ImagePannable(ViewerState& s) {
     if (s.eff != Eff::Image || !s.img) return false;
     ImageGeom g = ComputeGeom(s);
-    RECT cr = ContentRect(s);
+    RECT cr = ImageRect(s);
     return g.dw > cr.right - cr.left || g.dh > cr.bottom - cr.top;
 }
 
@@ -795,6 +866,8 @@ void Unload(ViewerState& s) {
     s.zoom = 1.0;
     s.panX = s.panY = 0;
     s.eff = Eff::None;
+    s.media = MediaKind::None;
+    s.mediaKey.clear();
 }
 
 bool ReadSample(const std::wstring& path, std::vector<uint8_t>& data) { return ReadFileBytes(path, data, kSampleSize); }
@@ -922,6 +995,167 @@ bool ShowPreview(ViewerState& s, std::wstring& err) {
     return true;
 }
 
+// ---------- PDF/Video ----------
+
+// Zwischenspeicher der Gesamtbilder (nur UI-Thread): gleicher Inhalt bei gleicher Größe der Bildfläche
+struct MediaCacheEntry {
+    std::wstring key;
+    std::vector<uint32_t> px;
+    int w = 0, h = 0;
+    std::wstring band, format;
+};
+constexpr size_t kMediaCacheBytes = 256u * 1024 * 1024;
+
+std::list<MediaCacheEntry>& MediaCache() {
+    static std::list<MediaCacheEntry> cache;
+    return cache;
+}
+
+std::wstring MediaKey(const ViewerState& s, int boxW, int boxH) {
+    uint64_t t = ((uint64_t)s.lastWrite.dwHighDateTime << 32) | s.lastWrite.dwLowDateTime;
+    return std::to_wstring((int)s.media) + L"|" + std::to_wstring(boxW) + L"x" + std::to_wstring(boxH) + L"|" +
+           std::to_wstring(s.fileSize) + L"|" + std::to_wstring(t) + L"|" + ToLower(s.path);
+}
+
+void MediaCacheStore(const std::wstring& key, const void* bits, int w, int h, const std::wstring& band,
+                     const std::wstring& format) {
+    auto& cache = MediaCache();
+    for (auto it = cache.begin(); it != cache.end(); ++it)
+        if (it->key == key) {
+            cache.erase(it);
+            break;
+        }
+    MediaCacheEntry e;
+    e.key = key;
+    e.px.assign((const uint32_t*)bits, (const uint32_t*)bits + (size_t)w * h);
+    e.w = w;
+    e.h = h;
+    e.band = band;
+    e.format = format;
+    cache.push_front(std::move(e));
+    size_t total = 0;
+    for (auto it = cache.begin(); it != cache.end();) {
+        total += it->px.size() * 4;
+        if (total > kMediaCacheBytes && it != cache.begin())
+            it = cache.erase(it);
+        else
+            ++it;
+    }
+}
+
+bool MediaCacheLoad(ViewerState& s, const std::wstring& key) {
+    auto& cache = MediaCache();
+    for (auto it = cache.begin(); it != cache.end(); ++it) {
+        if (it->key != key) continue;
+        BITMAPINFO bi{};
+        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bi.bmiHeader.biWidth = it->w;
+        bi.bmiHeader.biHeight = -it->h;
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HBITMAP bmp = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (!bmp || !bits) {
+            if (bmp) DeleteObject(bmp);
+            return false;
+        }
+        memcpy(bits, it->px.data(), it->px.size() * 4);
+        GdiFlush();
+        s.img = bmp;
+        s.imgBits = bits;
+        s.imgW = s.origW = it->w;
+        s.imgH = s.origH = it->h;
+        s.imgAlpha = false;
+        s.composite = true;
+        s.band = it->band;
+        s.imgFormat = it->format;
+        cache.splice(cache.begin(), cache, it);   // zuletzt verwendet nach vorn
+        return true;
+    }
+    return false;
+}
+
+void StartMedia(ViewerState& s, MediaKind kind) {
+    ShowChild(s, nullptr);
+    s.eff = Eff::Image;
+    s.media = kind;
+    RECT cr = ContentRect(s);
+    int boxW = std::max<int>(64, cr.right - cr.left);
+    int boxH = std::max<int>(64, cr.bottom - cr.top - (kind == MediaKind::Video ? s.lineH + DpiScale(s.hwnd, 8) : 0));
+    s.mediaKey = MediaKey(s, boxW, boxH);
+    if (MediaCacheLoad(s, s.mediaKey)) return;   // im selben Programmlauf schon erzeugt
+    s.imgLoading = true;
+    auto job = std::make_shared<ImageJob>();
+    job->path = s.path;
+    job->media = kind;
+    job->boxW = boxW;
+    job->boxH = boxH;
+    s.job = job;
+    UINT gen = ++s.gen;
+    try {
+        std::thread(DecodeWorker, job, s.hwnd, gen).detach();
+    } catch (...) {
+        s.job.reset();
+        s.imgLoading = false;
+        s.mediaMessage = PathFileName(s.path) + L"\nAnzeige nicht möglich (kein Arbeitsthread)";
+    }
+}
+
+void OnMediaDone(ViewerState& s) {
+    std::shared_ptr<ImageJob> job = s.job;
+    bool unavailable;
+    {
+        std::lock_guard<std::mutex> lock(job->m);
+        if (!job->done) return;
+        s.band = job->band;
+        s.imgFormat = job->format;
+        if (job->bmp) {
+            s.img = job->bmp;
+            job->bmp = nullptr;
+            s.imgBits = job->bits;
+            s.imgW = s.origW = job->w;
+            s.imgH = s.origH = job->h;
+            s.imgAlpha = false;
+            s.composite = true;
+            if (!job->cancelled && job->error.empty())
+                MediaCacheStore(s.mediaKey, s.imgBits, s.imgW, s.imgH, s.band, s.imgFormat);
+        } else {
+            s.mediaMessage = job->message;
+        }
+        if (job->cancelled) s.note = L"Anzeige abgebrochen";
+        unavailable = job->unavailable;
+    }
+    s.job.reset();
+    s.imgLoading = false;
+    s.mediaProgress.clear();
+    // Testhilfe: QFILES_TEST_VIEWERLOG=<Datei> protokolliert das Ergebnis (GUI-Test)
+    wchar_t logPath[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"QFILES_TEST_VIEWERLOG", logPath, MAX_PATH)) {
+        std::wstring line = PathFileName(s.path) + L" | " + s.imgFormat + L" | " + std::to_wstring(s.imgW) + L"x" +
+                            std::to_wstring(s.imgH) + L" | " + s.band + L" | " + ReplaceAll(s.mediaMessage, L"\n", L" / ") +
+                            (unavailable ? L" | nicht verfügbar" : L"") + L"\r\n";
+        std::vector<uint8_t> old;
+        ReadFileBytes(logPath, old);
+        std::string u = std::string(old.begin(), old.end()) + WideToUtf8(line);
+        WriteFileBytes(logPath, u.data(), u.size());
+    }
+    // PDF ohne Windows.Data.Pdf: wie bisher über den Vorschauhandler bzw. als Hex/Text
+    if (unavailable && s.media == MediaKind::Pdf) {
+        bool hadFocus = HasFocusInside(s);
+        std::wstring why = s.mediaMessage;
+        s.mediaMessage.clear();
+        s.band.clear();
+        s.media = MediaKind::None;
+        std::wstring err;
+        if (!(HasPreviewHandler(LowerExt(s.path)) && ShowPreview(s, err))) ShowFallback(s, L"PDF-Anzeige nicht verfügbar");
+        Layout(s);
+        if (hadFocus) SetFocus(FocusTarget(s));
+    }
+    InvalidateRect(s.hwnd, nullptr, FALSE);
+    if (s.changed) s.changed();
+}
+
 void StartImage(ViewerState& s) {
     ShowChild(s, nullptr);
     s.eff = Eff::Image;
@@ -941,6 +1175,7 @@ void StartImage(ViewerState& s) {
 
 void OnImageDone(ViewerState& s, UINT gen) {
     if (gen != s.gen || !s.job) return;
+    if (s.job->media != MediaKind::None) return OnMediaDone(s);
     std::shared_ptr<ImageJob> job = s.job;
     bool ok;
     std::wstring error;
@@ -1059,6 +1294,9 @@ void LoadPath(ViewerState& s, const std::wstring& path, bool force) {
         SetMessage(s, L"„" + PathFileName(path) + L"“ kann nicht gelesen werden:\n" + LastErrorMessage(attrErr));
     } else if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         LoadDirectory(s, fad);
+    } else if (MediaKind mk = s.mode == ViewerMode::Auto && size > 0 ? MediaKindForPath(path) : MediaKind::None;
+               mk != MediaKind::None) {
+        StartMedia(s, mk);   // PDF: Seiten, Video: Einzelbilder
     } else {
         ViewerMode m = s.mode == ViewerMode::Auto ? DetectMode(s) : s.mode;
         switch (m) {
@@ -1108,7 +1346,10 @@ std::wstring ModeText(const ViewerState& s) {
     switch (s.eff) {
     case Eff::Text: return std::wstring(L"Text · ") + EncodingShortName(s.textEnc);
     case Eff::Hex: return L"Hex";
-    case Eff::Image: return s.imgLoading ? L"Bild (wird geladen)" : L"Bild";
+    case Eff::Image:
+        if (s.media == MediaKind::Pdf) return s.imgLoading ? L"PDF (wird gelesen)" : L"PDF";
+        if (s.media == MediaKind::Video) return s.imgLoading ? L"Video (wird gelesen)" : L"Video";
+        return s.imgLoading ? L"Bild (wird geladen)" : L"Bild";
     case Eff::Preview: return L"Vorschau";
     case Eff::Directory: return L"Verzeichnis";
     default: return L"";
@@ -1207,10 +1448,18 @@ void Paint(ViewerState& s, HDC target) {
     RECT cr = ContentRect(s);
     switch (s.eff) {
     case Eff::Image:
-        if (s.imgLoading)
+        if (s.imgLoading && s.media != MediaKind::None) {
+            std::wstring t = (s.media == MediaKind::Pdf ? L"PDF wird gelesen …" : L"Video wird gelesen …");
+            if (!s.mediaProgress.empty()) t += L"\n" + s.mediaProgress;
+            PaintMessage(s, dc, cr, t + L"\n\nEsc bricht ab");
+        } else if (s.imgLoading) {
             PaintMessage(s, dc, cr, L"Bild wird geladen…");
-        else
+        } else if (!s.img && !s.mediaMessage.empty()) {
+            PaintBand(s, dc, cr);
+            PaintMessage(s, dc, ImageRect(s), s.mediaMessage);
+        } else {
             PaintImage(s, dc, cr);
+        }
         break;
     case Eff::Directory: PaintDirectory(s, dc, cr); break;
     case Eff::Message: PaintMessage(s, dc, cr, s.message); break;
@@ -1414,11 +1663,22 @@ void CreateChildren(ViewerState& s) {
     ApplyWrap(s);
 }
 
+// Esc während des Aufbaus einer PDF-/Video-Anzeige: bisherigen Stand anzeigen
+bool CancelMediaBuild(ViewerState& s) {
+    if (s.eff != Eff::Image || !s.imgLoading || !s.job || s.media == MediaKind::None || s.job->cancel) return false;
+    s.job->cancel = true;
+    s.mediaProgress = L"wird abgebrochen …";
+    InvalidateRect(s.hwnd, nullptr, FALSE);
+    return true;
+}
+
 void OnViewerKeyDown(ViewerState& s, WPARAM vk, LPARAM lp) {
     const bool ctrl = GetKeyState(VK_CONTROL) < 0;
     int step = DpiScale(s.hwnd, 48);
     switch (vk) {
     case VK_ESCAPE:
+        if (CancelMediaBuild(s)) return;
+        [[fallthrough]];
     case VK_TAB:
         if (HWND p = GetParent(s.hwnd)) SendMessageW(p, WM_KEYDOWN, vk, lp);
         return;
@@ -1514,6 +1774,13 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_QF_IMAGEDONE: OnImageDone(*s, (UINT)wp); return 0;
+    case WM_QF_MEDIAPROGRESS:
+        if ((UINT)wp == s->gen && s->job) {
+            std::lock_guard<std::mutex> lock(s->job->m);
+            if (!s->job->cancel) s->mediaProgress = s->job->progress;
+        }
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
     case WM_SETFOCUS: {
         HWND t = FocusTarget(*s);
         if (t != hwnd && IsWindowVisible(t)) SetFocus(t);
@@ -1822,7 +2089,9 @@ void FrameCommand(FrameState& f, UINT id) {
         break;
     case IDM_V_NEXT: NavigateFile(f, 1); break;
     case IDM_V_PREV: NavigateFile(f, -1); break;
-    case IDM_V_CLOSE: PostMessageW(f.hwnd, WM_CLOSE, 0, 0); break;
+    case IDM_V_CLOSE:
+        if (!FileViewerCancelBuild(f.viewer)) PostMessageW(f.hwnd, WM_CLOSE, 0, 0);   // erst den Aufbau abbrechen
+        break;
     case IDM_V_MODE_AUTO:
     case IDM_V_MODE_TEXT:
     case IDM_V_MODE_HEX:
@@ -2037,6 +2306,11 @@ void FileViewerSetMode(HWND viewer, ViewerMode mode) {
     s->mode = mode;
     if (mode != ViewerMode::Text && mode != ViewerMode::Auto) s->forcedEnc = -1;
     if (!s->path.empty()) LoadPath(*s, s->path, true);
+}
+
+bool FileViewerCancelBuild(HWND viewer) {
+    ViewerState* s = GetViewer(viewer);
+    return s && CancelMediaBuild(*s);
 }
 
 ViewerMode FileViewerGetMode(HWND viewer) {

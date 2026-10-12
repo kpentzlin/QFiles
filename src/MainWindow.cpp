@@ -874,6 +874,10 @@ bool MainWindow::PreTranslate(MSG* msg) {
         return true; // kein Aktivieren der Menüleiste
     if (msg->message != WM_KEYDOWN && msg->message != WM_SYSKEYDOWN) return false;
     if (GetAncestor(msg->hwnd, GA_ROOT) != hwnd_) return false;
+    // Esc bricht den Aufbau einer PDF-/Video-Anzeige in der Dateianzeige ab (von überall im Hauptfenster)
+    if (msg->message == WM_KEYDOWN && msg->wParam == VK_ESCAPE && quickView_ && quickViewPane_ >= 0 &&
+        panes_[quickViewPane_] && panes_[quickViewPane_]->QuickViewCancelBuild())
+        return true;
     // In Textfeldern (Pfad, Befehlszeile, Umbenennen, Anzeige) keine Tasten abfangen, die dort gebraucht werden
     wchar_t cls[64] = {};
     GetClassNameW(GetFocus(), cls, 64);

@@ -1,6 +1,8 @@
 #include "ShellMenu.h"
 #include "App.h"
 #include "FileOps.h"
+#include "Location.h"
+#include "Remote.h"
 #include "Util.h"
 
 #include <shlobj.h>
@@ -951,11 +953,52 @@ IDataObject* CreateShellDataObject(HWND owner, const std::wstring& dir, const st
     return data;
 }
 
+namespace {
+
+// Einfache Ablagequelle für DoDragDrop (Rückfall, falls SHDoDragDrop nicht verfügbar ist, z. B. unter Wine)
+class SimpleDropSource final : public IDropSource {
+public:
+    virtual ~SimpleDropSource() = default;
+    IFACEMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == IID_IUnknown || riid == IID_IDropSource) {
+            *ppv = static_cast<IDropSource*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+    IFACEMETHODIMP_(ULONG) AddRef() override { return ++ref_; }
+    IFACEMETHODIMP_(ULONG) Release() override {
+        ULONG r = --ref_;
+        if (!r) delete this;
+        return r;
+    }
+    IFACEMETHODIMP QueryContinueDrag(BOOL escape, DWORD keys) override {
+        if (escape) return DRAGDROP_S_CANCEL;
+        if (!(keys & (MK_LBUTTON | MK_RBUTTON))) return DRAGDROP_S_DROP;
+        return S_OK;
+    }
+    IFACEMETHODIMP GiveFeedback(DWORD) override { return DRAGDROP_S_USEDEFAULTCURSORS; }
+
+private:
+    ULONG ref_ = 1;
+};
+
+} // namespace
+
 DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::wstring>& names) {
     IDataObject* data = CreateShellDataObject(hwnd, dir, names);
     if (!data) return DROPEFFECT_NONE;
     DWORD effect = DROPEFFECT_NONE;
-    SHDoDragDrop(hwnd, data, nullptr, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, &effect);
+    const DWORD allowed = DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK;
+    HRESULT hr = SHDoDragDrop(hwnd, data, nullptr, allowed, &effect);
+    if (FAILED(hr)) {
+        auto* src = new SimpleDropSource();
+        effect = DROPEFFECT_NONE;
+        DoDragDrop(data, src, allowed, &effect);
+        src->Release();
+    }
     data->Release();
     return effect;
 }
@@ -966,8 +1009,8 @@ namespace {
 
 class DropTarget : public IDropTarget {
 public:
-    DropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done)
-        : hwnd_(hwnd), resolver_(std::move(resolver)), done_(std::move(done)) {
+    DropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done, bool listPane)
+        : hwnd_(hwnd), resolver_(std::move(resolver)), done_(std::move(done)), listPane_(listPane) {
         CoCreateInstance(CLSID_DragDropHelper, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&helper_));
     }
     virtual ~DropTarget() {
@@ -1041,6 +1084,13 @@ public:
         HWND owner = GetAncestor(hwnd_, GA_ROOT);
         auto files = files_;
         files_.clear();
+        if (IsRemoteUrl(target)) {
+            // Hochladen auf FTP/SFTP/WebDAV; Verschieben nur nach Rückfrage
+            eff = RemoteDropTransfer(owner, files, target, eff == DROPEFFECT_MOVE);
+            *effect = (eff == DROPEFFECT_MOVE) ? DROPEFFECT_NONE : eff;
+            if (done_ && eff != DROPEFFECT_NONE) done_();
+            return S_OK;
+        }
         if (eff == DROPEFFECT_MOVE) MoveItems(owner, files, target);
         else if (eff == DROPEFFECT_COPY) CopyItems(owner, files, target);
         // Für die Quelle: Verschieben bereits erledigt -> DROPEFFECT_NONE melden, damit sie nicht selbst löscht
@@ -1074,15 +1124,19 @@ private:
         if (files_.empty()) return DROPEFFECT_NONE;
         std::wstring target = resolver_ ? resolver_(POINT{pt.x, pt.y}) : L"";
         if (target.empty()) return DROPEFFECT_NONE;
+        bool remote = IsRemoteUrl(target);
         // Nicht in sich selbst bzw. in dasselbe Verzeichnis
-        bool sameDir = true;
+        bool sameDir = !remote;
         for (auto& f : files_) {
+            if (remote) break;
             if (EqualsI(f, target) || StartsWithI(target, f + L"\\")) return DROPEFFECT_NONE;
             if (!EqualsI(PathParent(f), target)) sameDir = false;
         }
         if (sameDir) return DROPEFFECT_NONE;
         DWORD eff;
-        if ((keys & MK_CONTROL) && (keys & MK_SHIFT)) eff = DROPEFFECT_COPY;
+        if (listPane_) eff = (keys & (MK_CONTROL | MK_SHIFT)) ? DROPEFFECT_COPY : DROPEFFECT_MOVE;   // Dateilisten
+        else if (remote) eff = (keys & MK_SHIFT) && !(keys & MK_CONTROL) ? DROPEFFECT_MOVE : DROPEFFECT_COPY;
+        else if ((keys & MK_CONTROL) && (keys & MK_SHIFT)) eff = DROPEFFECT_COPY;
         else if (keys & MK_SHIFT) eff = DROPEFFECT_MOVE;
         else if (keys & MK_CONTROL) eff = DROPEFFECT_COPY;
         else eff = EqualsI(PathRoot(files_[0]), PathRoot(target)) ? DROPEFFECT_MOVE : DROPEFFECT_COPY;
@@ -1097,12 +1151,14 @@ private:
     IDropTargetHelper* helper_ = nullptr;
     std::vector<std::wstring> files_;
     bool rightButton_ = false;
+    bool listPane_ = false;
 };
 
 } // namespace
 
-void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done) {
-    auto* t = new DropTarget(hwnd, std::move(resolver), std::move(done));
+void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done,
+                            bool listPane) {
+    auto* t = new DropTarget(hwnd, std::move(resolver), std::move(done), listPane);
     RegisterDragDrop(hwnd, t);
     t->Release(); // RegisterDragDrop hält eine eigene Referenz
 }

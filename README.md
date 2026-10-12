@@ -63,10 +63,34 @@ der in der aktiven Liste der Fokus steht. Die Anzeige folgt beim Blättern und l
 | Text | Kodierung wird automatisch erkannt |
 | Bilder | über WIC |
 | Binärdateien | hexadezimal |
-| PDF, Office, HTML, RTF … | über die Windows-Vorschauhandler |
+| PDF | Seitenbild (siehe unten) |
+| Videos (MP4, MOV, AVI, WMV, MKV, MPEG …) | Einzelbilder (siehe unten) |
+| Office, HTML, RTF … | über die Windows-Vorschauhandler |
 | Verzeichnisse | Übersicht |
 
 Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in eigenem Fenster“ wählen.
+
+**PDF** (über Windows.Data.Pdf von Windows 10/11): Eine einseitige PDF-Datei erscheint wie ein Bild. Hat sie mindestens
+4 Seiten und sind die ersten 4 im Hochformat, zeigt QFiles diese 4 Seiten in 2 Zeilen zu je 2 Seiten; ebenso bei
+genau 3 Hochformatseiten (das vierte Feld bleibt leer). Sonst erscheinen die ersten 2 Seiten übereinander.
+
+**Videos** (über Media Foundation): Eine Kopfzeile nennt Auflösung und Gesamtdauer. Darunter bei Videos unter
+2 Sekunden das mittlere Einzelbild; bei Querformat die Bilder nach 1 Sekunde, in der Mitte und 1 Sekunde vor Schluss
+übereinander; sonst (Hochformat, quadratisch) die Bilder nach 1 Sekunde, nach einem Drittel, nach zwei Dritteln und
+1 Sekunde vor Schluss in 2 Zeilen zu je 2 Bildern. Hochkant aufgenommene Handyvideos werden richtig gedreht.
+
+Für beide gilt:
+
+- Seiten bzw. Bilder sind durch einen 2 Pixel breiten schwarzen Strich getrennt.
+- Der Aufbau läuft im Hintergrund und lässt sich mit **Esc** abbrechen. Bei PDF erscheint dann an Stelle jeder noch
+  nicht gelesenen Seite zentriert „Dateiname / Seite n“ (bereits gelesene Seiten bleiben), beim Video an Stelle der
+  Bilder „Dateiname / Frame-Anzeige abgebrochen“. Videos, die sich nicht lesen lassen, zeigen ebenso
+  „Frame-Anzeige nicht möglich“ mit dem Grund.
+- Das erzeugte Bild passt sich bei Größenänderungen der Liste an wie eine Grafik (die Datei wird nicht neu gelesen)
+  und wird für den Programmlauf zwischengespeichert: Wird dieselbe, unveränderte Datei bei gleicher Größe der Liste
+  erneut angezeigt, erscheint sie sofort.
+- Fehlt Windows.Data.Pdf, zeigt QFiles PDFs wie bisher über den Vorschauhandler. Fehlt Media Foundation (z. B. auf
+  Windows Server ohne das Feature „Media Foundation“), wird das gemeldet.
 
 ---
 
@@ -135,7 +159,10 @@ Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in ei
   Hinweis: Auf SSDs und bei Schattenkopien/Cloud-Synchronisierung kann der alte Inhalt physisch erhalten bleiben.
 - Ausführung über die Windows-Shell (`IFileOperation`): Fortschrittsanzeige, Konfliktdialoge, Rechteerhöhung.
 - **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen und Anlegen.
-- Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Rechte Maustaste fragt nach Kopieren oder
+- Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Ziehen in ein Listenfenster **verschiebt**;
+  mit gedrückter **Umschalt- oder Strg-Taste** wird kopiert. Ist das Ziel ein FTP/SFTP/WebDAV-Verzeichnis, wird erst
+  nachgefragt (OK = verschieben, **Kopieren** = nur hochladen, Abbrechen). Auf Baum und Lesezeichen gilt die
+  Explorer-Regel (gleiches Laufwerk verschieben, sonst kopieren). Die rechte Maustaste fragt nach Kopieren oder
   Verschieben.
 - Zwischenablage: Ausschneiden, Kopieren, Einfügen, kompatibel mit dem Explorer.
 - Explorer-Kontextmenü, „Öffnen mit“, Eigenschaften (Alt+Eingabe).
@@ -369,11 +396,11 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/Location.*`, `Network.*` | Netzwerk-, FTP- und WebDAV-Adressen, Suche nach Rechnern und Freigaben |
 | `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `WebDavClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP/WebDAV: Zugänge, Verbindungen, Übertragungen |
 | `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
+| `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
 | `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
 | `src/Settings.*`, `App.*` | Einstellungsdatei, Optionen, globale Dienste, Dateisystemmonitor |
 | `src/Util.*`, `Encoding.*`, `Dialog.*`, `Glyphs.*` | Hilfsfunktionen, Textkodierungen, Dialoge ohne Ressourcendatei, Symbole |
 | `src/TextEditor.*` | Texteditor |
-| `src/Viewer.cpp`, `HexView.*` | Anzeige, Hex-Editor |
 | `src/Compare*.cpp`, `SyncDirs.cpp` | Datei- und Verzeichnisvergleich, Synchronisieren |
 | `src/BatchRename.cpp`, `FindFiles.cpp`, `Duplicates.cpp`, `SplitJoin.cpp` | Umbenennen, Suchen, Doppelte, Teilen |
 | `src/Tools.cpp`, `Attributes.cpp`, `FunctionKeys.cpp`, `Archive.cpp`, `PrintList.cpp`, `OptionsDialog.cpp` | Weitere Werkzeuge und Optionen |
@@ -410,7 +437,8 @@ ausgeblendet. Ein leeres Feld schaltet den Ausschluss ab.
 - FTP: nur passiver Modus, kein verschlüsseltes FTPS (dafür SFTP verwenden). SFTP-Server, die ausschließlich
   Ed25519-Hostschlüssel anbieten, werden nicht unterstützt (RSA- und ECDSA-Schlüssel, wie bei OpenSSH üblich, schon).
 - Für FTP/SFTP/WebDAV-Verzeichnisse stehen nicht alle Werkzeuge zur Verfügung (z. B. Vergleichen, Synchronisieren,
-  Suchen, Attribute, Drag & Drop, Rückgängig); QFiles meldet das.
+  Suchen, Attribute, Ziehen aus der Liste heraus, Rückgängig); QFiles meldet das. Dateien lassen sich aber auf eine
+  FTP/SFTP/WebDAV-Liste ziehen (hochladen).
 - WebDAV: Umbenennen und Verschieben auf dem Server über MOVE; Server, die Ordner nicht per PROPFIND auflisten
   (reine HTTP-Downloadseiten), werden nicht unterstützt.
 - Cloud-Speicher nur über die installierten Desktop-Programme der Anbieter (siehe oben). Bei „Dateien bei Bedarf“

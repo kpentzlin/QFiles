@@ -43,6 +43,9 @@ bool RemoteDelete(HWND owner, const std::wstring& dirUrl, const std::vector<std:
 // Kopieren/Verschieben zwischen lokalen Verzeichnissen und FTP/SFTP (in beide Richtungen und zwischen Servern).
 // sources: vollständige Orte (lokale Pfade oder Adressen); targetDir: lokales Verzeichnis oder Adresse.
 bool RemoteTransfer(HWND owner, const std::vector<std::wstring>& sources, const std::wstring& targetDir, bool move);
+// Ablage per Maus auf ein FTP/SFTP/WebDAV-Verzeichnis. Verschieben nur nach Rückfrage (OK / Kopieren / Abbrechen).
+// Rückgabe: ausgeführte Aktion (DROPEFFECT_MOVE, DROPEFFECT_COPY oder DROPEFFECT_NONE).
+DWORD RemoteDropTransfer(HWND owner, const std::vector<std::wstring>& sources, const std::wstring& targetDir, bool move);
 // Datei in ein temporäres Verzeichnis laden (Anzeigen, Öffnen, Bearbeiten). Größere Dateien als maxBytes
 // werden abgelehnt (Rückgabe false, err gesetzt). quiet = keine Meldung bei Fehlern.
 bool RemoteDownloadTemp(HWND owner, const std::wstring& url, std::wstring& localPath, std::wstring& err,

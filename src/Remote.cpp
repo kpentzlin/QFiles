@@ -1040,4 +1040,54 @@ void RemoteDisconnectAll() {
     Pool().clear();
 }
 
+// ---- Ablage per Maus ----
+
+namespace {
+
+constexpr int kDropCopy = 201;
+
+class DropMoveDlg : public DialogBase {
+public:
+    std::wstring text;
+
+protected:
+    BOOL OnInit() override {
+        SetText(101, text);
+        MessageBeep(MB_ICONQUESTION);
+        return TRUE;
+    }
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        if (id == kDropCopy) {
+            End(kDropCopy);
+            return TRUE;
+        }
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+};
+
+} // namespace
+
+DWORD RemoteDropTransfer(HWND owner, const std::vector<std::wstring>& sources, const std::wstring& targetDir, bool move) {
+    if (sources.empty()) return DROPEFFECT_NONE;
+    if (move) {
+        std::wstring what = sources.size() == 1 ? L"„" + LocationFileName(sources[0]) + L"“"
+                                                : std::to_wstring(sources.size()) + L" Elemente";
+        DialogTemplate t(L"Verschieben", 280, 74);
+        t.Label(101, L"", 7, 7, 266, 36);
+        t.DefButton(IDOK, L"OK", 109, 53, 50, 14);
+        t.Button(kDropCopy, L"&Kopieren", 166, 53, 50, 14);
+        t.Button(IDCANCEL, L"Abbrechen", 223, 53, 50, 14);
+        DropMoveDlg dlg;
+        dlg.text = what + L" nach „" + LocationDisplay(targetDir) + L"“ verschieben?\n\n"
+                   L"Beim Verschieben werden die Originale nach dem Hochladen gelöscht. „Kopieren“ lädt nur hoch.";
+        INT_PTR r = dlg.DoModal(owner, t);
+        if (r == kDropCopy)
+            move = false;
+        else if (r != IDOK)
+            return DROPEFFECT_NONE;
+    }
+    RemoteTransfer(owner, sources, targetDir, move);
+    return move ? DROPEFFECT_MOVE : DROPEFFECT_COPY;
+}
+
 } // namespace qf

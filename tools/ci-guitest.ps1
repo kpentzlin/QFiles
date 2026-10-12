@@ -267,6 +267,45 @@ Write-Output "::notice title=Mit Unterverzeichnissen::$recLine"
 $netLine = $pl | Where-Object { $_ -match '^Liste 1 \| \\\\ \|' } | Select-Object -Last 1
 if ($netLine) { Write-Output "::notice title=Netzwerk-Suche::$netLine" }
 
+# ---- PDF- und Video-Anzeige (F11): Testdateien erzeugen, nacheinander in der Dateianzeige zeigen ----
+$mediaDir = "C:\QFilesMedien"
+& python tools\make-test-media.py $mediaDir
+$viewLog = "$PWD\viewer-log.txt"
+Remove-Item $viewLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_VIEWERLOG = $viewLog
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $mediaDir + '"'),'"C:\Windows"' -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Medien)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+[System.Windows.Forms.SendKeys]::SendWait("^1"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{F11}"); Start-Sleep -Seconds 6
+Shot "screenshot11.png"   # 1 Seite
+$shots = @{ 1 = "screenshot12.png"; 2 = "screenshot13.png"; 3 = "screenshot14.png"; 5 = "screenshot15.png"; 6 = "screenshot16.png" }
+for ($i = 1; $i -le 7; $i++) {
+  [System.Windows.Forms.SendKeys]::SendWait("{DOWN}"); Start-Sleep -Seconds 7
+  Check-Alive "Dateianzeige Medien $i"
+  if ($shots.ContainsKey($i)) { Shot $shots[$i] }
+}
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_VIEWERLOG
+if (-not (Test-Path $viewLog)) { "Protokoll der Dateianzeige fehlt" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+$vl = Get-Content $viewLog -Encoding UTF8
+$vl | ForEach-Object { Write-Output $_ }
+$pdfOk = @($vl | Where-Object { $_ -match '\.pdf \| PDF' }).Count
+$pdfFail = @($vl | Where-Object { $_ -match '\.pdf \|' -and $_ -notmatch '\.pdf \| PDF' })
+if ($pdfOk -lt 5) {
+  Write-Output "::error title=PDF-Anzeige::Nur $pdfOk von 5 PDFs angezeigt: $($pdfFail -join ' / ')"
+  "PDF-Anzeige fehlgeschlagen" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+Write-Output ("::notice title=PDF-Anzeige::" + (($vl | Where-Object { $_ -match '\.pdf \|' }) -join ' / '))
+$vids = @($vl | Where-Object { $_ -match '\.avi \|' })
+$vidOk = @($vids | Where-Object { $_ -match 'Auflösung' -and $_ -notmatch 'nicht möglich' }).Count
+if ($vidOk -eq 3) { Write-Output ("::notice title=Video-Anzeige::" + ($vids -join ' / ')) }
+else { Write-Output ("::warning title=Video-Anzeige::" + ($vids -join ' / ')) }
+
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
 }

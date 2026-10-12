@@ -199,7 +199,8 @@ bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
         [this]() {
             Reload();
             if (host_) host_->OnPaneFilesDropped(this);
-        });
+        },
+        true);   // Dateiliste: Ziehen verschiebt, Umschalt/Strg kopiert
     UpdateDrives();
     return true;
 }
@@ -1693,15 +1694,16 @@ void FilePane::OpenFocused() {
 }
 
 std::wstring FilePane::DropTargetDirAt(POINT screenPt) const {
-    if (dir_.empty() || IsVirtual()) return L"";
+    bool remote = IsRemote();
+    if (dir_.empty() || (IsVirtual() && !remote)) return L"";
     LVHITTESTINFO ht{};
     ht.pt = screenPt;
     ScreenToClient(list_, &ht.pt);
     int i = ListView_HitTest(list_, &ht);
     if (i >= 0 && i < (int)items_.size() && (ht.flags & LVHT_ONITEM)) {
         const Item& it = items_[i];
-        if (it.isParent) return PathParent(dir_);
-        if (it.e.IsDir()) return PathCombine(dir_, it.e.name);
+        if (it.isParent) return remote ? LocationParent(dir_) : PathParent(dir_);
+        if (it.e.IsDir()) return remote ? LocationCombine(dir_, it.e.name) : PathCombine(dir_, RelName(it));
     }
     return dir_;
 }
@@ -1726,6 +1728,8 @@ void FilePane::SetQuickView(bool on) {
     }
     Layout();
 }
+
+bool FilePane::QuickViewCancelBuild() { return quickView_ && viewer_ && FileViewerCancelBuild(viewer_); }
 
 void FilePane::QuickViewLoad(const std::wstring& path) {
     if (!quickView_ || !viewer_) return;
