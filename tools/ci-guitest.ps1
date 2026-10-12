@@ -277,7 +277,19 @@ $script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $mediaDir + '"'),'
 Start-Sleep -Seconds 8
 Check-Alive "Start (Medien)"
 [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
-[System.Windows.Forms.SendKeys]::SendWait("^1"); Start-Sleep -Milliseconds 400
+# Liste 1 suchen und die erste Datei anklicken (Zeile 2 nach „..“), damit die Tasten ankommen
+$best = [IntPtr]::Zero; $bestKey = [int]::MaxValue; $h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($p.MainWindowHandle, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $key = $r.L + $r.T * 10
+  if ($key -lt $bestKey) { $bestKey = $key; $best = $h }
+}
+$mlist = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
+$mr = New-Object W+RECT; [W]::GetWindowRect($mlist, [ref]$mr) | Out-Null
+[W]::Click($mr.L + 60, $mr.T + 24 + 1 * 20 + 10, $false); Start-Sleep -Milliseconds 800
 [System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}"); Start-Sleep -Milliseconds 400
 [System.Windows.Forms.SendKeys]::SendWait("{F11}"); Start-Sleep -Seconds 6
 Shot "screenshot11.png"   # 1 Seite
