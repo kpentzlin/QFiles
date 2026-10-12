@@ -291,11 +291,22 @@ $mlist = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
 $mr = New-Object W+RECT; [W]::GetWindowRect($mlist, [ref]$mr) | Out-Null
 [W]::Click($mr.L + 60, $mr.T + 24 + 1 * 20 + 10, $false); Start-Sleep -Milliseconds 800
 [System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}"); Start-Sleep -Milliseconds 400
-[System.Windows.Forms.SendKeys]::SendWait("{F11}"); Start-Sleep -Seconds 6
+# Wartet, bis die Dateianzeige ein weiteres Ergebnis protokolliert hat (höchstens 40 s; Media Foundation braucht
+# beim ersten Video auf dem CI-Rechner mitunter lange)
+function Wait-ViewerLog([int]$count) {
+  for ($t = 0; $t -lt 80; $t++) {
+    if ((Test-Path $viewLog) -and @(Get-Content $viewLog -Encoding UTF8).Count -ge $count) { break }
+    Start-Sleep -Milliseconds 500
+  }
+  Start-Sleep -Milliseconds 800
+}
+[System.Windows.Forms.SendKeys]::SendWait("{F11}")
+Wait-ViewerLog 1
 Shot "screenshot11.png"   # 1 Seite
 $shots = @{ 1 = "screenshot12.png"; 2 = "screenshot13.png"; 3 = "screenshot14.png"; 5 = "screenshot15.png"; 6 = "screenshot16.png" }
 for ($i = 1; $i -le 7; $i++) {
-  [System.Windows.Forms.SendKeys]::SendWait("{DOWN}"); Start-Sleep -Seconds 7
+  [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+  Wait-ViewerLog ($i + 1)
   Check-Alive "Dateianzeige Medien $i"
   if ($shots.ContainsKey($i)) { Shot $shots[$i] }
 }
