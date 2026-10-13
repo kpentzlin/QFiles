@@ -401,7 +401,7 @@ Shot "screenshot21.png"
 # in die Verzeichnisliste klicken: das Anzeigefenster muss sichtbar bleiben (gehört zum QFiles-Fenster)
 [W]::Click($ar.L + 200, $ar.B - 40, $false); Start-Sleep -Seconds 2
 $vfStill = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf) -and ([W]::GetWindow($vf, 4) -eq $p.MainWindowHandle)
-if (-not ($vfOk -and $vfStill)) {
+if (-not ($vfOk -and $vfFront -and $vfStill)) {
   Write-Output "::error title=Anzeigen aus Archiv::Fenster sichtbar: $vfOk, im Vordergrund: $vfFront, nach Klick noch sichtbar: $vfStill"
   "Anzeigefenster aus der Archivliste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }

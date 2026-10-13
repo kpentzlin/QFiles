@@ -56,6 +56,7 @@ constexpr wchar_t kViewerSection[] = L"Anzeige";
 constexpr UINT WM_QF_IMAGEDONE = WM_APP + 0x351;   // Hintergrund-Dekodierung fertig (wParam = Generation)
 constexpr UINT WM_QF_MEDIAPROGRESS = WM_APP + 0x352;   // PDF/Video: Fortschritt (wParam = Generation)
 constexpr UINT WM_QF_ARCHIVEDONE = WM_APP + 0x353;     // Archiv gelesen (wParam = Generation)
+constexpr UINT WM_QF_FRAMEACTIVATE = WM_APP + 0x354;   // Anzeigefenster nach Abschluss des auslösenden Vorgangs aktivieren
 
 constexpr size_t kTextLimitWindow = 8u * 1024 * 1024;     // Text im Anzeigefenster: max. 8 MB
 constexpr size_t kTextLimitEmbedded = 2u * 1024 * 1024;   // Text in der Schnellansicht: max. 2 MB (schneller Wechsel)
@@ -2366,6 +2367,12 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         break;
+    case WM_QF_FRAMEACTIVATE:
+        // erst jetzt (nach Kontextmenü und Fortschrittsanzeige des Entpackens, die das QFiles-Fenster wieder aktivieren)
+        if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+        if (f && f->viewer) SetFocus(f->viewer);
+        return 0;
     case WM_KEYDOWN:
         // vom Anzeige-Steuerelement weitergereichte Tasten
         if (wp == VK_ESCAPE) PostMessageW(hwnd, WM_CLOSE, 0, 0);
@@ -2482,6 +2489,7 @@ void OpenViewerWindowImpl(const std::wstring& path, const RECT* place) {
         if (ViewerState* s = GetViewer(f->viewer)) LoadPath(*s, path, true);
         UpdateFrameTitle(*f);
     }
+    if (place) PostMessageW(hwnd, WM_QF_FRAMEACTIVATE, 0, 0);
 }
 
 } // namespace
