@@ -505,6 +505,44 @@ bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, st
 
 // Zerlegt die Ausgabe von „tar -tvf“ (ls-ähnlich):
 // "-rw-r--r--  0 user group   1234 Jan  1  2020 pfad/name"  bzw. "... Jan  1 12:34 pfad/name"
+// tar.exe gibt nicht druckbare Zeichen in Namen als Escape-Folgen aus (bsdtar: „\ooo“ oktal je Byte, „\\“, „\t“ …),
+// z. B. „€“ in Codepage 1252 als „\200“. Ohne Rückwandlung entstünde aus „\“ ein Unterverzeichnis. Die Bytes stehen
+// in der ANSI-Codepage von tar (bzw. UTF-8).
+std::wstring UnescapeTarName(const std::wstring& name) {
+    if (name.find(L'\\') == std::wstring::npos) return name;
+    std::string bytes;
+    for (size_t i = 0; i < name.size(); ++i) {
+        wchar_t c = name[i];
+        if (c == L'\\' && i + 1 < name.size()) {
+            wchar_t n = name[i + 1];
+            if (i + 3 < name.size() && n >= L'0' && n <= L'3' && name[i + 2] >= L'0' && name[i + 2] <= L'7' &&
+                name[i + 3] >= L'0' && name[i + 3] <= L'7') {
+                bytes.push_back((char)(((n - L'0') << 6) | ((name[i + 2] - L'0') << 3) | (name[i + 3] - L'0')));
+                i += 3;
+                continue;
+            }
+            static const wchar_t* kEsc = L"\\abfnrtv";
+            static const char kVal[] = {'\\', '\a', '\b', '\f', '\n', '\r', '\t', '\v'};
+            if (const wchar_t* f = n ? wcschr(kEsc, n) : nullptr) {
+                bytes.push_back(kVal[f - kEsc]);
+                ++i;
+                continue;
+            }
+        }
+        if (c < 0x80) {
+            bytes.push_back((char)c);
+        } else {
+            char mb[8];
+            BOOL lossy = FALSE;
+            int k = WideCharToMultiByte(CP_ACP, 0, &c, 1, mb, sizeof(mb), nullptr, &lossy);
+            if (k <= 0 || lossy) return name;   // gemischt und nicht darstellbar: lieber unverändert
+            bytes.append(mb, k);
+        }
+    }
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.data(), (int)bytes.size(), nullptr, 0);
+    return DecodeCp((const uint8_t*)bytes.data(), bytes.size(), n > 0 ? CP_UTF8 : CP_ACP);
+}
+
 // Eine Zeile von „tar -tvf“: Rechte, Links, Besitzer, Gruppe, Größe, Monat, Tag, Jahr bzw. Uhrzeit, Name.
 // Der Monat ist landessprachlich (siehe MonthFromAbbr) und könnte Leerzeichen enthalten; der Name beginnt daher nach
 // dem ersten Feld „Jahr“ (4 Ziffern) bzw. „Uhrzeit“ (h:mm), dem eine Tageszahl vorausgeht.
@@ -566,6 +604,7 @@ void ParseTarListing(const std::wstring& output, std::vector<ArcEntry>& out, std
             size_t link = name.find(L" link to ");
             if (link != std::wstring::npos) name.resize(link);
         }
+        name = UnescapeTarName(name);
         e.rawName = name;
         e.isDir = perms[0] == L'd' || (!name.empty() && name.back() == L'/');
         e.size = (unsigned long long)StrToInt(tok[4].text, 0);
@@ -1537,9 +1576,21 @@ bool ExtractArchiveEntries(HWND owner, const std::wstring& archive, const std::v
         std::vector<std::wstring> commands;
         std::wstring cmd = base;
         bool has = false;
-        for (const auto& j : jobs) {
-            if (j.e->synthetic || j.e->rawName.empty() || (j.e->isDir && jobs.size() > 1)) continue;
-            std::wstring m = L" " + Quote(j.e->rawName);
+        // Nur die gewählten Elemente nennen: tar entpackt zu einem Verzeichnisnamen auch dessen Inhalt (auch ohne eigenen
+        // Verzeichniseintrag). Namen im Verzeichnis, die tar.exe nur verfälscht ausgeben kann, spielen so keine Rolle.
+        for (const auto& sel : selected) {
+            std::wstring pattern;
+            for (const auto& e : entries)
+                if (EqualsI(e.path, sel) && !e.synthetic && !e.rawName.empty()) {
+                    pattern = e.rawName;
+                    break;
+                }
+            if (pattern.empty()) {
+                pattern = sel;
+                std::replace(pattern.begin(), pattern.end(), L'\\', L'/');
+            }
+            while (pattern.size() > 1 && pattern.back() == L'/') pattern.pop_back();
+            std::wstring m = L" " + Quote(pattern);
             if (has && cmd.size() + m.size() > 30000) {
                 commands.push_back(cmd);
                 cmd = base;

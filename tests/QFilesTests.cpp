@@ -293,6 +293,31 @@ static void TestArchive(const std::wstring& base) {
     std::wstring bad = write(L"kaputt.zip", junk, sizeof(junk) - 1);
     CHECK(!ReadArchive(bad, entries, err, pw) && !pw && !err.empty());
     Out(L"Archiv-Fehlermeldung: " + err);
+
+    // RAR5 über tar.exe (nur unter Windows mit tar.exe, nicht unter Wine): Namen mit Zeichen, die tar als
+    // Escape-Folge ausgibt („€“), lesen und entpacken
+    wchar_t sysDir[MAX_PATH] = {};
+    GetSystemDirectoryW(sysDir, MAX_PATH);
+    if (!FileExists(PathCombine(sysDir, L"tar.exe"))) {
+        Out(L"RAR-Test übersprungen (kein tar.exe)");
+        return;
+    }
+    std::wstring rar = write(L"Projekt ✓.rar", kTestRar5, sizeof(kTestRar5));
+    CHECK(ReadArchive(rar, entries, err, pw) && !pw);
+    if (!err.empty()) Out(L"RAR: " + err);
+    std::wstring names;
+    for (auto& e : entries) names += e.path + L"; ";
+    Out(L"RAR-Einträge: " + names);
+    CHECK(entries.size() == 10);
+    const ArchiveEntry* euro = find(L"Grüße €.txt");
+    const ArchiveEntry* old = find(L"Alt\\BEIN08.TXT");
+    CHECK(euro && euro->size == 8);
+    CHECK(old && old->hasDate && old->size == 1250);
+    std::wstring dest3 = PathCombine(dir, L"Ziel RAR");
+    CHECK(ExtractArchiveEntries(nullptr, rar, entries, {L"Grüße €.txt", L"Quellen", L"Alt\\BEIN08.TXT"}, dest3, err));
+    if (!err.empty()) Out(L"RAR entpacken: " + err);
+    CHECK(ReadAll(PathCombine(dest3, L"Grüße €.txt")) == L"Grüße!");
+    CHECK(FileExists(PathCombine(dest3, L"Quellen\\main.cpp")) && FileExists(PathCombine(dest3, L"BEIN08.TXT")));
 }
 
 // Ausgabe von tar.exe: Monatsnamen in der Sprache des Benutzers (deutsches Windows: „Mai“, „Okt“, „Mär“ …)
@@ -324,6 +349,19 @@ static void TestTarListing() {
         CHECK(e[0].path == L"BEIN08.TXT" && st.wYear == 2010 && st.wMonth == 5 && st.wDay == 6);
         CHECK(e[1].isDir && e[1].path == L"Ordner mit Leer" && localDate(e[1]).wMonth == 10 && localDate(e[1]).wHour == 9);
         CHECK(e[2].path == L"Ordner mit Leer\\2011 Bericht.txt" && localDate(e[2]).wYear == 1999 && localDate(e[2]).wMonth == 12);
+    }
+    // Escape-Folgen von tar („\200“ = € in Codepage 1252 bzw. ein UTF-8-Byte), „\\“ = Backslash
+    ParseTarListingText(L"-rw-r--r--  0 0      0           8 Okt 13 07:30 Gr\\303\\274\\303\\237e \\342\\202\\254.txt\r\n"
+                        L"-rw-r--r--  0 0      0           8 Okt 13 07:30 Ordner/a\\tb.txt\r\n",
+                        e, errors);
+    CHECK(e.size() == 2 && errors.empty());
+    if (e.size() == 2) {
+        CHECK(e[0].path == L"Grüße €.txt" && e[0].rawName == L"Grüße €.txt");
+        CHECK(e[1].path == L"Ordner\\a\tb.txt");
+    }
+    if (GetACP() == 1252) {
+        ParseTarListingText(L"-rw-r--r--  0 0      0           8 Okt 13 07:30 Grüße \\200.txt\n", e, errors);
+        CHECK(e.size() == 1 && e[0].path == L"Grüße €.txt");
     }
     // Unbekannter Monatsname: Eintrag trotzdem, nur ohne Datum
     ParseTarListingText(L"-rw-r--r--  0 0      0          5 Xyz 01  2001 a b.txt\n", e, errors);
