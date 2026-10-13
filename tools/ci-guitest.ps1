@@ -383,13 +383,16 @@ $ar = New-Object W+RECT; [W]::GetWindowRect($alist, [ref]$ar) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("{F11}")
 Wait-ViewerLog 1
 Shot "screenshot17.png"   # ZIP als Liste (Liste 1 aktiv: Archivliste abgetönt gelb)
-# Kontextmenü „Anzeigen“ auf liesmich.txt (Zeile 5: Alt, Bilder, Quellen, Grüße €.txt, liesmich.txt): eigenes
+# Kontextmenü „Anzeigen“ auf liesmich.txt (letzte Zeile: Alt, Bilder, Quellen, Grüße €.txt, liesmich.txt): eigenes
 # Anzeigefenster, das offen bleibt – auch wenn danach ins QFiles-Fenster geklickt wird
 $arcView = [W]::FindDescendant($p.MainWindowHandle, "QFilesArchiveView")
 $arcList = if ($arcView -ne [IntPtr]::Zero) { [W]::FindWindowEx($arcView, [IntPtr]::Zero, "SysListView32", $null) } else { [IntPtr]::Zero }
 if ($arcList -eq [IntPtr]::Zero) { "Archivliste nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
 $lr = New-Object W+RECT; [W]::GetWindowRect($arcList, [ref]$lr) | Out-Null
-[W]::Click($lr.L + 60, $lr.T + 24 + 4 * 20 + 10, $true); Start-Sleep -Milliseconds 800
+# (die Liste ist auf dem kleinen CI-Bildschirm niedrig: erste Zeile anklicken, mit Ende zu liesmich.txt, Umschalt+F10)
+[W]::Click($lr.L + 60, $lr.T + 24 + 10, $false); Start-Sleep -Milliseconds 600
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Milliseconds 800
 [System.Windows.Forms.SendKeys]::SendWait("a"); Start-Sleep -Seconds 3
 $vf = [W]::FindWindow("QFilesViewerFrame", $null)
 $vfOk = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf)

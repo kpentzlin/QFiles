@@ -16,6 +16,7 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <windowsx.h>
 #include <shellapi.h>
 #include <uxtheme.h>
 
@@ -499,7 +500,7 @@ LRESULT OnNotify(State& s, NMHDR* nm) {
         POINT pt;
         GetCursorPos(&pt);
         ContextMenu(s, pt);
-        return 0;
+        return 1;   // kein zusätzliches WM_CONTEXTMENU
     }
     case LVN_BEGINDRAG:
     case LVN_BEGINRDRAG: BeginDrag(s); return 0;
@@ -515,14 +516,8 @@ LRESULT OnNotify(State& s, NMHDR* nm) {
         else if (kd->wVKey == VK_ESCAPE) {
             if (s.search) Up(s);
             else if (HWND p = GetParent(s.hwnd)) SendMessageW(p, WM_KEYDOWN, VK_ESCAPE, 0);
-        } else if (kd->wVKey == VK_APPS || (kd->wVKey == VK_F10 && GetKeyState(VK_SHIFT) < 0)) {
-            RECT rc{};
-            int f = FocusedRow(s);
-            POINT pt{DpiScale(s.hwnd, 20), DpiScale(s.hwnd, 20)};
-            if (f >= 0 && ListView_GetItemRect(s.list, f, &rc, LVIR_LABEL)) pt = {rc.left + DpiScale(s.hwnd, 8), rc.bottom};
-            ClientToScreen(s.list, &pt);
-            ContextMenu(s, pt);
         }
+        // Kontextmenütaste und Umschalt+F10 kommen als WM_CONTEXTMENU (siehe Proc)
         return 0;
     }
     case NM_SETFOCUS:
@@ -587,6 +582,22 @@ LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_SETFOCUS: SetFocus(s->list); return 0;
+    case WM_CONTEXTMENU: {
+        // Tastatur (Kontextmenütaste, Umschalt+F10): Menü am Fokuseintrag; Maus: an der Mausposition
+        POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        if (lp == -1) {
+            RECT rc{};
+            int f = FocusedRow(*s);
+            pt = {DpiScale(hwnd, 20), DpiScale(hwnd, 20)};
+            if (f >= 0) {
+                ListView_EnsureVisible(s->list, f, FALSE);
+                if (ListView_GetItemRect(s->list, f, &rc, LVIR_LABEL)) pt = {rc.left + DpiScale(hwnd, 8), rc.bottom};
+            }
+            ClientToScreen(s->list, &pt);
+        }
+        ContextMenu(*s, pt);
+        return 0;
+    }
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: {
         PAINTSTRUCT ps;
