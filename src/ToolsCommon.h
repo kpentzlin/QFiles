@@ -59,6 +59,7 @@ public:
     std::function<void(ProgressSink&)> work;
     ProgressSink sink;
     std::wstring initialText;
+    bool Started() const { return started_; }
 
 protected:
     BOOL OnInit() override {
@@ -66,6 +67,7 @@ protected:
         SetMarquee(true);
         SetTimer(hwnd_, kTimer, 100, nullptr);
         HWND h = hwnd_;
+        started_ = true;
         thread_ = std::thread([this, h]() {
             HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             try {
@@ -148,6 +150,7 @@ private:
     }
     std::thread thread_;
     bool marquee_ = false;
+    bool started_ = false;
 };
 
 // Führt work in einem Thread aus (COM ist dort als STA initialisiert). Rückgabe false bei Abbruch.
@@ -160,7 +163,13 @@ inline bool RunWithProgress(HWND owner, const std::wstring& title, const std::ws
     ProgressDialog dlg;
     dlg.work = std::move(work);
     dlg.initialText = text;
-    return dlg.DoModal(owner, t) == IDOK;
+    INT_PTR r = dlg.DoModal(owner, t);
+    if (r == -1 && !dlg.Started()) {
+        // Fenster ließ sich nicht anlegen (z. B. ohne Desktop): Arbeit ohne Anzeige im aufrufenden Thread erledigen
+        if (dlg.work) dlg.work(dlg.sink);
+        return !dlg.sink.Cancelled();
+    }
+    return r == IDOK;
 }
 
 // ---------- Zeit ----------

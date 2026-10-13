@@ -699,6 +699,7 @@ void FilePane::SetActiveLook(bool active) {
     if (activeLook_ == active) return;
     activeLook_ = active;
     UpdateListColors();
+    if (App::Opt().striped) RedrawList();
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
     InvalidateRect(hwnd_, &rcPath_, FALSE);
 }
@@ -1440,6 +1441,12 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
         case CompareMark::Missing: cd->clrTextBk = RGB(205, 225, 255); changed = true; break;
         case CompareMark::Duplicate: cd->clrTextBk = RGB(235, 215, 250); changed = true; break;
         default: break;
+        }
+        // Gestreift: in der aktiven Liste jede zweite Zeile in der Farbe nicht aktiver Listen (Option)
+        if (App::Opt().striped && activeLook_ && (i % 2) == 1 && !changed &&
+            (view_ == PaneView::Details || view_ == PaneView::Recursive || view_ == PaneView::List)) {
+            cd->clrTextBk = GetSysColor(COLOR_BTNFACE);
+            changed = true;
         }
         if (IsCutItem(it)) {
             cd->clrText = RGB(128, 128, 128);   // ausgeschnitten: mittelgrau, bis sie eingefügt (verschoben) sind

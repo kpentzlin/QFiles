@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "ArchiveCore.h"
 #include "App.h"
 #include "Cloud.h"
 #include "Commands.h"
@@ -21,6 +22,7 @@
 #include <knownfolders.h>
 #include <windowsx.h>
 #include <algorithm>
+#include <thread>
 #include <functional>
 
 namespace qf {
@@ -392,6 +394,8 @@ bool MainWindow::Create(int nCmdShow) {
     SetActive(active_, true);
     SetTimer(hwnd_, TIMER_FKEYMODE, 150, nullptr);
     SetTimer(hwnd_, TIMER_REMOTEEDIT, 2000, nullptr);
+    // Alte temporäre Kopien aus Archiven (älter als ein Tag) im Hintergrund entfernen
+    std::thread([] { CleanupArchiveTemp(); }).detach();
     // Ausgeschnittene Dateien grau darstellen: Änderungen der Zwischenablage beobachten
     AddClipboardFormatListener(hwnd_);
     OnClipboardChanged();
@@ -904,7 +908,8 @@ bool MainWindow::PreTranslate(MSG* msg) {
         bool ctrl = GetKeyState(VK_CONTROL) < 0, alt = GetKeyState(VK_MENU) < 0;
         bool fkey = vk >= VK_F1 && vk <= VK_F24;
         if (!ctrl && !alt && !fkey && vk != VK_TAB) return false;
-        if (ctrl && !alt && (vk == 'A' || vk == 'C' || vk == VK_INSERT || vk == VK_HOME || vk == VK_END)) return false;
+        if (ctrl && !alt && (vk == 'A' || vk == 'C' || vk == 'F' || vk == VK_INSERT || vk == VK_HOME || vk == VK_END))
+            return false;   // Strg+F: Suche in der Archivliste
     } else if (GetFocus() == tree_.Hwnd()) {
         // Ziffernblock +, -, * klappen im Verzeichnisbaum auf/zu (statt Gruppe markieren/abwählen/umkehren)
         UINT vk = (UINT)msg->wParam;

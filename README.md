@@ -65,6 +65,7 @@ der in der aktiven Liste der Fokus steht. Die Anzeige folgt beim Blättern und l
 | Binärdateien | hexadezimal |
 | PDF | Seitenbild (siehe unten) |
 | Videos (MP4, MOV, AVI, WMV, MKV, MPEG …) | Einzelbilder (siehe unten) |
+| Archive (ZIP, 7z, RAR, TAR, GZ, BZ2, XZ, CAB, ISO …) | als Liste wie ein Verzeichnis (siehe unten) |
 | Office, HTML, RTF … | über die Windows-Vorschauhandler |
 | Verzeichnisse | Übersicht |
 
@@ -91,6 +92,25 @@ Für beide gilt:
   erneut angezeigt, erscheint sie sofort.
 - Fehlt Windows.Data.Pdf, zeigt QFiles PDFs wie bisher über den Vorschauhandler. Fehlt Media Foundation (z. B. auf
   Windows Server ohne das Feature „Media Foundation“), wird das gemeldet.
+
+**Archive** erscheinen als Liste wie ein Verzeichnis: blassgelb hinterlegt, solange die Archivliste aktiv ist (den
+Tastaturfokus hat), sonst – bei eingeschalteter Option „Nicht aktive Listen grau hinterlegen“ – in dunklerem,
+abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
+
+- Spalten Name, Typ, Größe, Gepackt, Geändert, Methode (soweit das Format die Angaben liefert); Sortieren per Klick
+  auf den Spaltenkopf (Verzeichnisse zuerst, wie in den Listen), Spaltenbreiten veränderbar, Tippen springt zum Namen.
+- Ordner öffnen mit Doppelklick bzw. Eingabe, zurück mit „..“ oder Rücktaste. **Strg+F** sucht im ganzen Archiv
+  (Muster mit `*`/`?`, sonst Teil des Namens); die Treffer erscheinen mit Pfad, Rücktaste oder Esc beendet die Suche.
+- **Herauskopieren mit der Maus**: Dateien und Ordner in eine Liste, den Baum, auf den Desktop oder in ein anderes
+  Programm ziehen (immer Kopieren). Ebenso **Strg+C** (Zwischenablage) und „Entpacken nach…“.
+- Kontextmenü: **Temporäre Kopie öffnen** (einzelne Datei; auch Doppelklick/Eingabe), Entpacken nach…, Kopieren,
+  Im Archiv suchen…
+- Das Archiv selbst wird nie verändert. Herausgezogene, kopierte oder geöffnete Einträge entpackt QFiles nach
+  `%TEMP%\QFiles_Archiv`; Unterverzeichnisse dort, die älter als einen Tag sind, entfernt QFiles beim Start.
+- Ist das Archiv kennwortgeschützt, beschädigt oder das Format unbekannt, steht statt der Liste zentriert eine
+  Meldung im Klartext. Das Einlesen großer Archive lässt sich mit **Esc** abbrechen.
+- ZIP liest und entpackt QFiles selbst (Verfahren „Gespeichert“ und „Deflate“); alle übrigen Formate und
+  ZIP-Einträge mit anderen Verfahren laufen über das Windows-eigene `tar.exe` (ab Windows 10 1803).
 
 ---
 
@@ -139,6 +159,9 @@ Für beide gilt:
 - Spalte „Typ“: Endung der Datei; bei Verzeichnissen bleibt sie leer.
 - Optional (*Werkzeuge → Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
   Listen mit hellgrauem Hintergrund wie Kopf- und Fußleiste.
+- Optional (*Werkzeuge → Optionen → Anzeige → „Listenanzeige gestreift“*) ist in der aktiven Liste jede zweite Zeile
+  in diesem Hellgrau hinterlegt (Ansichten Details, Liste und Mit Unterverzeichnissen; in der Archivliste im
+  abgetönten Gelb).
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
 - Werkzeugleiste, u. a. mit je einem Symbol für die fünf Ansichten (die Ansicht der aktiven Liste ist eingedrückt).
 - Befehlszeile: führt Befehle im aktuellen Verzeichnis in einem Konsolenfenster aus. `cd` und `X:` wechseln das
@@ -231,7 +254,7 @@ Browser-Anmeldung erfordern und ist nicht eingebaut.
 | Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); markiert gleiche, unterschiedliche, neuere und fehlende Dateien farbig und wählt sie zum Kopieren aus |
 | Verzeichnisse synchronisieren (Strg+Umschalt+Y) | In eine oder beide Richtungen, mit Vorschau, Filter, Spiegeln |
 | Datei teilen / zusammenfügen | Mit CRC-Prüfsumme und Batchdatei zum Zusammenfügen ohne QFiles |
-| Archive | ZIP anzeigen, entpacken und erstellen (Windows-Shell); 7z, RAR, TAR, CAB, ISO u. a. anzeigen und entpacken über das Windows-eigene `tar.exe` |
+| Archive | ZIP anzeigen, entpacken und erstellen (Windows-Shell); 7z, RAR, TAR, CAB, ISO u. a. anzeigen und entpacken über das Windows-eigene `tar.exe`; Archivliste in der Dateianzeige (F11, siehe oben) |
 | Laufwerksübersicht | Belegung aller Laufwerke |
 | Dateisystemmonitor | Protokoll aller von QFiles ausgeführten Dateioperationen |
 | Verzeichnisliste | Drucken, als Textdatei speichern oder in die Zwischenablage, wahlweise mit Unterverzeichnissen |
@@ -408,6 +431,7 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `WebDavClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP/WebDAV: Zugänge, Verbindungen, Übertragungen |
 | `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
 | `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
+| `src/ArchiveView.cpp`, `ArchiveCore.h` | Archivliste der Dateianzeige (Lesen und Entpacken in `Archive.cpp`) |
 | `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
 | `src/Settings.*`, `App.*` | Einstellungsdatei, Optionen, globale Dienste, Dateisystemmonitor |
 | `src/Util.*`, `Encoding.*`, `Dialog.*`, `Glyphs.*` | Hilfsfunktionen, Textkodierungen, Dialoge ohne Ressourcendatei, Symbole |

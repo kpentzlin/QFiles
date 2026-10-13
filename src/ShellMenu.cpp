@@ -987,11 +987,10 @@ private:
 
 } // namespace
 
-DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::wstring>& names) {
+DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::wstring>& names, DWORD allowed) {
     IDataObject* data = CreateShellDataObject(hwnd, dir, names);
     if (!data) return DROPEFFECT_NONE;
     DWORD effect = DROPEFFECT_NONE;
-    const DWORD allowed = DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK;
     HRESULT hr = SHDoDragDrop(hwnd, data, nullptr, allowed, &effect);
     if (FAILED(hr)) {
         auto* src = new SimpleDropSource();

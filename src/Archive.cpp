@@ -10,6 +10,8 @@
 //   - leere ZIP-Datei (End-of-Central-Directory) schreiben, dann IFileOperation::CopyItems in das ZIP-Shell-Item.
 
 #include "Modules.h"
+#include "ArchiveCore.h"
+#include "DocText.h"
 #include "App.h"
 #include "Dialog.h"
 #include "Util.h"
@@ -22,7 +24,9 @@
 #include <shobjidl.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -57,6 +61,10 @@ struct ArcEntry {
     bool hasDate = false;
     SYSTEMTIME date{};        // lokale Zeit
     std::wstring method;
+    // ZIP: zum Entpacken ohne Shell
+    uint16_t zipMethod = 0;
+    uint32_t crc = 0;
+    uint64_t localOffset = 0;
     // vorbereitete Anzeigetexte
     std::wstring sizeText, packedText, dateText;
 };
@@ -244,6 +252,8 @@ bool ReadZipDirectory(const std::wstring& path, std::vector<ArcEntry>& out, std:
         uint64_t usize = Le32(h + 24);
         uint16_t nlen = Le16(h + 28), xlen = Le16(h + 30), clen = Le16(h + 32);
         uint32_t extAttr = Le32(h + 38);
+        uint64_t localOff = Le32(h + 42);
+        uint32_t crc = Le32(h + 16);
         if (pos + 46 + nlen + xlen + clen > cd.size()) break;
         const uint8_t* namePtr = h + 46;
         const uint8_t* extra = namePtr + nlen;
@@ -268,6 +278,10 @@ bool ReadZipDirectory(const std::wstring& path, std::vector<ArcEntry>& out, std:
                 }
                 if (csize == 0xFFFFFFFFu && o + 8 <= sz) {
                     csize = Le64(d + o);
+                    o += 8;
+                }
+                if (localOff == 0xFFFFFFFFu && o + 8 <= sz) {
+                    localOff = Le64(d + o);
                     o += 8;
                 }
             } else if (id == 0x7075 && sz >= 5 && d[0] == 1) {
@@ -298,6 +312,9 @@ bool ReadZipDirectory(const std::wstring& path, std::vector<ArcEntry>& out, std:
         e.size = usize;
         e.packed = csize;
         e.hasPacked = true;
+        e.zipMethod = method;
+        e.crc = crc;
+        e.localOffset = localOff;
         if (haveFt && toolsdetail::FileTimeToLocal(ft, e.date)) {
             e.hasDate = true;
         } else if (dosDate) {
@@ -372,9 +389,9 @@ std::wstring Quote(const std::wstring& s) {
     return r;
 }
 
-// Führt einen Befehl aus, sammelt stdout+stderr und kann über sink abgebrochen werden (Prozess wird beendet).
+// Führt einen Befehl aus, sammelt stdout+stderr und kann über isCancelled abgebrochen werden (Prozess wird beendet).
 bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, std::wstring& output, DWORD& exitCode,
-                    toolsdetail::ProgressSink* sink) {
+                    const std::function<bool()>& isCancelled) {
     output.clear();
     exitCode = 1;
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
@@ -410,7 +427,7 @@ bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, st
             bytes.append(buf, got);
             continue;
         }
-        if (sink && sink->Cancelled()) {
+        if (isCancelled && isCancelled()) {
             TerminateProcess(pi.hProcess, 1);
             cancelled = true;
             break;
@@ -443,6 +460,12 @@ int MonthFromAbbr(const std::wstring& m) {
     for (int i = 0; i < 12; ++i)
         if (l == names[i]) return i + 1;
     return 0;
+}
+
+bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, std::wstring& output, DWORD& exitCode,
+                    toolsdetail::ProgressSink* sink) {
+    return CaptureProcess(commandLine, dir, output, exitCode,
+                          std::function<bool()>(sink ? [sink]() { return sink->Cancelled(); } : std::function<bool()>()));
 }
 
 // Zerlegt die Ausgabe von „tar -tvf“ (ls-ähnlich):
@@ -1187,6 +1210,345 @@ bool CreateZipArchive(HWND owner, const std::wstring& dir, const std::vector<std
                  Format(L" (%d Element(e) aus ", (int)sources.size()) + dir + L")");
     App::RefreshPanes();
     return true;
+}
+
+// ===================================================================================
+// Archivliste in der Dateianzeige: Lesen und Entpacken einzelner Einträge (ArchiveCore.h)
+// ===================================================================================
+
+namespace {
+
+FILETIME LocalToUtc(const SYSTEMTIME& local) {
+    SYSTEMTIME utc{};
+    FILETIME ft{};
+    if (TzSpecificLocalTimeToSystemTime(nullptr, &local, &utc)) SystemTimeToFileTime(&utc, &ft);
+    return ft;
+}
+
+std::wstring StripDotSlash(std::wstring p) {
+    while (p.size() >= 2 && p[0] == L'.' && p[1] == L'\\') p.erase(0, 2);
+    while (!p.empty() && p[0] == L'\\') p.erase(0, 1);
+    return p;
+}
+
+// Verzeichnis samt Inhalt löschen (nur für eigene temporäre Verzeichnisse)
+void DeleteTree(const std::wstring& dir) {
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(LongPath(PathCombine(dir, L"*")).c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            std::wstring n = fd.cFileName;
+            if (n == L"." || n == L"..") continue;
+            std::wstring p = PathCombine(dir, n);
+            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !(fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+                DeleteTree(p);
+            } else {
+                SetFileAttributesW(LongPath(p).c_str(), FILE_ATTRIBUTE_NORMAL);
+                DeleteFileW(LongPath(p).c_str());
+            }
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    SetFileAttributesW(LongPath(dir).c_str(), FILE_ATTRIBUTE_NORMAL);
+    RemoveDirectoryW(LongPath(dir).c_str());
+}
+
+std::wstring ArchiveTempBase() { return PathCombine(GetTempDir(), L"QFiles_Archiv"); }
+
+constexpr uint64_t kMaxOwnExtract = 512ull * 1024 * 1024;   // größere Einträge über tar.exe
+
+bool CanExtractOwn(const ArchiveEntry& e) {
+    if (e.isDir) return true;   // auch erschlossene Verzeichnisse (ohne eigenen Eintrag) werden nur angelegt
+    if (!e.zip) return false;
+    return !e.encrypted && (e.zipMethod == 0 || e.zipMethod == 8) && e.size <= kMaxOwnExtract && e.packed <= kMaxOwnExtract;
+}
+
+// Eine ZIP-Datei („Gespeichert“/„Deflate“) selbst entpacken, mit CRC-Prüfung
+bool ExtractZipEntryOwn(FileReader& f, const ArchiveEntry& e, const std::wstring& target, std::wstring& error) {
+    uint8_t lh[30];
+    if (!f.ReadAt(e.localOffset, lh, sizeof(lh)) || Le32(lh) != 0x04034b50u) {
+        error = L"Lokaler Dateikopf fehlt.";
+        return false;
+    }
+    uint64_t dataOff = e.localOffset + 30 + Le16(lh + 26) + Le16(lh + 28);
+    std::vector<uint8_t> packed((size_t)e.packed);
+    if (e.packed && !f.ReadAt(dataOff, packed.data(), packed.size())) {
+        error = L"Daten können nicht gelesen werden.";
+        return false;
+    }
+    std::string data;
+    if (e.zipMethod == 0) {
+        data.assign((const char*)packed.data(), packed.size());
+    } else if (!InflateRaw(packed.data(), packed.size(), data, (size_t)e.size + 16)) {
+        error = L"Daten sind beschädigt (Deflate).";
+        return false;
+    }
+    if (data.size() != e.size || Crc32((const uint8_t*)data.data(), data.size()) != e.crc) {
+        error = L"Prüfsumme stimmt nicht (Archiv beschädigt).";
+        return false;
+    }
+    if (!EnsureDirectory(PathParent(target))) {
+        error = LastErrorMessage();
+        return false;
+    }
+    HANDLE h = CreateFileW(LongPath(target).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        error = LastErrorMessage();
+        return false;
+    }
+    size_t done = 0;
+    bool ok = true;
+    while (done < data.size()) {
+        DWORD w = 0, chunk = (DWORD)std::min<size_t>(data.size() - done, 1u << 24);
+        if (!WriteFile(h, data.data() + done, chunk, &w, nullptr) || w == 0) {
+            ok = false;
+            break;
+        }
+        done += w;
+    }
+    if (ok && e.hasDate) SetFileTime(h, nullptr, nullptr, &e.modified);
+    if (!ok) error = LastErrorMessage();
+    CloseHandle(h);
+    return ok;
+}
+
+} // namespace
+
+bool IsArchiveFile(const std::wstring& path) {
+    std::wstring ext = ToLower(PathExtension(path));
+    if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
+    static const wchar_t* kExt[] = {L"zip", L"zipx", L"7z", L"rar", L"tar", L"tgz", L"gz", L"tbz", L"tbz2", L"bz2",
+                                    L"txz", L"xz", L"lzma", L"tlz", L"zst", L"tzst", L"cab", L"iso", L"lzh", L"lha",
+                                    L"jar", L"war", L"ear", L"apk", L"nupkg", L"vsix", L"cpio", L"xar", L"arj"};
+    for (const wchar_t* e : kExt)
+        if (ext == e) return true;
+    return false;
+}
+
+bool ReadArchive(const std::wstring& archive, std::vector<ArchiveEntry>& out, std::wstring& error, bool& passwordProtected,
+                 const std::atomic<bool>* cancel) {
+    out.clear();
+    error.clear();
+    passwordProtected = false;
+    std::vector<ArcEntry> raw;
+    std::wstring zipError;
+    bool isZip = LooksLikeZip(archive) && ReadZipDirectory(archive, raw, zipError);
+    if (!isZip) {
+        raw.clear();
+        std::wstring tar = TarExePath();
+        if (tar.empty()) {
+            if (!zipError.empty())
+                error = L"Die Datei ist beschädigt oder kein gültiges ZIP-Archiv.\n(" + zipError + L")";
+            else
+                error = L"Für dieses Format wird das Windows-Programm tar.exe benötigt (ab Windows 10 Version 1803); "
+                        L"es wurde nicht gefunden.";
+            return false;
+        }
+        std::wstring output;
+        DWORD exitCode = 0;
+        bool finished = CaptureProcess(Quote(tar) + L" -tvf " + Quote(archive), PathParent(archive), output, exitCode,
+                                       std::function<bool()>([cancel]() { return cancel && cancel->load(); }));
+        if (cancel && *cancel) {
+            error = L"Das Lesen wurde abgebrochen.";
+            return false;
+        }
+        if (!finished) {
+            error = L"tar.exe konnte nicht gestartet werden: " + LastErrorMessage();
+            return false;
+        }
+        std::wstring errors;
+        ParseTarListing(output, raw, errors);
+        std::wstring l = ToLower(errors);
+        if (l.find(L"passphrase") != std::wstring::npos || l.find(L"encrypt") != std::wstring::npos ||
+            l.find(L"password") != std::wstring::npos) {
+            passwordProtected = true;
+            error = L"Das Archiv ist kennwortgeschützt.";
+            return false;
+        }
+        if (raw.empty()) {
+            error = L"Das Format wird nicht unterstützt oder die Datei ist beschädigt." +
+                    (errors.empty() ? std::wstring() : L"\n\n" + Trim(errors));
+            return false;
+        }
+    }
+    for (auto& e : raw) {
+        ArchiveEntry a;
+        a.path = StripDotSlash(e.name);
+        if (a.path.empty() || a.path == L".") continue;
+        a.isDir = e.isDir;
+        a.encrypted = e.encrypted;
+        a.size = e.size;
+        a.packed = e.packed;
+        a.hasPacked = e.hasPacked;
+        a.hasDate = e.hasDate;
+        if (e.hasDate) a.modified = LocalToUtc(e.date);
+        a.method = e.method;
+        a.rawName = e.rawName;
+        a.zip = isZip;
+        a.zipMethod = e.zipMethod;
+        a.crc = e.crc;
+        a.localOffset = e.localOffset;
+        if (!a.isDir && a.encrypted) passwordProtected = true;
+        out.push_back(std::move(a));
+    }
+    if (passwordProtected) {
+        out.clear();
+        error = L"Das Archiv ist kennwortgeschützt.";
+        return false;
+    }
+    return true;
+}
+
+bool ExtractArchiveEntries(HWND owner, const std::wstring& archive, const std::vector<ArchiveEntry>& entries,
+                           const std::vector<std::wstring>& selected, const std::wstring& destDir, std::wstring& error) {
+    struct Job {
+        const ArchiveEntry* e;
+        std::wstring rel;   // Ziel relativ zu destDir
+    };
+    std::vector<Job> jobs;
+    for (const auto& sel : selected) {
+        size_t cut = sel.rfind(L'\\');
+        size_t prefix = cut == std::wstring::npos ? 0 : cut + 1;
+        for (const auto& e : entries)
+            if (EqualsI(e.path, sel) || StartsWithI(e.path, sel + L"\\")) jobs.push_back({&e, e.path.substr(prefix)});
+    }
+    if (jobs.empty()) {
+        error = L"Keine Einträge gewählt.";
+        return false;
+    }
+    if (!EnsureDirectory(destDir)) {
+        error = L"Das Zielverzeichnis kann nicht angelegt werden: " + LastErrorMessage();
+        return false;
+    }
+    bool own = std::all_of(jobs.begin(), jobs.end(), [](const Job& j) { return CanExtractOwn(*j.e); });
+    std::wstring failure;
+    bool completed;
+    if (own) {
+        completed = toolsdetail::RunWithProgress(
+            owner, L"Entpacken", L"Entpacke aus " + PathFileName(archive) + L" …", [&](toolsdetail::ProgressSink& sink) {
+                FileReader f(archive);
+                if (!f.Ok()) {
+                    failure = LastErrorMessage();
+                    return;
+                }
+                size_t n = 0;
+                for (const auto& j : jobs) {
+                    if (sink.Cancelled()) return;
+                    sink.SetText(j.rel);
+                    sink.SetPercent((int)(++n * 100 / jobs.size()));
+                    std::wstring target = PathCombine(destDir, j.rel);
+                    if (j.e->isDir) {
+                        if (!EnsureDirectory(target)) failure = j.rel + L": " + LastErrorMessage();
+                        continue;
+                    }
+                    std::wstring err;
+                    if (!ExtractZipEntryOwn(f, *j.e, target, err)) {
+                        failure = j.rel + L": " + err;
+                        return;
+                    }
+                }
+            });
+    } else {
+        std::wstring tar = TarExePath();
+        if (tar.empty()) {
+            error = L"Zum Entpacken dieses Eintrags wird tar.exe benötigt (ab Windows 10 Version 1803).";
+            return false;
+        }
+        std::wstring stage = PathCombine(destDir, Format(L".qfiles-entpacken-%u", (unsigned)GetTickCount()));
+        if (!EnsureDirectory(stage)) {
+            error = LastErrorMessage();
+            return false;
+        }
+        SetFileAttributesW(LongPath(stage).c_str(), FILE_ATTRIBUTE_HIDDEN);
+        // Verzeichnisse vorab anlegen (auch leere bzw. nur erschlossene)
+        for (const auto& j : jobs)
+            if (j.e->isDir) EnsureDirectory(PathCombine(stage, j.e->path));
+        std::wstring base = Quote(tar) + L" -xf " + Quote(archive) + L" -C " + Quote(stage);
+        std::vector<std::wstring> commands;
+        std::wstring cmd = base;
+        bool has = false;
+        for (const auto& j : jobs) {
+            if (j.e->synthetic || j.e->rawName.empty() || (j.e->isDir && jobs.size() > 1)) continue;
+            std::wstring m = L" " + Quote(j.e->rawName);
+            if (has && cmd.size() + m.size() > 30000) {
+                commands.push_back(cmd);
+                cmd = base;
+            }
+            cmd += m;
+            has = true;
+        }
+        if (has) commands.push_back(cmd);
+        completed = toolsdetail::RunWithProgress(
+            owner, L"Entpacken", L"Entpacke aus " + PathFileName(archive) + L" …", [&](toolsdetail::ProgressSink& sink) {
+                for (const auto& c : commands) {
+                    std::wstring outText;
+                    DWORD code = 0;
+                    if (!CaptureProcess(c, stage, outText, code, &sink)) {
+                        if (!sink.Cancelled()) failure = L"tar.exe konnte nicht gestartet werden: " + LastErrorMessage();
+                        return;
+                    }
+                    if (code != 0) {
+                        failure = Trim(outText);
+                        if (failure.empty()) failure = Format(L"tar.exe meldet Fehler %u.", (unsigned)code);
+                        return;
+                    }
+                }
+            });
+        if (completed && failure.empty()) {
+            // Gewählte Elemente aus dem Zwischenverzeichnis an ihren Platz verschieben
+            for (const auto& sel : selected) {
+                std::wstring src = PathCombine(stage, sel);
+                std::wstring dst = PathCombine(destDir, PathFileName(sel));
+                if (FileExists(dst)) SetFileAttributesW(LongPath(dst).c_str(), FILE_ATTRIBUTE_NORMAL);
+                if (!MoveFileExW(LongPath(src).c_str(), LongPath(dst).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+                    failure = PathFileName(sel) + L": " + LastErrorMessage();
+                    break;
+                }
+            }
+        }
+        DeleteTree(stage);
+    }
+    if (!completed) {
+        error = L"Das Entpacken wurde abgebrochen.";
+        return false;
+    }
+    if (!failure.empty()) {
+        error = failure;
+        return false;
+    }
+    return true;
+}
+
+std::wstring NewArchiveTempDir(const std::wstring& archive) {
+    std::wstring base = ArchiveTempBase();
+    EnsureDirectory(base);
+    std::wstring dir = PathCombine(base, MakeUniqueName(base, PathStem(archive)));
+    EnsureDirectory(dir);
+    return dir;
+}
+
+void RemoveArchiveTempDir(const std::wstring& dir) {
+    std::wstring base = ArchiveTempBase();
+    if (!dir.empty() && StartsWithI(dir, base + L"\\")) DeleteTree(dir);
+}
+
+void CleanupArchiveTemp() {
+    std::wstring base = ArchiveTempBase();
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(LongPath(PathCombine(base, L"*")).c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    FILETIME nowFt;
+    GetSystemTimeAsFileTime(&nowFt);
+    uint64_t now = ((uint64_t)nowFt.dwHighDateTime << 32) | nowFt.dwLowDateTime;
+    std::vector<std::wstring> old;
+    do {
+        std::wstring n = fd.cFileName;
+        if (n == L"." || n == L".." || !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        uint64_t t = ((uint64_t)fd.ftLastWriteTime.dwHighDateTime << 32) | fd.ftLastWriteTime.dwLowDateTime;
+        if (now > t && now - t > 864000000000ull) old.push_back(PathCombine(base, n));   // älter als ein Tag
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    for (auto& d : old) DeleteTree(d);
 }
 
 } // namespace qf

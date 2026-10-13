@@ -28,7 +28,8 @@ IDataObject* CreateShellDataObject(HWND owner, const std::wstring& dir, const st
 
 // ---- Drag & Drop ----
 // Startet das Ziehen der Elemente (Quelle). Rückgabe: ausgeführter Effekt (DROPEFFECT_*).
-DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::wstring>& names);
+DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::wstring>& names,
+                    DWORD allowed = DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK);
 
 // Registriert hwnd als Ablageziel für Dateien. resolver liefert das Zielverzeichnis für einen Bildschirmpunkt
 // (leer = Ablage nicht möglich; auch FTP/SFTP/WebDAV-Adressen). done wird nach erfolgreicher Ablage aufgerufen.

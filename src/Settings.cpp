@@ -207,6 +207,7 @@ void Options::Load(const Config& c) {
     dirsFirst = c.GetBool(S, L"VerzeichnisseZuerst", d.dirsFirst);
     showGridLines = c.GetBool(S, L"Gitternetz", d.showGridLines);
     grayInactive = c.GetBool(S, L"InaktiveListenGrau", d.grayInactive);
+    striped = c.GetBool(S, L"Gestreift", d.striped);
     sizeInBytes = c.GetBool(S, L"GroesseInBytes", d.sizeInBytes);
     fullRowSelect = c.GetBool(S, L"GanzeZeileMarkieren", d.fullRowSelect);
     showExtensionsColumn = c.GetBool(S, L"SpalteTyp", d.showExtensionsColumn);
@@ -254,6 +255,7 @@ void Options::Save(Config& c) const {
     c.SetBool(S, L"VerzeichnisseZuerst", dirsFirst);
     c.SetBool(S, L"Gitternetz", showGridLines);
     c.SetBool(S, L"InaktiveListenGrau", grayInactive);
+    c.SetBool(S, L"Gestreift", striped);
     c.SetBool(S, L"GroesseInBytes", sizeInBytes);
     c.SetBool(S, L"GanzeZeileMarkieren", fullRowSelect);
     c.SetBool(S, L"SpalteTyp", showExtensionsColumn);

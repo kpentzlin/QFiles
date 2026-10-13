@@ -329,6 +329,64 @@ $vidOk = @($vids | Where-Object { $_ -match 'Auflösung' -and $_ -notmatch 'nich
 if ($vidOk -eq 3) { Write-Output ("::notice title=Video-Anzeige::" + ($vids -join ' / ')) }
 else { Write-Output ("::warning title=Video-Anzeige::" + ($vids -join ' / ')) }
 
+# ---- Archive in der Dateianzeige (F11): ZIP, TAR/GZ (über tar.exe), kennwortgeschützt, beschädigt ----
+# Dazu „Listenanzeige gestreift“ und „Nicht aktive Listen grau“ einschalten (spätere Werte gelten)
+$ini = "C:\ProgramData\QFiles\QFiles.ini"
+if (Test-Path $ini) { Add-Content -Path $ini -Value "`r`n[Optionen]`r`nGestreift=1`r`nInaktiveListenGrau=1" -Encoding UTF8 }
+$arcDir = "C:\QFilesArchive"
+& python tools\make-test-archives.py $arcDir
+$arcZip = (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc
+$arcHash = (Get-FileHash "$arcDir\a-Projekt.zip").Hash
+Remove-Item $viewLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_VIEWERLOG = $viewLog
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $arcDir + '"'),'"C:\Windows"' -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Archive)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+$best = [IntPtr]::Zero; $bestKey = [int]::MaxValue; $h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($p.MainWindowHandle, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $key = $r.L + $r.T * 10
+  if ($key -lt $bestKey) { $bestKey = $key; $best = $h }
+}
+$alist = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
+$ar = New-Object W+RECT; [W]::GetWindowRect($alist, [ref]$ar) | Out-Null
+[W]::Click($ar.L + 60, $ar.T + 24 + 1 * 20 + 10, $false); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}"); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{F11}")
+Wait-ViewerLog 1
+Shot "screenshot17.png"   # ZIP als Liste (Liste 1 aktiv: Archivliste abgetönt gelb)
+$arcShots = @{ 1 = "screenshot18.png"; 2 = "screenshot19.png" }
+for ($i = 1; $i -le 3; $i++) {
+  [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+  Wait-ViewerLog ($i + 1)
+  Check-Alive "Dateianzeige Archiv $i"
+  if ($arcShots.ContainsKey($i)) { Shot $arcShots[$i] }
+}
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_VIEWERLOG
+$al = @()
+if (Test-Path $viewLog) { $al = Get-Content $viewLog -Encoding UTF8 }
+$al | ForEach-Object { Write-Output $_ }
+$zipOk = $al | Where-Object { $_ -match '^a-Projekt\.zip \| Archiv \| \d+ Verz\. \| 5 Dateien' }
+$tarOk = $al | Where-Object { $_ -match '^b-Quellen\.tar\.gz \| Archiv \|.*5 Dateien' }
+$pwOk = $al | Where-Object { $_ -match '^c-geheim\.zip \| Archivfehler \|.*kennwortgeschützt' }
+$badOk = $al | Where-Object { $_ -match '^d-kaputt\.zip \| Archivfehler \|' }
+if (-not ($zipOk -and $pwOk -and $badOk)) {
+  Write-Output ("::error title=Archivanzeige::" + ($al -join ' / '))
+  "Archivanzeige nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+if ((Get-FileHash "$arcDir\a-Projekt.zip").Hash -ne $arcHash -or (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc -ne $arcZip) {
+  "Archiv wurde durch die Anzeige verändert" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+if ($tarOk) { Write-Output ("::notice title=Archivanzeige::" + ($al -join ' / ')) }
+else { Write-Output ("::warning title=Archivanzeige (tar.exe)::" + ($al -join ' / ')) }
+
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
 }

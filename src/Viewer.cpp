@@ -7,6 +7,7 @@
 #include "App.h"
 #include "Dialog.h"
 #include "Encoding.h"
+#include "ArchiveCore.h"
 #include "HexView.h"
 #include "MediaPreview.h"
 #include "Modules.h"
@@ -54,6 +55,7 @@ constexpr wchar_t kViewerSection[] = L"Anzeige";
 
 constexpr UINT WM_QF_IMAGEDONE = WM_APP + 0x351;   // Hintergrund-Dekodierung fertig (wParam = Generation)
 constexpr UINT WM_QF_MEDIAPROGRESS = WM_APP + 0x352;   // PDF/Video: Fortschritt (wParam = Generation)
+constexpr UINT WM_QF_ARCHIVEDONE = WM_APP + 0x353;     // Archiv gelesen (wParam = Generation)
 
 constexpr size_t kTextLimitWindow = 8u * 1024 * 1024;     // Text im Anzeigefenster: max. 8 MB
 constexpr size_t kTextLimitEmbedded = 2u * 1024 * 1024;   // Text in der Schnellansicht: max. 2 MB (schneller Wechsel)
@@ -63,6 +65,7 @@ constexpr uint64_t kMaxImagePixels = 40ull * 1000 * 1000;  // größere Bilder w
 constexpr int kIdEdit = 1;
 constexpr int kIdHex = 2;
 constexpr int kIdPreviewHost = 3;
+constexpr int kIdArchive = 4;
 
 // Eigene GUID-Konstanten (vermeidet Abhängigkeiten von Import-Bibliotheken für GUID-Symbole)
 const CLSID kClsidWicImagingFactory = {0xcacaf262, 0x9370, 0x4615, {0xa1, 0x3b, 0x9f, 0x55, 0x39, 0xda, 0x4c, 0x0a}};
@@ -451,7 +454,33 @@ void DecodeWorker(std::shared_ptr<ImageJob> job, HWND notify, UINT gen) {
 
 // ===================== Zustand des Anzeige-Steuerelements =====================
 
-enum class Eff { None, Message, Text, Hex, Image, Preview, Directory };
+// Archiv lesen (Hintergrund-Thread)
+struct ArchiveJob {
+    std::mutex m;
+    std::wstring path;
+    std::atomic<bool> cancel{false};
+    bool done = false, ok = false, password = false;
+    std::wstring error;
+    std::vector<ArchiveEntry> entries;
+};
+
+void ArchiveWorker(std::shared_ptr<ArchiveJob> job, HWND notify, UINT gen) {
+    std::vector<ArchiveEntry> entries;
+    std::wstring error;
+    bool password = false;
+    bool ok = ReadArchive(job->path, entries, error, password, &job->cancel);
+    {
+        std::lock_guard<std::mutex> lock(job->m);
+        job->ok = ok;
+        job->password = password;
+        job->error = error;
+        job->entries = std::move(entries);
+        job->done = true;
+    }
+    PostMessageW(notify, WM_QF_ARCHIVEDONE, (WPARAM)gen, 0);
+}
+
+enum class Eff { None, Message, Text, Hex, Image, Preview, Directory, Archive };
 
 struct ViewerState {
     HWND hwnd = nullptr;
@@ -479,6 +508,12 @@ struct ViewerState {
 
     // Vorschauhandler
     HWND previewHost = nullptr;
+
+    // Archivliste
+    HWND archiveView = nullptr;
+    std::shared_ptr<ArchiveJob> arcJob;
+    bool arcLoading = false;
+    bool messageCentered = false;   // Meldung senkrecht mittig (Fehler beim Archiv)
     IPreviewHandler* preview = nullptr;
 
     // Bild
@@ -545,6 +580,7 @@ RECT ImageRect(ViewerState& s) {
 HWND FocusTarget(ViewerState& s) {
     if (s.eff == Eff::Text && s.edit) return s.edit;
     if (s.eff == Eff::Hex && s.hex) return s.hex;
+    if (s.eff == Eff::Archive && s.archiveView && !s.arcLoading) return ArchiveViewList(s.archiveView);
     return s.hwnd;
 }
 
@@ -831,7 +867,7 @@ void StopPreview(ViewerState& s) {
 void Layout(ViewerState& s) {
     RECT cr = ContentRect(s);
     int w = cr.right - cr.left, h = cr.bottom - cr.top;
-    for (HWND c : {s.edit, s.hex, s.previewHost})
+    for (HWND c : {s.edit, s.hex, s.previewHost, s.archiveView})
         if (c) MoveWindow(c, cr.left, cr.top, w, h, TRUE);
     if (s.preview) {
         RECT r{0, 0, w, h};
@@ -842,7 +878,7 @@ void Layout(ViewerState& s) {
 // Zeigt genau ein Kindfenster (oder keines). Ein ausgeblendetes Textfeld wird geleert (Speicher freigeben);
 // das geschieht erst hier, damit beim Wechsel Text -> Text nichts flackert.
 void ShowChild(ViewerState& s, HWND which) {
-    for (HWND c : {s.edit, s.hex, s.previewHost}) {
+    for (HWND c : {s.edit, s.hex, s.previewHost, s.archiveView}) {
         if (!c) continue;
         if (c == which) {
             if (!IsWindowVisible(c)) ShowWindow(c, SW_SHOW);
@@ -868,6 +904,11 @@ void Unload(ViewerState& s) {
     s.eff = Eff::None;
     s.media = MediaKind::None;
     s.mediaKey.clear();
+    if (s.arcJob) s.arcJob->cancel = true;
+    s.arcJob.reset();
+    s.arcLoading = false;
+    s.messageCentered = false;
+    if (s.archiveView) ArchiveViewClear(s.archiveView);
 }
 
 bool ReadSample(const std::wstring& path, std::vector<uint8_t>& data) { return ReadFileBytes(path, data, kSampleSize); }
@@ -993,6 +1034,69 @@ bool ShowPreview(ViewerState& s, std::wstring& err) {
     s.preview = ph.Detach();
     s.eff = Eff::Preview;
     return true;
+}
+
+// ---------- Archive ----------
+
+void StartArchive(ViewerState& s) {
+    ShowChild(s, nullptr);
+    s.eff = Eff::Archive;
+    if (!s.archiveView) s.archiveView = CreateArchiveView(s.hwnd, kIdArchive);
+    s.arcLoading = true;
+    auto job = std::make_shared<ArchiveJob>();
+    job->path = s.path;
+    s.arcJob = job;
+    UINT gen = ++s.gen;
+    try {
+        std::thread(ArchiveWorker, job, s.hwnd, gen).detach();
+    } catch (...) {
+        ArchiveWorker(job, s.hwnd, gen);
+    }
+}
+
+// Testhilfe: QFILES_TEST_VIEWERLOG=<Datei> protokolliert Ergebnisse der Dateianzeige (GUI-Test)
+void TestViewerLog(const std::wstring& line) {
+    wchar_t logPath[MAX_PATH] = {};
+    if (!GetEnvironmentVariableW(L"QFILES_TEST_VIEWERLOG", logPath, MAX_PATH)) return;
+    std::vector<uint8_t> old;
+    ReadFileBytes(logPath, old);
+    std::string u = std::string(old.begin(), old.end()) + WideToUtf8(line + L"\r\n");
+    WriteFileBytes(logPath, u.data(), u.size());
+}
+
+void OnArchiveDone(ViewerState& s, UINT gen) {
+    if (gen != s.gen || !s.arcJob) return;
+    std::shared_ptr<ArchiveJob> job = s.arcJob;
+    std::lock_guard<std::mutex> lock(job->m);
+    if (!job->done) return;
+    s.arcJob.reset();
+    s.arcLoading = false;
+    bool hadFocus = HasFocusInside(s);
+    std::wstring name = PathFileName(s.path);
+    if (job->ok) {
+        size_t files = 0, dirs = 0;
+        for (auto& e : job->entries) (e.isDir ? dirs : files)++;
+        TestViewerLog(name + L" | Archiv | " + std::to_wstring(dirs) + L" Verz. | " + std::to_wstring(files) + L" Dateien");
+        ShowChild(s, s.archiveView);
+        Layout(s);
+        ArchiveViewSetContent(s.archiveView, s.path, std::move(job->entries));
+        s.eff = Eff::Archive;
+    } else {
+        std::wstring text;
+        if (job->password)
+            text = L"„" + name + L"“ ist kennwortgeschützt.\n\nDer Inhalt kann ohne Kennwort nicht angezeigt werden.";
+        else if (job->cancel)
+            text = L"Das Lesen von „" + name + L"“ wurde abgebrochen.";
+        else
+            text = L"„" + name + L"“ kann nicht angezeigt werden.\n\n" + job->error;
+        TestViewerLog(name + L" | Archivfehler | " + ReplaceAll(text, L"\n", L" / "));
+        SetMessage(s, text);
+        s.messageCentered = true;
+    }
+    Layout(s);
+    InvalidateRect(s.hwnd, nullptr, FALSE);
+    if (hadFocus) SetFocus(FocusTarget(s));
+    if (s.changed) s.changed();
 }
 
 // ---------- PDF/Video ----------
@@ -1130,16 +1234,9 @@ void OnMediaDone(ViewerState& s) {
     s.imgLoading = false;
     s.mediaProgress.clear();
     // Testhilfe: QFILES_TEST_VIEWERLOG=<Datei> protokolliert das Ergebnis (GUI-Test)
-    wchar_t logPath[MAX_PATH] = {};
-    if (GetEnvironmentVariableW(L"QFILES_TEST_VIEWERLOG", logPath, MAX_PATH)) {
-        std::wstring line = PathFileName(s.path) + L" | " + s.imgFormat + L" | " + std::to_wstring(s.imgW) + L"x" +
-                            std::to_wstring(s.imgH) + L" | " + s.band + L" | " + ReplaceAll(s.mediaMessage, L"\n", L" / ") +
-                            (unavailable ? L" | nicht verfügbar" : L"") + L"\r\n";
-        std::vector<uint8_t> old;
-        ReadFileBytes(logPath, old);
-        std::string u = std::string(old.begin(), old.end()) + WideToUtf8(line);
-        WriteFileBytes(logPath, u.data(), u.size());
-    }
+    TestViewerLog(PathFileName(s.path) + L" | " + s.imgFormat + L" | " + std::to_wstring(s.imgW) + L"x" +
+                  std::to_wstring(s.imgH) + L" | " + s.band + L" | " + ReplaceAll(s.mediaMessage, L"\n", L" / ") +
+                  (unavailable ? L" | nicht verfügbar" : L""));
     // PDF ohne Windows.Data.Pdf: wie bisher über den Vorschauhandler bzw. als Hex/Text
     if (unavailable && s.media == MediaKind::Pdf) {
         bool hadFocus = HasFocusInside(s);
@@ -1294,6 +1391,8 @@ void LoadPath(ViewerState& s, const std::wstring& path, bool force) {
         SetMessage(s, L"„" + PathFileName(path) + L"“ kann nicht gelesen werden:\n" + LastErrorMessage(attrErr));
     } else if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         LoadDirectory(s, fad);
+    } else if (s.mode == ViewerMode::Auto && size > 0 && IsArchiveFile(path)) {
+        StartArchive(s);   // gepackte Datei: Inhalt als Liste
     } else if (MediaKind mk = s.mode == ViewerMode::Auto && size > 0 ? MediaKindForPath(path) : MediaKind::None;
                mk != MediaKind::None) {
         StartMedia(s, mk);   // PDF: Seiten, Video: Einzelbilder
@@ -1352,6 +1451,7 @@ std::wstring ModeText(const ViewerState& s) {
         return s.imgLoading ? L"Bild (wird geladen)" : L"Bild";
     case Eff::Preview: return L"Vorschau";
     case Eff::Directory: return L"Verzeichnis";
+    case Eff::Archive: return s.arcLoading ? L"Archiv (wird gelesen)" : L"Archiv";
     default: return L"";
     }
 }
@@ -1404,7 +1504,7 @@ void PaintMessage(ViewerState& s, HDC dc, const RECT& cr, const std::wstring& te
     RECT calc = r;
     DrawTextW(dc, text.c_str(), (int)text.size(), &calc, DT_CALCRECT | DT_WORDBREAK | DT_CENTER | DT_NOPREFIX);
     int th = calc.bottom - calc.top;
-    if (th < r.bottom - r.top) r.top += (r.bottom - r.top - th) / 3;
+    if (th < r.bottom - r.top) r.top += (r.bottom - r.top - th) / (s.messageCentered ? 2 : 3);
     DrawTextW(dc, text.c_str(), (int)text.size(), &r, DT_WORDBREAK | DT_CENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
     SelectObject(dc, oldFont);
 }
@@ -1462,6 +1562,12 @@ void Paint(ViewerState& s, HDC target) {
         }
         break;
     case Eff::Directory: PaintDirectory(s, dc, cr); break;
+    case Eff::Archive:
+        if (s.arcLoading)
+            PaintMessage(s, dc, cr, L"Archiv wird gelesen …\n\nEsc bricht ab");
+        else
+            FillRect(dc, &cr, GetSysColorBrush(COLOR_WINDOW));
+        break;
     case Eff::Message: PaintMessage(s, dc, cr, s.message); break;
     case Eff::None: PaintMessage(s, dc, cr, L""); break;
     default: FillRect(dc, &cr, GetSysColorBrush(COLOR_WINDOW)); break;   // von Kindfenstern verdeckt
@@ -1665,6 +1771,10 @@ void CreateChildren(ViewerState& s) {
 
 // Esc während des Aufbaus einer PDF-/Video-Anzeige: bisherigen Stand anzeigen
 bool CancelMediaBuild(ViewerState& s) {
+    if (s.eff == Eff::Archive && s.arcLoading && s.arcJob && !s.arcJob->cancel) {
+        s.arcJob->cancel = true;   // tar.exe wird beendet
+        return true;
+    }
     if (s.eff != Eff::Image || !s.imgLoading || !s.job || s.media == MediaKind::None || s.job->cancel) return false;
     s.job->cancel = true;
     s.mediaProgress = L"wird abgebrochen …";
@@ -1774,6 +1884,7 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_QF_IMAGEDONE: OnImageDone(*s, (UINT)wp); return 0;
+    case WM_QF_ARCHIVEDONE: OnArchiveDone(*s, (UINT)wp); return 0;
     case WM_QF_MEDIAPROGRESS:
         if ((UINT)wp == s->gen && s->job) {
             std::lock_guard<std::mutex> lock(s->job->m);

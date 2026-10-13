@@ -12,6 +12,7 @@
 #include <windows.h>
 #include <objbase.h>
 #include <shlobj.h>
+#include <commctrl.h>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -21,11 +22,15 @@
 #include "FileOps.h"
 #include "MediaPreview.h"
 #include "DocText.h"
+#include "ArchiveCore.h"
 #include "Location.h"
 #include "Settings.h"
 #include "Util.h"
 
 using namespace qf;
+
+// Im Testprogramm gibt es kein Hauptfenster (Archive.cpp aktualisiert nach dem Entpacken die Listen)
+void qf::App::RefreshPanes() {}
 
 static int g_failed = 0;
 static int g_passed = 0;
@@ -235,6 +240,61 @@ static void TestDocText() {
     CHECK(!InflateRaw((const uint8_t*)"\xff\xff\xff", 3, out, 1000));
 }
 
+#include "ArchiveData.inc"
+
+static void TestArchive(const std::wstring& base) {
+    std::wstring dir = PathCombine(base, L"Archiv ✓");
+    CreateDirectoryW(dir.c_str(), nullptr);
+    auto write = [&](const std::wstring& name, const unsigned char* d, size_t n) {
+        std::wstring p = PathCombine(dir, name);
+        WriteFileBytes(p, d, n);
+        return p;
+    };
+    std::wstring zip = write(L"Test ✓.zip", kTestZip, sizeof(kTestZip));
+    CHECK(IsArchiveFile(zip) && IsArchiveFile(L"x.7Z") && IsArchiveFile(L"a.tar.gz") && !IsArchiveFile(L"a.txt"));
+
+    std::vector<ArchiveEntry> entries;
+    std::wstring err;
+    bool pw = true;
+    CHECK(ReadArchive(zip, entries, err, pw) && !pw);
+    CHECK(entries.size() == 4);
+    auto find = [&](const std::wstring& path) -> const ArchiveEntry* {
+        for (auto& e : entries)
+            if (e.path == path) return &e;
+        return nullptr;
+    };
+    const ArchiveEntry* folder = find(L"Ordner");
+    const ArchiveEntry* stored = find(L"Ordner\\gespeichert ✓.txt");
+    const ArchiveEntry* deflated = find(L"Ordner\\Unter\\gepackt.txt");
+    CHECK(folder && folder->isDir);
+    CHECK(stored && !stored->isDir && stored->hasDate);
+    CHECK(deflated && deflated->size == 3000 && deflated->hasPacked && deflated->packed < deflated->size);
+
+    // Verzeichnis mit Inhalt (gespeichert + Deflate, Unterverzeichnis ohne eigenen Eintrag)
+    std::wstring dest = PathCombine(dir, L"Ziel 1");
+    CHECK(ExtractArchiveEntries(nullptr, zip, entries, {L"Ordner"}, dest, err));
+    if (!err.empty()) Out(L"Entpacken: " + err);
+    CHECK(ReadAll(PathCombine(dest, L"Ordner\\gespeichert ✓.txt")) == L"Grüße – gespeichert");
+    std::wstring packed = ReadAll(PathCombine(dest, L"Ordner\\Unter\\gepackt.txt"));
+    CHECK(packed.size() == 3000 && packed.compare(0, 15, L"Zeile mit Text\n") == 0);
+    // Einzelne Datei: landet direkt im Ziel
+    std::wstring dest2 = PathCombine(dir, L"Ziel 2");
+    CHECK(ExtractArchiveEntries(nullptr, zip, entries, {L"Ordner\\Unter\\gepackt.txt", L"wurzel.txt"}, dest2, err));
+    CHECK(FileExists(PathCombine(dest2, L"gepackt.txt")) && ReadAll(PathCombine(dest2, L"wurzel.txt")) == L"Wurzel");
+    // Archiv unverändert
+    std::vector<uint8_t> after;
+    CHECK(ReadFileBytes(zip, after) && after == std::vector<uint8_t>(kTestZip, kTestZip + sizeof(kTestZip)));
+
+    // Kennwortgeschützt
+    std::wstring enc = write(L"geheim.zip", kTestZipEncrypted, sizeof(kTestZipEncrypted));
+    CHECK(!ReadArchive(enc, entries, err, pw) && pw && entries.empty());
+    // Kein Archiv
+    static const unsigned char junk[] = "Das ist kein Archiv, nur Text mit .zip-Endung.";
+    std::wstring bad = write(L"kaputt.zip", junk, sizeof(junk) - 1);
+    CHECK(!ReadArchive(bad, entries, err, pw) && !pw && !err.empty());
+    Out(L"Archiv-Fehlermeldung: " + err);
+}
+
 static void TestMediaKinds() {
     CHECK(MediaKindForPath(L"C:\\x\\Bericht.PDF") == MediaKind::Pdf);
     CHECK(MediaKindForPath(L"C:\\x\\Urlaub ✓.mp4") == MediaKind::Video);
@@ -436,6 +496,8 @@ static void TestRemote(const std::wstring& base) {
 int wmain() {
     SetConsoleOutputCP(CP_UTF8);
     OleInitialize(nullptr);
+    INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_WIN95_CLASSES | ICC_PROGRESS_CLASS};
+    InitCommonControlsEx(&icc);   // Fortschrittsanzeige beim Entpacken
     App::SetInstance(GetModuleHandleW(nullptr));
     std::wstring base = PathCombine(GetTempDir(), L"QFilesTest ✓ " + std::to_wstring(GetTickCount64()));
     CreateDirectoryW(base.c_str(), nullptr);
@@ -448,6 +510,7 @@ int wmain() {
     TestLocations();
     TestMediaKinds();
     TestDocText();
+    TestArchive(base);
     TestRemote(base);
 
     Out(L"Bestanden: " + std::to_wstring(g_passed) + L", fehlgeschlagen: " + std::to_wstring(g_failed));
