@@ -394,7 +394,7 @@ $lr = New-Object W+RECT; [W]::GetWindowRect($arcList, [ref]$lr) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 400
 [System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Milliseconds 800
 [System.Windows.Forms.SendKeys]::SendWait("a"); Start-Sleep -Seconds 3
-$vf = [W]::FindWindow("QFilesViewerFrame", $null)
+$vf = [W]::FindWindow("QFilesViewerFrame", [NullString]::Value)   # $null würde zu ""
 $vfOk = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf)
 $vfFront = $vfOk -and ([W]::GetForegroundWindow() -eq $vf)
 Shot "screenshot21.png"
