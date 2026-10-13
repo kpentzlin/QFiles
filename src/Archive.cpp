@@ -446,19 +446,54 @@ bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, st
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    // UTF-8 bevorzugen, sonst OEM-Codepage (Konsolenausgabe)
+    // UTF-8 bevorzugen, sonst ANSI-Codepage: tar.exe stellt mit setlocale(LC_ALL, "") die Sprache des Benutzers ein
+    // und schreibt Namen und Monatsnamen in dessen ANSI-Codepage (z. B. 1252 „Mär“), nicht in der OEM-Codepage.
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.data(), (int)bytes.size(), nullptr, 0);
-    UINT cp = (n > 0 || bytes.empty()) ? CP_UTF8 : GetOEMCP();
+    UINT cp = (n > 0 || bytes.empty()) ? CP_UTF8 : GetACP();
     output = DecodeCp((const uint8_t*)bytes.data(), bytes.size(), cp);
     return !cancelled;
 }
 
+// Monatsname aus der Ausgabe von tar.exe. tar.exe stellt die Sprache des Benutzers ein (setlocale) – ein deutsches
+// Windows liefert also „Mai“, „Okt“, „Dez“, „Mär“ statt „May“, „Oct“ … Daher werden neben den englischen auch die
+// Monatsnamen der Benutzer- und Systemsprache erkannt (abgekürzt und ausgeschrieben, ohne Groß-/Kleinschreibung und
+// abschließenden Punkt). 0 = unbekannt.
+std::wstring NormalizeMonth(std::wstring m) {
+    m = ToLower(Trim(m));
+    while (!m.empty() && m.back() == L'.') m.pop_back();
+    return m;
+}
+
 int MonthFromAbbr(const std::wstring& m) {
-    static const wchar_t* names[] = {L"jan", L"feb", L"mar", L"apr", L"may", L"jun",
-                                     L"jul", L"aug", L"sep", L"oct", L"nov", L"dec"};
-    std::wstring l = ToLower(m);
-    for (int i = 0; i < 12; ++i)
-        if (l == names[i]) return i + 1;
+    static const std::vector<std::pair<std::wstring, int>> names = [] {
+        std::vector<std::pair<std::wstring, int>> v;
+        static const wchar_t* en[] = {L"jan", L"feb", L"mar", L"apr", L"may", L"jun",
+                                      L"jul", L"aug", L"sep", L"oct", L"nov", L"dec"};
+        static const wchar_t* de[] = {L"jan", L"feb", L"mär", L"apr", L"mai", L"jun",
+                                      L"jul", L"aug", L"sep", L"okt", L"nov", L"dez"};
+        for (int i = 0; i < 12; ++i) {
+            v.emplace_back(en[i], i + 1);
+            v.emplace_back(de[i], i + 1);   // auch unabhängig von der eingestellten Sprache
+        }
+        v.emplace_back(L"mrz", 3);
+        const wchar_t* locales[] = {LOCALE_NAME_USER_DEFAULT, LOCALE_NAME_SYSTEM_DEFAULT};
+        for (const wchar_t* loc : locales) {
+            for (int i = 0; i < 12; ++i) {
+                for (LCTYPE type : {(LCTYPE)(LOCALE_SABBREVMONTHNAME1 + i), (LCTYPE)(LOCALE_SMONTHNAME1 + i)}) {
+                    wchar_t buf[80] = {};
+                    if (GetLocaleInfoEx(loc, type, buf, 80) > 1) {
+                        std::wstring n = NormalizeMonth(buf);
+                        if (!n.empty()) v.emplace_back(n, i + 1);
+                    }
+                }
+            }
+        }
+        return v;
+    }();
+    std::wstring l = NormalizeMonth(m);
+    if (l.empty()) return 0;
+    for (const auto& [n, month] : names)
+        if (l == n) return month;
     return 0;
 }
 
@@ -470,57 +505,87 @@ bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, st
 
 // Zerlegt die Ausgabe von „tar -tvf“ (ls-ähnlich):
 // "-rw-r--r--  0 user group   1234 Jan  1  2020 pfad/name"  bzw. "... Jan  1 12:34 pfad/name"
+// Eine Zeile von „tar -tvf“: Rechte, Links, Besitzer, Gruppe, Größe, Monat, Tag, Jahr bzw. Uhrzeit, Name.
+// Der Monat ist landessprachlich (siehe MonthFromAbbr) und könnte Leerzeichen enthalten; der Name beginnt daher nach
+// dem ersten Feld „Jahr“ (4 Ziffern) bzw. „Uhrzeit“ (h:mm), dem eine Tageszahl vorausgeht.
 void ParseTarListing(const std::wstring& output, std::vector<ArcEntry>& out, std::wstring& errors) {
     SYSTEMTIME now;
     GetLocalTime(&now);
+    auto allDigits = [](const std::wstring& t) {
+        return !t.empty() && std::all_of(t.begin(), t.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+    };
+    auto isTime = [&](const std::wstring& t) {
+        size_t c = t.find(L':');
+        return c != std::wstring::npos && c >= 1 && c <= 2 && t.size() == c + 3 && allDigits(t.substr(0, c)) &&
+               allDigits(t.substr(c + 1));
+    };
     for (const auto& rawLine : Split(output, L'\n')) {
         std::wstring line = rawLine;
         if (!line.empty() && line.back() == L'\r') line.pop_back();
         if (line.empty()) continue;
-        // 8 Felder, dann der Name
-        std::vector<std::wstring> tok;
-        size_t i = 0, nameStart = std::wstring::npos;
-        while (i < line.size() && tok.size() < 8) {
+        struct Tok {
+            std::wstring text;
+            size_t end;
+        };
+        std::vector<Tok> tok;
+        size_t i = 0;
+        while (i < line.size() && tok.size() < 14) {
             while (i < line.size() && line[i] == L' ') ++i;
             size_t s = i;
             while (i < line.size() && line[i] != L' ') ++i;
-            if (i > s) tok.push_back(line.substr(s, i - s));
+            if (i > s) tok.push_back({line.substr(s, i - s), i});
         }
-        if (tok.size() == 8 && i < line.size()) nameStart = i + 1;
-        bool valid = tok.size() == 8 && nameStart != std::wstring::npos && tok[0].size() >= 10 &&
-                     std::wstring(L"-dlhcbps").find(tok[0][0]) != std::wstring::npos;
-        int month = valid ? MonthFromAbbr(tok[5]) : 0;
-        if (!valid || month == 0) {
+        // Ende des Datums suchen
+        size_t dateEnd = 0;   // Index des Felds Jahr/Uhrzeit
+        if (tok.size() >= 9 && tok[0].text.size() >= 10 &&
+            std::wstring(L"-dlhcbps").find(tok[0].text[0]) != std::wstring::npos && allDigits(tok[4].text)) {
+            for (size_t k = 7; k + 1 < tok.size(); ++k) {
+                const std::wstring& d = tok[k - 1].text;
+                if (allDigits(d) && d.size() <= 2 && ((allDigits(tok[k].text) && tok[k].text.size() == 4) || isTime(tok[k].text)) &&
+                    tok[k].end < line.size()) {
+                    dateEnd = k;
+                    break;
+                }
+            }
+        }
+        if (dateEnd == 0) {
             if (!errors.empty()) errors += L"\n";
             errors += line;
             continue;
         }
+        const std::wstring perms = tok[0].text;
+        std::wstring monthText;
+        for (size_t k = 5; k + 1 < dateEnd; ++k) monthText += (monthText.empty() ? L"" : L" ") + tok[k].text;
+        int month = MonthFromAbbr(monthText);
         ArcEntry e;
-        std::wstring name = line.substr(nameStart);
-        if (tok[0][0] == L'l') {
+        std::wstring name = line.substr(tok[dateEnd].end + 1);
+        if (perms[0] == L'l') {
             size_t arrow = name.find(L" -> ");
             if (arrow != std::wstring::npos) name.resize(arrow);
-        } else if (tok[0][0] == L'h') {
+        } else if (perms[0] == L'h') {
             size_t link = name.find(L" link to ");
             if (link != std::wstring::npos) name.resize(link);
         }
         e.rawName = name;
-        e.isDir = tok[0][0] == L'd' || (!name.empty() && name.back() == L'/');
-        e.size = (unsigned long long)StrToInt(tok[4], 0);
-        e.date = SYSTEMTIME{};
-        e.date.wMonth = (WORD)month;
-        e.date.wDay = (WORD)std::clamp((int)StrToInt(tok[6], 1), 1, 31);
-        if (tok[7].find(L':') != std::wstring::npos) {
-            // Uhrzeit statt Jahr: innerhalb der letzten 6 Monate
-            e.date.wHour = (WORD)std::clamp((int)StrToInt(tok[7].substr(0, tok[7].find(L':')), 0), 0, 23);
-            e.date.wMinute = (WORD)std::clamp((int)StrToInt(tok[7].substr(tok[7].find(L':') + 1), 0), 0, 59);
-            e.date.wYear = now.wYear;
-            if (e.date.wMonth > now.wMonth || (e.date.wMonth == now.wMonth && e.date.wDay > now.wDay)) e.date.wYear--;
-        } else {
-            e.date.wYear = (WORD)std::clamp((int)StrToInt(tok[7], 1980), 1601, 30827);
+        e.isDir = perms[0] == L'd' || (!name.empty() && name.back() == L'/');
+        e.size = (unsigned long long)StrToInt(tok[4].text, 0);
+        if (month > 0) {
+            const std::wstring& yt = tok[dateEnd].text;
+            e.date = SYSTEMTIME{};
+            e.date.wMonth = (WORD)month;
+            e.date.wDay = (WORD)std::clamp((int)StrToInt(tok[dateEnd - 1].text, 1), 1, 31);
+            if (yt.find(L':') != std::wstring::npos) {
+                // Uhrzeit statt Jahr: innerhalb der letzten 6 Monate
+                e.date.wHour = (WORD)std::clamp((int)StrToInt(yt.substr(0, yt.find(L':')), 0), 0, 23);
+                e.date.wMinute = (WORD)std::clamp((int)StrToInt(yt.substr(yt.find(L':') + 1), 0), 0, 59);
+                e.date.wYear = now.wYear;
+                if (e.date.wMonth > now.wMonth || (e.date.wMonth == now.wMonth && e.date.wDay > now.wDay)) e.date.wYear--;
+            } else {
+                e.date.wYear = (WORD)std::clamp((int)StrToInt(yt, 1980), 1601, 30827);
+            }
+            e.hasDate = true;
         }
-        e.hasDate = true;
-        e.method = tok[0];   // Rechte
+        e.method = perms;   // Rechte
         e.name = name;
         std::replace(e.name.begin(), e.name.end(), L'/', L'\\');
         while (!e.name.empty() && e.name.back() == L'\\') e.name.pop_back();
@@ -1312,6 +1377,25 @@ bool ExtractZipEntryOwn(FileReader& f, const ArchiveEntry& e, const std::wstring
     return ok;
 }
 
+ArchiveEntry ToArchiveEntry(const ArcEntry& e, bool isZip) {
+    ArchiveEntry a;
+    a.path = StripDotSlash(e.name);
+    a.isDir = e.isDir;
+    a.encrypted = e.encrypted;
+    a.size = e.size;
+    a.packed = e.packed;
+    a.hasPacked = e.hasPacked;
+    a.hasDate = e.hasDate;
+    if (e.hasDate) a.modified = LocalToUtc(e.date);
+    a.method = e.method;
+    a.rawName = e.rawName;
+    a.zip = isZip;
+    a.zipMethod = e.zipMethod;
+    a.crc = e.crc;
+    a.localOffset = e.localOffset;
+    return a;
+}
+
 } // namespace
 
 bool IsArchiveFile(const std::wstring& path) {
@@ -1372,22 +1456,8 @@ bool ReadArchive(const std::wstring& archive, std::vector<ArchiveEntry>& out, st
         }
     }
     for (auto& e : raw) {
-        ArchiveEntry a;
-        a.path = StripDotSlash(e.name);
+        ArchiveEntry a = ToArchiveEntry(e, isZip);
         if (a.path.empty() || a.path == L".") continue;
-        a.isDir = e.isDir;
-        a.encrypted = e.encrypted;
-        a.size = e.size;
-        a.packed = e.packed;
-        a.hasPacked = e.hasPacked;
-        a.hasDate = e.hasDate;
-        if (e.hasDate) a.modified = LocalToUtc(e.date);
-        a.method = e.method;
-        a.rawName = e.rawName;
-        a.zip = isZip;
-        a.zipMethod = e.zipMethod;
-        a.crc = e.crc;
-        a.localOffset = e.localOffset;
         if (!a.isDir && a.encrypted) passwordProtected = true;
         out.push_back(std::move(a));
     }
@@ -1517,6 +1587,17 @@ bool ExtractArchiveEntries(HWND owner, const std::wstring& archive, const std::v
         return false;
     }
     return true;
+}
+
+void ParseTarListingText(const std::wstring& output, std::vector<ArchiveEntry>& out, std::wstring& errors) {
+    std::vector<ArcEntry> raw;
+    errors.clear();
+    ParseTarListing(output, raw, errors);
+    out.clear();
+    for (auto& e : raw) {
+        ArchiveEntry a = ToArchiveEntry(e, false);
+        if (!a.path.empty() && a.path != L".") out.push_back(std::move(a));
+    }
 }
 
 std::wstring NewArchiveTempDir(const std::wstring& archive) {

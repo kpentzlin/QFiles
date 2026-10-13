@@ -335,6 +335,14 @@ $ini = "C:\ProgramData\QFiles\QFiles.ini"
 if (Test-Path $ini) { Add-Content -Path $ini -Value "`r`n[Optionen]`r`nGestreift=1`r`nInaktiveListenGrau=1" -Encoding UTF8 }
 $arcDir = "C:\QFilesArchive"
 & python tools\make-test-archives.py $arcDir
+# Deutsche Sprache: tar.exe schreibt dann „Mai“, „Okt“ … statt „May“, „Oct“ (setlocale), das muss QFiles verstehen
+$oldCulture = (Get-Culture).Name
+Set-Culture de-DE
+$tarExe = "$env:SystemRoot\System32\tar.exe"
+if (Test-Path $tarExe) {
+  $tarOut = (& $tarExe -tvf "$arcDir\e-Projekt.rar" 2>&1 | Out-String).Trim() -replace "`r?`n", ' / '
+  Write-Output "::notice title=tar.exe (de-DE)::$tarOut"
+}
 $arcZip = (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc
 $arcHash = (Get-FileHash "$arcDir\a-Projekt.zip").Hash
 Remove-Item $viewLog -ErrorAction SilentlyContinue
@@ -359,8 +367,8 @@ $ar = New-Object W+RECT; [W]::GetWindowRect($alist, [ref]$ar) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("{F11}")
 Wait-ViewerLog 1
 Shot "screenshot17.png"   # ZIP als Liste (Liste 1 aktiv: Archivliste abgetönt gelb)
-$arcShots = @{ 1 = "screenshot18.png"; 2 = "screenshot19.png" }
-for ($i = 1; $i -le 3; $i++) {
+$arcShots = @{ 1 = "screenshot18.png"; 2 = "screenshot19.png"; 4 = "screenshot20.png" }
+for ($i = 1; $i -le 4; $i++) {
   [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
   Wait-ViewerLog ($i + 1)
   Check-Alive "Dateianzeige Archiv $i"
@@ -370,11 +378,13 @@ $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 Remove-Item Env:\QFILES_TEST_VIEWERLOG
+Set-Culture $oldCulture
 $al = @()
 if (Test-Path $viewLog) { $al = Get-Content $viewLog -Encoding UTF8 }
 $al | ForEach-Object { Write-Output $_ }
-$zipOk = $al | Where-Object { $_ -match '^a-Projekt\.zip \| Archiv \| \d+ Verz\. \| 5 Dateien' }
-$tarOk = $al | Where-Object { $_ -match '^b-Quellen\.tar\.gz \| Archiv \|.*5 Dateien' }
+$zipOk = $al | Where-Object { $_ -match '^a-Projekt\.zip \| Archiv \| \d+ Verz\. \| 6 Dateien \| Datum bei (\d+) von \1$' }
+$tarOk = $al | Where-Object { $_ -match '^b-Quellen\.tar\.gz \| Archiv \|.*6 Dateien \| Datum bei (\d+) von \1$' }
+$rarOk = $al | Where-Object { $_ -match '^e-Projekt\.rar \| Archiv \| 4 Verz\. \| 6 Dateien \| Datum bei 10 von 10$' }
 $pwOk = $al | Where-Object { $_ -match '^c-geheim\.zip \| Archivfehler \|.*kennwortgeschützt' }
 $badOk = $al | Where-Object { $_ -match '^d-kaputt\.zip \| Archivfehler \|' }
 if (-not ($zipOk -and $pwOk -and $badOk)) {
@@ -383,6 +393,11 @@ if (-not ($zipOk -and $pwOk -and $badOk)) {
 }
 if ((Get-FileHash "$arcDir\a-Projekt.zip").Hash -ne $arcHash -or (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc -ne $arcZip) {
   "Archiv wurde durch die Anzeige verändert" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+if (-not $tarOk -or -not $rarOk) {
+  # tar.exe ist vorhanden (Windows Server 2025); TAR/GZ und RAR müssen auch mit deutschen Monatsnamen gelesen werden
+  Write-Output ("::error title=Archivanzeige (tar.exe)::" + ($al -join ' / '))
+  "Archivanzeige über tar.exe nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 if ($tarOk) { Write-Output ("::notice title=Archivanzeige::" + ($al -join ' / ')) }
 else { Write-Output ("::warning title=Archivanzeige (tar.exe)::" + ($al -join ' / ')) }

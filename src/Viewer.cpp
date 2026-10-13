@@ -1074,9 +1074,13 @@ void OnArchiveDone(ViewerState& s, UINT gen) {
     bool hadFocus = HasFocusInside(s);
     std::wstring name = PathFileName(s.path);
     if (job->ok) {
-        size_t files = 0, dirs = 0;
-        for (auto& e : job->entries) (e.isDir ? dirs : files)++;
-        TestViewerLog(name + L" | Archiv | " + std::to_wstring(dirs) + L" Verz. | " + std::to_wstring(files) + L" Dateien");
+        size_t files = 0, dirs = 0, dated = 0;
+        for (auto& e : job->entries) {
+            (e.isDir ? dirs : files)++;
+            if (e.hasDate) ++dated;
+        }
+        TestViewerLog(name + L" | Archiv | " + std::to_wstring(dirs) + L" Verz. | " + std::to_wstring(files) +
+                      L" Dateien | Datum bei " + std::to_wstring(dated) + L" von " + std::to_wstring(job->entries.size()));
         ShowChild(s, s.archiveView);
         Layout(s);
         ArchiveViewSetContent(s.archiveView, s.path, std::move(job->entries));

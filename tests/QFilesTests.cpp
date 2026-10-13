@@ -295,6 +295,44 @@ static void TestArchive(const std::wstring& base) {
     Out(L"Archiv-Fehlermeldung: " + err);
 }
 
+// Ausgabe von tar.exe: Monatsnamen in der Sprache des Benutzers (deutsches Windows: „Mai“, „Okt“, „Mär“ …)
+static void TestTarListing() {
+    std::vector<ArchiveEntry> e;
+    std::wstring errors;
+    auto localDate = [](const ArchiveEntry& a) {
+        SYSTEMTIME st{};
+        FILETIME lt;
+        FileTimeToLocalFileTime(&a.modified, &lt);
+        FileTimeToSystemTime(&lt, &st);
+        return st;
+    };
+    ParseTarListingText(L"-rw-r--r--  0 0      0      106285 May 16  2010 BEIN08.TXT\r\n", e, errors);
+    CHECK(e.size() == 1 && errors.empty());
+    if (e.size() == 1) {
+        CHECK(e[0].path == L"BEIN08.TXT" && e[0].size == 106285 && e[0].hasDate);
+        SYSTEMTIME st = localDate(e[0]);
+        CHECK(st.wYear == 2010 && st.wMonth == 5 && st.wDay == 16);
+    }
+    // Deutsch (Windows-tar mit setlocale): „Mai“, Tag mit führender Null, Name mit Leerzeichen
+    ParseTarListingText(L"-r--r--r--  0 0      0      106285 Mai 06  2010 BEIN08.TXT\r\n"
+                        L"drwxr-xr-x  0 0      0           0 Okt 13 09:30 Ordner mit Leer/\r\n"
+                        L"-rw-r--r--  0 0      0          12 Dez 24  1999 Ordner mit Leer/2011 Bericht.txt\r\n",
+                        e, errors);
+    CHECK(e.size() == 3 && errors.empty());
+    if (e.size() == 3) {
+        SYSTEMTIME st = localDate(e[0]);
+        CHECK(e[0].path == L"BEIN08.TXT" && st.wYear == 2010 && st.wMonth == 5 && st.wDay == 6);
+        CHECK(e[1].isDir && e[1].path == L"Ordner mit Leer" && localDate(e[1]).wMonth == 10 && localDate(e[1]).wHour == 9);
+        CHECK(e[2].path == L"Ordner mit Leer\\2011 Bericht.txt" && localDate(e[2]).wYear == 1999 && localDate(e[2]).wMonth == 12);
+    }
+    // Unbekannter Monatsname: Eintrag trotzdem, nur ohne Datum
+    ParseTarListingText(L"-rw-r--r--  0 0      0          5 Xyz 01  2001 a b.txt\n", e, errors);
+    CHECK(e.size() == 1 && e[0].path == L"a b.txt" && !e[0].hasDate && e[0].size == 5);
+    // Fehlermeldungen von tar
+    ParseTarListingText(L"tar.exe: Error opening archive: Unrecognized archive format\r\n", e, errors);
+    CHECK(e.empty() && errors.find(L"Unrecognized") != std::wstring::npos);
+}
+
 static void TestMediaKinds() {
     CHECK(MediaKindForPath(L"C:\\x\\Bericht.PDF") == MediaKind::Pdf);
     CHECK(MediaKindForPath(L"C:\\x\\Urlaub ✓.mp4") == MediaKind::Video);
@@ -511,6 +549,7 @@ int wmain() {
     TestMediaKinds();
     TestDocText();
     TestArchive(base);
+    TestTarListing();
     TestRemote(base);
 
     Out(L"Bestanden: " + std::to_wstring(g_passed) + L", fehlgeschlagen: " + std::to_wstring(g_failed));

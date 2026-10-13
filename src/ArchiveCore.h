@@ -43,6 +43,9 @@ bool ReadArchive(const std::wstring& archive, std::vector<ArchiveEntry>& out, st
 bool ExtractArchiveEntries(HWND owner, const std::wstring& archive, const std::vector<ArchiveEntry>& entries,
                            const std::vector<std::wstring>& selected, const std::wstring& destDir, std::wstring& error);
 
+// Ausgabe von „tar -tvf“ auswerten (auch mit landessprachlichen Monatsnamen); nicht erkannte Zeilen in errors
+void ParseTarListingText(const std::wstring& output, std::vector<ArchiveEntry>& out, std::wstring& errors);
+
 // Neues temporäres Verzeichnis für entpackte Einträge (unter %TEMP%\QFiles_Archiv)
 std::wstring NewArchiveTempDir(const std::wstring& archive);
 // Temporäres Verzeichnis wieder entfernen (nur unterhalb von %TEMP%\QFiles_Archiv)
