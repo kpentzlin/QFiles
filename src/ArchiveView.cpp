@@ -393,12 +393,16 @@ void ContextMenu(State& s, POINT pt) {
     if (oneFile || oneDir) SetMenuDefaultItem(m, oneFile ? IDM_OPENTEMP : IDM_OPEN, FALSE);
     UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, s.hwnd, nullptr);
     DestroyMenu(m);
+    // Danach den Fokus wieder in die Liste setzen – aber nicht, wenn inzwischen ein anderes Fenster aktiv ist (z. B. das
+    // Anzeigefenster von „Anzeigen“): SetFocus würde das QFiles-Fenster wieder aktivieren und es davor schieben.
     struct Refocus {
         State& s;
+        UINT id;
         ~Refocus() {
-            if (IsWindowVisible(s.list)) SetFocus(s.list);
+            if (id == IDM_VIEW || !IsWindowVisible(s.list)) return;
+            if (GetForegroundWindow() == GetAncestor(s.hwnd, GA_ROOT)) SetFocus(s.list);
         }
-    } refocus{s};
+    } refocus{s, id};
     switch (id) {
     case IDM_OPENTEMP: OpenTemp(s, sel[0]); break;
     case IDM_VIEW: ViewTemp(s, sel[0]); break;

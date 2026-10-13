@@ -18,6 +18,20 @@ public static class W {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+  public static IntPtr FindDescendant(IntPtr parent, string cls) {
+    IntPtr found = IntPtr.Zero;
+    EnumChildWindows(parent, (h, l) => {
+      var sb = new System.Text.StringBuilder(64); GetClassName(h, sb, 64);
+      if (sb.ToString() == cls && IsWindowVisible(h)) { found = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
   public static void Click(int x, int y, bool right) {
     SetCursorPos(x, y); System.Threading.Thread.Sleep(150);
     uint down = right ? 0x0008u : 0x0002u, up = right ? 0x0010u : 0x0004u;
@@ -369,6 +383,28 @@ $ar = New-Object W+RECT; [W]::GetWindowRect($alist, [ref]$ar) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("{F11}")
 Wait-ViewerLog 1
 Shot "screenshot17.png"   # ZIP als Liste (Liste 1 aktiv: Archivliste abgetönt gelb)
+# Kontextmenü „Anzeigen“ auf liesmich.txt (Zeile 5: Alt, Bilder, Quellen, Grüße €.txt, liesmich.txt): eigenes
+# Anzeigefenster, das offen bleibt – auch wenn danach ins QFiles-Fenster geklickt wird
+$arcView = [W]::FindDescendant($p.MainWindowHandle, "QFilesArchiveView")
+$arcList = if ($arcView -ne [IntPtr]::Zero) { [W]::FindWindowEx($arcView, [IntPtr]::Zero, "SysListView32", $null) } else { [IntPtr]::Zero }
+if ($arcList -eq [IntPtr]::Zero) { "Archivliste nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
+$lr = New-Object W+RECT; [W]::GetWindowRect($arcList, [ref]$lr) | Out-Null
+[W]::Click($lr.L + 60, $lr.T + 24 + 4 * 20 + 10, $true); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("a"); Start-Sleep -Seconds 3
+$vf = [W]::FindWindow("QFilesViewerFrame", $null)
+$vfOk = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf)
+$vfFront = $vfOk -and ([W]::GetForegroundWindow() -eq $vf)
+Shot "screenshot21.png"
+# in die Verzeichnisliste klicken: das Anzeigefenster muss sichtbar bleiben (gehört zum QFiles-Fenster)
+[W]::Click($ar.L + 200, $ar.B - 40, $false); Start-Sleep -Seconds 2
+$vfStill = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf) -and ([W]::GetWindow($vf, 4) -eq $p.MainWindowHandle)
+if (-not ($vfOk -and $vfStill)) {
+  Write-Output "::error title=Anzeigen aus Archiv::Fenster sichtbar: $vfOk, im Vordergrund: $vfFront, nach Klick noch sichtbar: $vfStill"
+  "Anzeigefenster aus der Archivliste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+Write-Output "::notice title=Anzeigen aus Archiv::Fenster sichtbar, im Vordergrund: $vfFront, bleibt nach Klick ins Hauptfenster offen"
+[W]::SendMessage($vf, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # WM_CLOSE
+Start-Sleep -Milliseconds 500
 $arcShots = @{ 1 = "screenshot18.png"; 2 = "screenshot19.png"; 4 = "screenshot20.png" }
 for ($i = 1; $i -le 4; $i++) {
   [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")

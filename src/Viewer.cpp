@@ -2035,6 +2035,9 @@ struct FrameState {
 };
 
 std::vector<HWND> g_frames;
+// Anzeigefenster aus der Archivliste („Anzeigen“): höchstens eines; es gehört zum QFiles-Fenster (bleibt davor und
+// wird mit ihm geschlossen) und schließt sich, sobald ein anderes Anzeigefenster geöffnet wird.
+HWND g_placedFrame = nullptr;
 
 FrameState* GetFrame(HWND h) { return reinterpret_cast<FrameState*>(GetWindowLongPtrW(h, GWLP_USERDATA)); }
 
@@ -2369,6 +2372,7 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_DESTROY:
         if (f && !f->fixedPlacement) SavePlacement(hwnd, kViewerSection);
+        if (hwnd == g_placedFrame) g_placedFrame = nullptr;
         App::UnregisterAccelerator(hwnd);
         if (f) {
             if (f->accel) DestroyAcceleratorTable(f->accel);
@@ -2441,6 +2445,8 @@ namespace {
 
 void OpenViewerWindowImpl(const std::wstring& path, const RECT* place) {
     RegisterFrameClass();
+    if (g_placedFrame && IsWindow(g_placedFrame)) DestroyWindow(g_placedFrame);
+    g_placedFrame = nullptr;
     RECT r{};
     bool maximized = false;
     int x = CW_USEDEFAULT, y = CW_USEDEFAULT, w = CW_USEDEFAULT, h = CW_USEDEFAULT;
@@ -2457,9 +2463,11 @@ void OpenViewerWindowImpl(const std::wstring& path, const RECT* place) {
         w = r.right - r.left;
         h = r.bottom - r.top;
     }
+    HWND owner = place ? App::MainWindow() : nullptr;
     HWND hwnd = CreateWindowExW(0, kViewerFrameClass, L"QFiles Anzeige", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, x, y, w, h,
-                                nullptr, CreateFrameMenu(), App::Instance(), place ? (LPVOID)1 : nullptr);
+                                owner, CreateFrameMenu(), App::Instance(), place ? (LPVOID)1 : nullptr);
     if (!hwnd) return;
+    if (place) g_placedFrame = hwnd;
     FrameState* f = GetFrame(hwnd);
     if (f && f->viewer) {
         RECT rc;
@@ -2468,6 +2476,7 @@ void OpenViewerWindowImpl(const std::wstring& path, const RECT* place) {
     }
     ShowWindow(hwnd, maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
     UpdateWindow(hwnd);
+    SetForegroundWindow(hwnd);
     if (f && f->viewer) {
         SetFocus(f->viewer);
         if (ViewerState* s = GetViewer(f->viewer)) LoadPath(*s, path, true);
