@@ -91,13 +91,13 @@ if(QFILES_BUILD_TESTS)
     add_executable(QFilesTests
         tests/QFilesTests.cpp
         src/Util.cpp src/Dialog.cpp src/Settings.cpp src/App.cpp src/Encoding.cpp src/FileOps.cpp
-        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp src/MediaPreview.cpp src/DocText.cpp src/Archive.cpp
+        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp src/MediaPreview.cpp src/DocText.cpp src/Archive.cpp src/Drives.cpp
     )
     target_include_directories(QFilesTests PRIVATE src res)
     target_compile_definitions(QFilesTests PRIVATE UNICODE _UNICODE NOMINMAX STRICT _WIN32_WINNT=0x0A00 WINVER=0x0A00
         NTDDI_VERSION=0x0A000006 QFILES_VERSION_STRING="${PROJECT_VERSION}")
     target_link_libraries(QFilesTests PRIVATE comctl32 shell32 shlwapi ole32 oleaut32 uuid gdi32 user32 comdlg32
-        advapi32 windowscodecs propsys qf_libssh2 ws2_32 crypt32 winhttp)
+        advapi32 windowscodecs propsys qf_libssh2 ws2_32 crypt32 winhttp mpr)
     if(MSVC)
         target_compile_options(QFilesTests PRIVATE /utf-8 /EHsc /permissive-)
         set_property(TARGET QFilesTests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

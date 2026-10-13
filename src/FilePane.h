@@ -7,6 +7,7 @@
 //   Liste:      ListView (virtuell) – oder die Schnellansicht (Dateianzeige) im "jeweils anderen Fenster"
 //   Statuszeile
 
+#include "Drives.h"
 #include <windows.h>
 #include <commctrl.h>
 #include <atomic>
@@ -161,11 +162,6 @@ private:
         int drive;          // Laufwerksindex bei Drive
         RECT rc;
     };
-    struct DriveInfo {
-        std::wstring root;  // "C:\"
-        int icon;
-        UINT type;
-    };
 
     static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp);
     static LRESULT CALLBACK ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR ref);
@@ -222,7 +218,7 @@ private:
 
     std::wstring dir_;
     std::vector<Item> items_;
-    std::vector<DriveInfo> drives_;
+    std::vector<DriveDesc> drives_;
     std::vector<HitRect> hits_;
     const HitRect* hot_ = nullptr;
     bool tracking_ = false;

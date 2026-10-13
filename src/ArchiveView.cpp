@@ -9,6 +9,7 @@
 #include "ArchiveCore.h"
 #include "App.h"
 #include "FileOps.h"
+#include "Modules.h"
 #include "Settings.h"
 #include "ShellMenu.h"
 #include "Util.h"
@@ -37,7 +38,7 @@ const int kWidths[ColCount] = {230, 50, 80, 80, 130, 90};
 constexpr COLORREF kPale = RGB(255, 251, 214);    // blassgelb (aktiv)
 constexpr COLORREF kToned = RGB(240, 230, 176);   // dunkler abgetöntes Gelb (nicht aktiv / Streifen)
 
-enum : UINT { IDM_OPEN = 1, IDM_OPENTEMP, IDM_EXTRACT, IDM_COPY, IDM_SEARCH, IDM_UP };
+enum : UINT { IDM_OPEN = 1, IDM_OPENTEMP, IDM_EXTRACT, IDM_COPY, IDM_SEARCH, IDM_UP, IDM_VIEW };
 
 struct State {
     HWND hwnd = nullptr, list = nullptr;
@@ -255,6 +256,39 @@ void OpenTemp(State& s, int entry) {
     ShellOpen(Owner(s), file, L"", dir);
 }
 
+// „Anzeigen“: temporäre Kopie in einem eigenen Anzeigefenster in der Größe eines Listenfensters, zentriert über dem
+// QFiles-Fenster
+void ViewTemp(State& s, int entry) {
+    std::wstring dir;
+    std::vector<std::wstring> names;
+    if (!ExtractToTemp(s, {entry}, dir, names)) return;
+    HWND pane = GetParent(s.hwnd);
+    for (HWND w = pane; w; w = GetParent(w)) {
+        wchar_t cls[64] = {};
+        GetClassNameW(w, cls, 64);
+        if (wcscmp(cls, L"QFilesPane") == 0) {
+            pane = w;
+            break;
+        }
+    }
+    RECT pr{};
+    GetWindowRect(pane ? pane : s.hwnd, &pr);
+    HWND main = App::MainWindow();
+    if (!main || !IsWindowVisible(main)) main = Owner(s);
+    RECT mr{};
+    GetWindowRect(main, &mr);
+    int w = std::max<int>(pr.right - pr.left, DpiScale(s.hwnd, 320)), h = std::max<int>(pr.bottom - pr.top, DpiScale(s.hwnd, 240));
+    int x = (mr.left + mr.right - w) / 2, y = (mr.top + mr.bottom - h) / 2;
+    // im sichtbaren Bereich des Monitors halten
+    MONITORINFO mi{sizeof(mi)};
+    if (GetMonitorInfoW(MonitorFromWindow(main, MONITOR_DEFAULTTONEAREST), &mi)) {
+        x = std::clamp<int>(x, mi.rcWork.left, std::max<int>(mi.rcWork.left, mi.rcWork.right - w));
+        y = std::clamp<int>(y, mi.rcWork.top, std::max<int>(mi.rcWork.top, mi.rcWork.bottom - h));
+    }
+    RECT r{x, y, x + w, y + h};
+    OpenViewerWindowAt(PathCombine(dir, names[0]), r);
+}
+
 void Up(State& s) {
     if (s.search) {
         Navigate(s, s.cur);
@@ -346,6 +380,7 @@ void ContextMenu(State& s, POINT pt) {
     bool oneFile = sel.size() == 1 && !s.entries[sel[0]].isDir;
     bool oneDir = sel.size() == 1 && s.entries[sel[0]].isDir;
     bool onParent = sel.empty() && row >= 0 && s.rows[row] < 0;
+    if (oneFile && HasOwnViewer(s.entries[sel[0]].path)) AppendMenuW(m, MF_STRING, IDM_VIEW, L"&Anzeigen");
     if (oneFile) AppendMenuW(m, MF_STRING, IDM_OPENTEMP, L"Temporäre Kopie &öffnen\tEingabe");
     if (oneDir || onParent) AppendMenuW(m, MF_STRING, IDM_OPEN, L"Ö&ffnen\tEingabe");
     if (!sel.empty()) {
@@ -366,6 +401,7 @@ void ContextMenu(State& s, POINT pt) {
     } refocus{s};
     switch (id) {
     case IDM_OPENTEMP: OpenTemp(s, sel[0]); break;
+    case IDM_VIEW: ViewTemp(s, sel[0]); break;
     case IDM_OPEN: OpenRow(s, row); break;
     case IDM_EXTRACT: ExtractTo(s); break;
     case IDM_COPY: CopyToClipboard(s); break;

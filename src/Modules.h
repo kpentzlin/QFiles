@@ -40,6 +40,10 @@ ViewerMode FileViewerGetMode(HWND viewer);
 bool FileViewerCancelBuild(HWND viewer);
 // Eigenständiges Anzeigefenster (F3), nicht modal.
 void OpenViewerWindow(const std::wstring& path);
+// Wie OpenViewerWindow, aber an vorgegebener Stelle (Bildschirmkoordinaten); die Lage wird nicht gespeichert.
+void OpenViewerWindowAt(const std::wstring& path, const RECT& screenRect);
+// Hat QFiles für diese Datei eine eigene Anzeige (Bild, PDF, Video, Text, Vorschauhandler)? Archive: nein.
+bool HasOwnViewer(const std::wstring& name);
 // Hex-Editor-Fenster (nicht modal) zum Bearbeiten von Binärdateien.
 void OpenHexEditor(const std::wstring& path);
 

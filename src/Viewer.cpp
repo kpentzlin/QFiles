@@ -2031,6 +2031,7 @@ struct FrameState {
     HWND hwnd = nullptr;
     HWND viewer = nullptr;
     HACCEL accel = nullptr;
+    bool fixedPlacement = false;   // Lage vorgegeben (Anzeigen aus der Archivliste): nicht als Vorgabe speichern
 };
 
 std::vector<HWND> g_frames;
@@ -2310,6 +2311,7 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_NCCREATE:
         f = new FrameState();
         f->hwnd = hwnd;
+        if (auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp); cs && cs->lpCreateParams) f->fixedPlacement = true;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)f);
         break;
     case WM_CREATE: {
@@ -2333,9 +2335,11 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_SIZE:
         if (f && f->viewer) MoveWindow(f->viewer, 0, 0, LOWORD(lp), HIWORD(lp), TRUE);
-        if (wp == SIZE_MAXIMIZED || wp == SIZE_RESTORED) SavePlacement(hwnd, kViewerSection);
+        if ((wp == SIZE_MAXIMIZED || wp == SIZE_RESTORED) && f && !f->fixedPlacement) SavePlacement(hwnd, kViewerSection);
         return 0;
-    case WM_EXITSIZEMOVE: SavePlacement(hwnd, kViewerSection); return 0;
+    case WM_EXITSIZEMOVE:
+        if (f && !f->fixedPlacement) SavePlacement(hwnd, kViewerSection);
+        return 0;
     case WM_DPICHANGED: {
         auto* r = reinterpret_cast<RECT*>(lp);
         SetWindowPos(hwnd, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -2364,7 +2368,7 @@ LRESULT CALLBACK FrameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == VK_ESCAPE) PostMessageW(hwnd, WM_CLOSE, 0, 0);
         return 0;
     case WM_DESTROY:
-        SavePlacement(hwnd, kViewerSection);
+        if (f && !f->fixedPlacement) SavePlacement(hwnd, kViewerSection);
         App::UnregisterAccelerator(hwnd);
         if (f) {
             if (f->accel) DestroyAcceleratorTable(f->accel);
@@ -2433,12 +2437,19 @@ ViewerMode FileViewerGetMode(HWND viewer) {
     return s ? s->mode : ViewerMode::Auto;
 }
 
-void OpenViewerWindow(const std::wstring& path) {
+namespace {
+
+void OpenViewerWindowImpl(const std::wstring& path, const RECT* place) {
     RegisterFrameClass();
     RECT r{};
     bool maximized = false;
     int x = CW_USEDEFAULT, y = CW_USEDEFAULT, w = CW_USEDEFAULT, h = CW_USEDEFAULT;
-    if (LoadPlacement(kViewerSection, r, maximized)) {
+    if (place) {
+        x = place->left;
+        y = place->top;
+        w = place->right - place->left;
+        h = place->bottom - place->top;
+    } else if (LoadPlacement(kViewerSection, r, maximized)) {
         // weitere Fenster leicht versetzt öffnen
         int offset = (int)(g_frames.size() % 8) * GetSystemMetrics(SM_CYCAPTION);
         x = r.left + offset;
@@ -2447,7 +2458,7 @@ void OpenViewerWindow(const std::wstring& path) {
         h = r.bottom - r.top;
     }
     HWND hwnd = CreateWindowExW(0, kViewerFrameClass, L"QFiles Anzeige", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, x, y, w, h,
-                                nullptr, CreateFrameMenu(), App::Instance(), nullptr);
+                                nullptr, CreateFrameMenu(), App::Instance(), place ? (LPVOID)1 : nullptr);
     if (!hwnd) return;
     FrameState* f = GetFrame(hwnd);
     if (f && f->viewer) {
@@ -2462,6 +2473,21 @@ void OpenViewerWindow(const std::wstring& path) {
         if (ViewerState* s = GetViewer(f->viewer)) LoadPath(*s, path, true);
         UpdateFrameTitle(*f);
     }
+}
+
+} // namespace
+
+void OpenViewerWindow(const std::wstring& path) { OpenViewerWindowImpl(path, nullptr); }
+
+void OpenViewerWindowAt(const std::wstring& path, const RECT& screenRect) { OpenViewerWindowImpl(path, &screenRect); }
+
+bool HasOwnViewer(const std::wstring& name) {
+    if (IsArchiveFile(name)) return false;   // keine Rekursion: Archive bleiben der Archivliste vorbehalten
+    std::wstring ext = LowerExt(name);
+    if (ext.empty()) return false;
+    if (IsImageExt(ext) || MediaKindForPath(name) != MediaKind::None) return true;
+    if (MatchAnyPattern(App::Opt().textExtensions, PathFileName(name))) return true;
+    return IsPreferredPreviewExt(ext) && HasPreviewHandler(ext);
 }
 
 } // namespace qf

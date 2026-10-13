@@ -1,4 +1,5 @@
 #include "DirTree.h"
+#include "Drives.h"
 #include "App.h"
 #include "Location.h"
 #include "ShellMenu.h"
@@ -74,34 +75,16 @@ void DirTree::Populate() {
     std::wstring sel = SelectedPath();
     SendMessageW(tree_, WM_SETREDRAW, FALSE, 0);
     TreeView_DeleteAllItems(tree_);
-    DWORD mask = GetLogicalDrives();
-    for (int i = 0; i < 26; ++i) {
-        if (!(mask & (1u << i))) continue;
-        std::wstring root = std::wstring(1, (wchar_t)(L'A' + i)) + L":\\";
-        UINT type = GetDriveTypeW(root.c_str());
-        if ((i == 0 || i == 1) && type == DRIVE_REMOVABLE) continue; // keine Diskettenlaufwerke
-        SHSTOCKICONID sid = SIID_DRIVEFIXED;
-        switch (type) {
-        case DRIVE_REMOVABLE: sid = SIID_DRIVEREMOVE; break;
-        case DRIVE_REMOTE: sid = SIID_DRIVENET; break;
-        case DRIVE_CDROM: sid = SIID_DRIVECD; break;
-        case DRIVE_RAMDISK: sid = SIID_DRIVERAM; break;
-        default: break;
-        }
-        std::wstring label = root.substr(0, 2);
-        if (type == DRIVE_REMOTE) {
-            // Netzlaufwerk: verbundene Freigabe anzeigen (wie Idoswin Pro)
-            std::wstring target = MappedDriveTarget(root);
-            if (!target.empty()) label += L"  " + target;
-        } else if (type == DRIVE_FIXED || type == DRIVE_RAMDISK || type == DRIVE_REMOVABLE) {
-            wchar_t name[MAX_PATH + 1] = {};
-            UINT oldMode = SetErrorMode(SEM_FAILCRITICALERRORS);
-            if (GetVolumeInformationW(root.c_str(), name, MAX_PATH + 1, nullptr, nullptr, nullptr, nullptr, 0) && name[0])
-                label += L"  " + std::wstring(name);
-            SetErrorMode(oldMode);
-        }
-        int icon = StockIconIndex(sid);
-        AddItem(TVI_ROOT, label, root, icon, icon, true);
+    for (const DriveDesc& d : ListDrives()) {
+        // Netzlaufwerk: verbundene Freigabe, subst: Zielverzeichnis, sonst Bezeichnung (wie Idoswin Pro)
+        std::wstring label = d.root.substr(0, 2);
+        if (d.kind == DriveKind::Subst)
+            label += L"  → " + d.target;
+        else if (!d.target.empty())
+            label += L"  " + d.target;
+        else if (!d.label.empty())
+            label += L"  " + d.label;
+        AddItem(TVI_ROOT, label, d.root, d.icon, d.icon, true);
     }
     // Netzwerk (aufklappbar: Rechner, darunter deren Freigaben)
     int net = StockIconIndex(SIID_MYNETWORK);

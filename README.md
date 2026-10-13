@@ -103,7 +103,9 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   (Muster mit `*`/`?`, sonst Teil des Namens); die Treffer erscheinen mit Pfad, Rücktaste oder Esc beendet die Suche.
 - **Herauskopieren mit der Maus**: Dateien und Ordner in eine Liste, den Baum, auf den Desktop oder in ein anderes
   Programm ziehen (immer Kopieren). Ebenso **Strg+C** (Zwischenablage) und „Entpacken nach…“.
-- Kontextmenü: **Temporäre Kopie öffnen** (einzelne Datei; auch Doppelklick/Eingabe), Entpacken nach…, Kopieren,
+- Kontextmenü: **Anzeigen** (bei Dateien, die QFiles selbst anzeigen kann: Bilder, PDF, Videos, Text, Office über
+  Vorschauhandler – nicht bei Archiven): eigenes Anzeigefenster in der Größe eines Listenfensters, zentriert über dem
+  QFiles-Fenster; **Temporäre Kopie öffnen** (einzelne Datei; auch Doppelklick/Eingabe), Entpacken nach…, Kopieren,
   Im Archiv suchen…
 - Das Archiv selbst wird nie verändert. Herausgezogene, kopierte oder geöffnete Einträge entpackt QFiles nach
   `%TEMP%\QFiles_Archiv`; Unterverzeichnisse dort, die älter als einen Tag sind, entfernt QFiles beim Start.
@@ -138,7 +140,11 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Eine oder zwei Dateilisten (Strg+Umschalt+L), jede teilbar (Split). Die aktive Liste ist farbig markiert.
 - Je Liste:
   - Laufwerksymbole: Ein Klick springt zum zuletzt besuchten Verzeichnis des Laufwerks; ein Rechtsklick öffnet das
-    Kontextmenü des Laufwerks.
+    Kontextmenü des Laufwerks. Die Symbole unterscheiden lokale Laufwerke (mit dem Symbol von Windows, also z. B.
+    Windows-Logo beim Systemlaufwerk und Schloss bei BitLocker), mit `subst` abgebildete Laufwerke
+    (Verknüpfungspfeil), Netzlaufwerke, CD/DVD-Laufwerke, externe Laufwerke (Wechseldatenträger, USB-Sticks, externe
+    Festplatten an USB, FireWire oder SD) und RAM-Disks. Der Tooltip nennt Art, Ziel (subst bzw. Freigabe) und
+    Bezeichnung; der Verzeichnisbaum zeigt bei subst-Laufwerken das Ziel.
   - Verzeichnis-Textfeld mit Verlauf und Autovervollständigung; Umgebungsvariablen wie `%USERPROFILE%` sind erlaubt.
   - Zurück/Vor, Übergeordnet, Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
     Verzeichnisse dieser Sitzung (zuletzt aufgerufene oben); die Zurück/Vor-Liste wird nicht gespeichert.
@@ -432,6 +438,7 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
 | `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
 | `src/ArchiveView.cpp`, `ArchiveCore.h` | Archivliste der Dateianzeige (Lesen und Entpacken in `Archive.cpp`) |
+| `src/Drives.*` | Laufwerksarten und -symbole (lokal, subst, Netzwerk, CD/DVD, extern, RAM-Disk) |
 | `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
 | `src/Settings.*`, `App.*` | Einstellungsdatei, Optionen, globale Dienste, Dateisystemmonitor |
 | `src/Util.*`, `Encoding.*`, `Dialog.*`, `Glyphs.*` | Hilfsfunktionen, Textkodierungen, Dialoge ohne Ressourcendatei, Symbole |

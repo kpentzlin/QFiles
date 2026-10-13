@@ -387,24 +387,7 @@ void FilePane::OnDpiChanged() {
 // ===================== Laufwerke =====================
 
 void FilePane::UpdateDrives() {
-    drives_.clear();
-    DWORD mask = GetLogicalDrives();
-    for (int i = 0; i < 26; ++i) {
-        if (!(mask & (1u << i))) continue;
-        std::wstring root = std::wstring(1, (wchar_t)(L'A' + i)) + L":\\";
-        UINT type = GetDriveTypeW(root.c_str());
-        // Diskettenlaufwerke werden nicht unterstützt
-        if ((i == 0 || i == 1) && type == DRIVE_REMOVABLE) continue;
-        SHSTOCKICONID sid = SIID_DRIVEFIXED;
-        switch (type) {
-        case DRIVE_REMOVABLE: sid = SIID_DRIVEREMOVE; break;
-        case DRIVE_REMOTE: sid = SIID_DRIVENET; break;
-        case DRIVE_CDROM: sid = SIID_DRIVECD; break;
-        case DRIVE_RAMDISK: sid = SIID_DRIVERAM; break;
-        default: sid = SIID_DRIVEFIXED; break;
-        }
-        drives_.push_back({root, StockIcon(sid), type});
-    }
+    drives_ = ListDrives();   // Art und Symbol (lokal, subst, Netzwerk, CD/DVD, extern, RAM-Disk) siehe Drives.cpp
     BuildHitRects();
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
 }
@@ -511,7 +494,7 @@ void FilePane::UpdateTooltips() {
     for (auto& h : hits_) {
         std::wstring text;
         switch (h.area) {
-        case HitArea::Drive: text = L"Laufwerk " + drives_[h.drive].root.substr(0, 2); break;
+        case HitArea::Drive: text = DriveDescription(drives_[h.drive]); break;
         case HitArea::Split:
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
             break;
@@ -575,7 +558,7 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
     std::wstring curRoot = PathRoot(dir_);
     for (auto& h : hits_) {
         if (h.area == HitArea::Drive) {
-            const DriveInfo& d = drives_[h.drive];
+            const DriveDesc& d = drives_[h.drive];
             bool current = !curRoot.empty() && EqualsI(curRoot, d.root);
             bool hot = hot_ == &h;
             if (current || hot) {
@@ -589,7 +572,7 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             }
             int iconSize = ToPx(16);
             int iy = (h.rc.top + h.rc.bottom - iconSize) / 2;
-            if (g_sysSmall) ImageList_DrawEx(g_sysSmall, d.icon, dc, h.rc.left + ToPx(3), iy, iconSize, iconSize, CLR_NONE, CLR_NONE, ILD_TRANSPARENT);
+            DrawDriveIcon(g_sysSmall, d, dc, h.rc.left + ToPx(3), iy, iconSize);
             RECT tr = h.rc;
             tr.left += ToPx(3) + iconSize + ToPx(3);
             wchar_t letter[2] = {d.root[0], 0};

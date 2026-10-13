@@ -343,6 +343,8 @@ if (Test-Path $tarExe) {
   $tarOut = (& $tarExe -tvf "$arcDir\e-Projekt.rar" 2>&1 | Out-String).Trim() -replace "`r?`n", ' / '
   Write-Output "::notice title=tar.exe (de-DE)::$tarOut"
 }
+# subst-Laufwerk für die Laufwerkssymbole in der Kopfzeile (Bildschirmfoto 17)
+& subst.exe S: $arcDir
 $arcZip = (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc
 $arcHash = (Get-FileHash "$arcDir\a-Projekt.zip").Hash
 Remove-Item $viewLog -ErrorAction SilentlyContinue
@@ -379,6 +381,7 @@ Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 Remove-Item Env:\QFILES_TEST_VIEWERLOG
 Set-Culture $oldCulture
+& subst.exe S: /D
 $al = @()
 if (Test-Path $viewLog) { $al = Get-Content $viewLog -Encoding UTF8 }
 $al | ForEach-Object { Write-Output $_ }

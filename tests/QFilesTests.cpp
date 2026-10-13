@@ -23,6 +23,7 @@
 #include "MediaPreview.h"
 #include "DocText.h"
 #include "ArchiveCore.h"
+#include "Drives.h"
 #include "Location.h"
 #include "Settings.h"
 #include "Util.h"
@@ -378,6 +379,35 @@ static void TestTarListing() {
     CHECK(e.empty() && errors.find(L"Unrecognized") != std::wstring::npos);
 }
 
+// Laufwerksarten: ein mit DefineDosDevice (wie „subst“) angelegtes Laufwerk wird als subst erkannt
+static void TestDrives(const std::wstring& base) {
+    const auto& drives = ListDrives();
+    CHECK(!drives.empty());
+    std::wstring all;
+    for (const auto& d : drives) all += DriveDescription(d) + L" | ";
+    Out(L"Laufwerke: " + all);
+    DWORD used = GetLogicalDrives();
+    wchar_t letter = 0;
+    for (wchar_t c = L'Q'; c <= L'Y' && !letter; ++c)
+        if (!(used & (1u << (c - L'A')))) letter = c;
+    if (!letter) return;
+    wchar_t name[3] = {letter, L':', 0};
+    if (!DefineDosDeviceW(0, name, base.c_str())) {
+        Out(L"subst-Test übersprungen (DefineDosDevice nicht möglich)");
+        return;
+    }
+    Sleep(2100);   // Zwischenspeicher von ListDrives ablaufen lassen
+    bool found = false;
+    for (const auto& d : ListDrives())
+        if (d.root[0] == letter) {
+            found = true;
+            Out(L"subst: " + DriveDescription(d));
+            CHECK(d.kind == DriveKind::Subst && d.linkOverlay && EqualsI(d.target, base));
+        }
+    CHECK(found);
+    DefineDosDeviceW(DDD_REMOVE_DEFINITION, name, base.c_str());
+}
+
 static void TestMediaKinds() {
     CHECK(MediaKindForPath(L"C:\\x\\Bericht.PDF") == MediaKind::Pdf);
     CHECK(MediaKindForPath(L"C:\\x\\Urlaub ✓.mp4") == MediaKind::Video);
@@ -595,6 +625,7 @@ int wmain() {
     TestDocText();
     TestArchive(base);
     TestTarListing();
+    TestDrives(base);
     TestRemote(base);
 
     Out(L"Bestanden: " + std::to_wstring(g_passed) + L", fehlgeschlagen: " + std::to_wstring(g_failed));
