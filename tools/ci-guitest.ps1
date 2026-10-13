@@ -389,10 +389,11 @@ $arcView = [W]::FindDescendant($p.MainWindowHandle, "QFilesArchiveView")
 $arcList = if ($arcView -ne [IntPtr]::Zero) { [W]::FindWindowEx($arcView, [IntPtr]::Zero, "SysListView32", $null) } else { [IntPtr]::Zero }
 if ($arcList -eq [IntPtr]::Zero) { "Archivliste nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
 $lr = New-Object W+RECT; [W]::GetWindowRect($arcList, [ref]$lr) | Out-Null
-# (die Liste ist auf dem kleinen CI-Bildschirm niedrig: erste Zeile anklicken, mit Ende zu liesmich.txt, Umschalt+F10)
+# (die Liste ist auf dem kleinen CI-Bildschirm niedrig: erste Zeile anklicken, mit Ende zu liesmich.txt – sie steht dann
+# unten über der waagerechten Bildlaufleiste –, dort mit der rechten Maustaste das Kontextmenü öffnen)
 [W]::Click($lr.L + 60, $lr.T + 24 + 10, $false); Start-Sleep -Milliseconds 600
-[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 400
-[System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 600
+[W]::Click($lr.L + 60, $lr.B - 17 - 9, $true); Start-Sleep -Milliseconds 800
 [System.Windows.Forms.SendKeys]::SendWait("a"); Start-Sleep -Seconds 3
 $vf = [W]::FindWindow("QFilesViewerFrame", [NullString]::Value)   # $null würde zu ""
 $vfOk = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf)
