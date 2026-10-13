@@ -391,12 +391,21 @@ std::wstring Quote(const std::wstring& s) {
 
 // Führt einen Befehl aus, sammelt stdout+stderr und kann über isCancelled abgebrochen werden (Prozess wird beendet).
 bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, std::wstring& output, DWORD& exitCode,
-                    const std::function<bool()>& isCancelled) {
+                    const std::function<bool()>& isCancelled, const std::wstring& stdinFile = std::wstring()) {
     output.clear();
     exitCode = 1;
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+    HANDLE in = nullptr;
+    if (!stdinFile.empty()) {
+        in = CreateFileW(LongPath(stdinFile).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                         &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (in == INVALID_HANDLE_VALUE) return false;
+    }
     HANDLE rd = nullptr, wr = nullptr;
-    if (!CreatePipe(&rd, &wr, &sa, 0)) return false;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) {
+        if (in) CloseHandle(in);
+        return false;
+    }
     SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -404,13 +413,14 @@ bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, st
     si.wShowWindow = SW_HIDE;
     si.hStdOutput = wr;
     si.hStdError = wr;
-    si.hStdInput = nullptr;
+    si.hStdInput = in;
     PROCESS_INFORMATION pi{};
     std::wstring cmd = commandLine;
     BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
                              nullptr, dir.empty() ? nullptr : dir.c_str(), &si, &pi);
     DWORD createErr = ok ? 0 : GetLastError();
     CloseHandle(wr);
+    if (in) CloseHandle(in);
     if (!ok) {
         CloseHandle(rd);
         SetLastError(createErr);
@@ -498,9 +508,35 @@ int MonthFromAbbr(const std::wstring& m) {
 }
 
 bool CaptureProcess(const std::wstring& commandLine, const std::wstring& dir, std::wstring& output, DWORD& exitCode,
-                    toolsdetail::ProgressSink* sink) {
+                    toolsdetail::ProgressSink* sink, const std::wstring& stdinFile = std::wstring()) {
     return CaptureProcess(commandLine, dir, output, exitCode,
-                          std::function<bool()>(sink ? [sink]() { return sink->Cancelled(); } : std::function<bool()>()));
+                          std::function<bool()>(sink ? [sink]() { return sink->Cancelled(); } : std::function<bool()>()),
+                          stdinFile);
+}
+
+// tar.exe übernimmt die Befehlszeile in der ANSI-Codepage: Zeichen außerhalb davon (z. B. „✓“ in C:\Daten ✓\a.rar)
+// werden zu „?“, und tar findet die Datei nicht. Dann den kurzen 8.3-Namen verwenden oder, falls es keinen gibt, das
+// Archiv als Standardeingabe übergeben („-“). Das Zielverzeichnis wird stets als Arbeitsverzeichnis gesetzt (Unicode).
+bool AnsiSafe(const std::wstring& s) {
+    if (s.empty()) return true;
+    BOOL lossy = FALSE;
+    int n = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, s.c_str(), (int)s.size(), nullptr, 0, nullptr, &lossy);
+    return n > 0 && !lossy;
+}
+
+std::wstring TarArchiveArg(const std::wstring& archive, std::wstring& stdinFile) {
+    stdinFile.clear();
+    bool forceStdin = GetEnvironmentVariableW(L"QFILES_TEST_TARSTDIN", nullptr, 0) > 0;   // Testhilfe
+    if (forceStdin) {
+        stdinFile = archive;
+        return L"-";
+    }
+    if (AnsiSafe(archive)) return Quote(archive);
+    wchar_t shortPath[MAX_PATH * 2] = {};
+    DWORD n = GetShortPathNameW(archive.c_str(), shortPath, MAX_PATH * 2);
+    if (n > 0 && n < MAX_PATH * 2 && AnsiSafe(shortPath)) return Quote(shortPath);
+    stdinFile = archive;
+    return L"-";
 }
 
 // Zerlegt die Ausgabe von „tar -tvf“ (ls-ähnlich):
@@ -989,7 +1025,8 @@ private:
 
     // Andere Formate über tar.exe
     bool ExtractTar(bool all, const std::vector<int>& sel, const std::wstring& dest) {
-        std::wstring base = Quote(tarExe) + L" -xf " + Quote(archive) + L" -C " + Quote(dest);
+        std::wstring stdinFile;   // Ziel = Arbeitsverzeichnis (siehe TarArchiveArg)
+        std::wstring base = Quote(tarExe) + L" -xf " + TarArchiveArg(archive, stdinFile);
         std::vector<std::wstring> commands;
         if (all) {
             commands.push_back(base);
@@ -1016,7 +1053,7 @@ private:
                 for (const auto& c : commands) {
                     std::wstring out;
                     DWORD code = 0;
-                    if (!CaptureProcess(c, dest, out, code, &sink)) {
+                    if (!CaptureProcess(c, dest, out, code, &sink, stdinFile)) {
                         if (!sink.Cancelled()) {
                             started = false;
                             startErr = GetLastError();
@@ -1163,11 +1200,12 @@ void ShowArchive(HWND owner, const std::wstring& archive, const std::wstring& ex
         DWORD exitCode = 0;
         bool started = true;
         DWORD startErr = 0;
-        std::wstring cmd = Quote(dlg.tarExe) + L" -tvf " + Quote(archive);
+        std::wstring stdinFile;
+        std::wstring cmd = Quote(dlg.tarExe) + L" -tvf " + TarArchiveArg(archive, stdinFile);
         bool completed = toolsdetail::RunWithProgress(owner, L"Archiv lesen", L"Lese " + PathFileName(archive) + L" …",
                                                       [&](toolsdetail::ProgressSink& sink) {
                                                           if (!CaptureProcess(cmd, PathParent(archive), output, exitCode,
-                                                                              &sink) &&
+                                                                              &sink, stdinFile) &&
                                                               !sink.Cancelled()) {
                                                               started = false;
                                                               startErr = GetLastError();
@@ -1469,8 +1507,10 @@ bool ReadArchive(const std::wstring& archive, std::vector<ArchiveEntry>& out, st
         }
         std::wstring output;
         DWORD exitCode = 0;
-        bool finished = CaptureProcess(Quote(tar) + L" -tvf " + Quote(archive), PathParent(archive), output, exitCode,
-                                       std::function<bool()>([cancel]() { return cancel && cancel->load(); }));
+        std::wstring stdinFile;
+        std::wstring arg = TarArchiveArg(archive, stdinFile);
+        bool finished = CaptureProcess(Quote(tar) + L" -tvf " + arg, PathParent(archive), output, exitCode,
+                                       std::function<bool()>([cancel]() { return cancel && cancel->load(); }), stdinFile);
         if (cancel && *cancel) {
             error = L"Das Lesen wurde abgebrochen.";
             return false;
@@ -1572,7 +1612,8 @@ bool ExtractArchiveEntries(HWND owner, const std::wstring& archive, const std::v
         // Verzeichnisse vorab anlegen (auch leere bzw. nur erschlossene)
         for (const auto& j : jobs)
             if (j.e->isDir) EnsureDirectory(PathCombine(stage, j.e->path));
-        std::wstring base = Quote(tar) + L" -xf " + Quote(archive) + L" -C " + Quote(stage);
+        std::wstring stdinFile;   // Ziel = Arbeitsverzeichnis (siehe TarArchiveArg)
+        std::wstring base = Quote(tar) + L" -xf " + TarArchiveArg(archive, stdinFile);
         std::vector<std::wstring> commands;
         std::wstring cmd = base;
         bool has = false;
@@ -1604,7 +1645,7 @@ bool ExtractArchiveEntries(HWND owner, const std::wstring& archive, const std::v
                 for (const auto& c : commands) {
                     std::wstring outText;
                     DWORD code = 0;
-                    if (!CaptureProcess(c, stage, outText, code, &sink)) {
+                    if (!CaptureProcess(c, stage, outText, code, &sink, stdinFile)) {
                         if (!sink.Cancelled()) failure = L"tar.exe konnte nicht gestartet werden: " + LastErrorMessage();
                         return;
                     }

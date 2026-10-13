@@ -303,21 +303,28 @@ static void TestArchive(const std::wstring& base) {
         return;
     }
     std::wstring rar = write(L"Projekt ✓.rar", kTestRar5, sizeof(kTestRar5));
-    CHECK(ReadArchive(rar, entries, err, pw) && !pw);
-    if (!err.empty()) Out(L"RAR: " + err);
-    std::wstring names;
-    for (auto& e : entries) names += e.path + L"; ";
-    Out(L"RAR-Einträge: " + names);
-    CHECK(entries.size() == 10);
-    const ArchiveEntry* euro = find(L"Grüße €.txt");
-    const ArchiveEntry* old = find(L"Alt\\BEIN08.TXT");
-    CHECK(euro && euro->size == 8);
-    CHECK(old && old->hasDate && old->size == 1250);
-    std::wstring dest3 = PathCombine(dir, L"Ziel RAR");
-    CHECK(ExtractArchiveEntries(nullptr, rar, entries, {L"Grüße €.txt", L"Quellen", L"Alt\\BEIN08.TXT"}, dest3, err));
-    if (!err.empty()) Out(L"RAR entpacken: " + err);
-    CHECK(ReadAll(PathCombine(dest3, L"Grüße €.txt")) == L"Grüße!");
-    CHECK(FileExists(PathCombine(dest3, L"Quellen\\main.cpp")) && FileExists(PathCombine(dest3, L"BEIN08.TXT")));
+    // 1. Durchgang: Pfad mit „✓“ (kurzer 8.3-Name), 2. Durchgang: Archiv als Standardeingabe
+    for (int pass = 0; pass < 2; ++pass) {
+        if (pass == 1) SetEnvironmentVariableW(L"QFILES_TEST_TARSTDIN", L"1");
+        Out(pass == 0 ? L"RAR über Pfad" : L"RAR über Standardeingabe");
+        CHECK(ReadArchive(rar, entries, err, pw) && !pw);
+        if (!err.empty()) Out(L"RAR: " + err);
+        std::wstring names;
+        for (auto& e : entries) names += e.path + L"; ";
+        Out(L"RAR-Einträge: " + names);
+        CHECK(entries.size() == 10);
+        const ArchiveEntry* euro = find(L"Grüße €.txt");
+        const ArchiveEntry* old = find(L"Alt\\BEIN08.TXT");
+        CHECK(euro && euro->size == 8);
+        CHECK(old && old->hasDate && old->size == 1250);
+        std::wstring dest3 = PathCombine(dir, pass == 0 ? L"Ziel RAR ✓" : L"Ziel RAR 2");
+        CHECK(ExtractArchiveEntries(nullptr, rar, entries, {L"Grüße €.txt", L"Quellen", L"Alt\\BEIN08.TXT"}, dest3, err));
+        if (!err.empty()) Out(L"RAR entpacken: " + err);
+        CHECK(ReadAll(PathCombine(dest3, L"Grüße €.txt")) == L"Grüße!");
+        CHECK(FileExists(PathCombine(dest3, L"Quellen\\main.cpp")) && FileExists(PathCombine(dest3, L"Quellen\\Unter\\tief ✓.txt")));
+        CHECK(FileExists(PathCombine(dest3, L"BEIN08.TXT")));
+    }
+    SetEnvironmentVariableW(L"QFILES_TEST_TARSTDIN", nullptr);
 }
 
 // Ausgabe von tar.exe: Monatsnamen in der Sprache des Benutzers (deutsches Windows: „Mai“, „Okt“, „Mär“ …)
