@@ -396,13 +396,16 @@ $lr = New-Object W+RECT; [W]::GetWindowRect($arcList, [ref]$lr) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("a"); Start-Sleep -Seconds 3
 $vf = [W]::FindWindow("QFilesViewerFrame", [NullString]::Value)   # $null würde zu ""
 $vfOk = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf)
-$vfFront = $vfOk -and ([W]::GetForegroundWindow() -eq $vf)
+$fg = [W]::GetForegroundWindow()
+$vfFront = $vfOk -and ($fg -eq $vf)
+$fgCls = New-Object System.Text.StringBuilder 64; [W]::GetClassName($fg, $fgCls, 64) | Out-Null
+$fgInfo = "Vordergrund: " + $fgCls.ToString() + $(if ($fg -eq $p.MainWindowHandle) { " (QFiles-Hauptfenster)" } else { "" })
 Shot "screenshot21.png"
 # in die Verzeichnisliste klicken: das Anzeigefenster muss sichtbar bleiben (gehört zum QFiles-Fenster)
 [W]::Click($ar.L + 200, $ar.B - 40, $false); Start-Sleep -Seconds 2
 $vfStill = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf) -and ([W]::GetWindow($vf, 4) -eq $p.MainWindowHandle)
 if (-not ($vfOk -and $vfFront -and $vfStill)) {
-  Write-Output "::error title=Anzeigen aus Archiv::Fenster sichtbar: $vfOk, im Vordergrund: $vfFront, nach Klick noch sichtbar: $vfStill"
+  Write-Output "::error title=Anzeigen aus Archiv::Fenster sichtbar: $vfOk, im Vordergrund: $vfFront ($fgInfo), nach Klick noch sichtbar: $vfStill"
   "Anzeigefenster aus der Archivliste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 Write-Output "::notice title=Anzeigen aus Archiv::Fenster sichtbar, im Vordergrund: $vfFront, bleibt nach Klick ins Hauptfenster offen"
