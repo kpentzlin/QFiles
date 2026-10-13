@@ -19,6 +19,8 @@ public static class W {
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
+  public static void Key(byte vk) { keybd_event(vk, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(60); keybd_event(vk, 0, 2, IntPtr.Zero); }
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
   public delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
@@ -389,11 +391,10 @@ $arcView = [W]::FindDescendant($p.MainWindowHandle, "QFilesArchiveView")
 $arcList = if ($arcView -ne [IntPtr]::Zero) { [W]::FindWindowEx($arcView, [IntPtr]::Zero, "SysListView32", $null) } else { [IntPtr]::Zero }
 if ($arcList -eq [IntPtr]::Zero) { "Archivliste nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
 $lr = New-Object W+RECT; [W]::GetWindowRect($arcList, [ref]$lr) | Out-Null
-# (die Liste ist auf dem kleinen CI-Bildschirm niedrig: erste Zeile anklicken, mit Ende zu liesmich.txt – sie steht dann
-# unten über der waagerechten Bildlaufleiste –, dort mit der rechten Maustaste das Kontextmenü öffnen)
+# (die Liste ist auf dem kleinen CI-Bildschirm niedrig: erste Zeile anklicken, mit Ende zu liesmich.txt, Kontextmenütaste)
 [W]::Click($lr.L + 60, $lr.T + 24 + 10, $false); Start-Sleep -Milliseconds 600
 [System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 600
-[W]::Click($lr.L + 60, $lr.B - 17 - 9, $true); Start-Sleep -Milliseconds 800
+[W]::Key(0x5D); Start-Sleep -Milliseconds 800
 [System.Windows.Forms.SendKeys]::SendWait("a"); Start-Sleep -Seconds 3
 $vf = [W]::FindWindow("QFilesViewerFrame", [NullString]::Value)   # $null würde zu ""
 $vfOk = ($vf -ne [IntPtr]::Zero) -and [W]::IsWindowVisible($vf)

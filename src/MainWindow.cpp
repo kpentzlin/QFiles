@@ -2797,7 +2797,10 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         }
         break;
     case WM_APP + 1:
-        Active().FocusList();
+        // nur, wenn das Hauptfenster noch aktiv ist: Inzwischen kann ein anderes Fenster dieses Programms aktiv
+        // geworden sein (z. B. das Anzeigefenster von „Anzeigen“ in der Archivliste); SetFocus würde das Hauptfenster
+        // sonst wieder davor holen.
+        if (GetActiveWindow() == hwnd_) Active().FocusList();
         return 0;
     case WM_CLOSE:
         if (!CloseAllTextEditors()) return 0;
