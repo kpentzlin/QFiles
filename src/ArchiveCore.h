@@ -58,5 +58,10 @@ HWND CreateArchiveView(HWND parent, int id);
 void ArchiveViewSetContent(HWND view, const std::wstring& archive, std::vector<ArchiveEntry> entries);
 void ArchiveViewClear(HWND view);
 HWND ArchiveViewList(HWND view);   // ListView (Fokusziel)
+// Archivliste, in der das Fenster h liegt (z. B. GetFocus()), sonst nullptr
+HWND ArchiveViewFromWindow(HWND h);
+// Ansicht wie PaneView (0 Details, 1 Liste, 2 Symbole, 3 Miniaturansicht, 4 mit Unterverzeichnissen)
+int ArchiveViewGetMode(HWND view);
+void ArchiveViewSetMode(HWND view, int mode);
 
 } // namespace qf

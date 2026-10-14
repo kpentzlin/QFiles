@@ -18,6 +18,8 @@
 #include <commctrl.h>
 #include <windowsx.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <commoncontrols.h>
 #include <uxtheme.h>
 
 #include <algorithm>
@@ -57,6 +59,7 @@ struct State {
     std::map<std::wstring, int> icons;
     bool focused = false;
     std::wstring info;
+    int mode = 0;   // wie PaneView: 0 Details, 1 Liste, 2 Symbole, 3 Miniaturansicht (große Symbole), 4 mit Unterverzeichnissen
 };
 
 State* Get(HWND h) { return h ? reinterpret_cast<State*>(GetWindowLongPtrW(h, GWLP_USERDATA)) : nullptr; }
@@ -75,7 +78,11 @@ std::wstring LeafOf(const std::wstring& p) {
     return k == std::wstring::npos ? p : p.substr(k + 1);
 }
 
-std::wstring DisplayName(const State& s, const ArchiveEntry& e) { return s.search ? e.path : LeafOf(e.path); }
+std::wstring DisplayName(const State& s, const ArchiveEntry& e) {
+    if (s.search) return e.path;
+    if (s.mode == 4) return s.cur.empty() ? e.path : e.path.substr(std::min(e.path.size(), s.cur.size() + 1));
+    return LeafOf(e.path);
+}
 
 std::wstring TypeOf(const ArchiveEntry& e) {
     if (e.isDir) return L"";
@@ -182,8 +189,15 @@ void Navigate(State& s, const std::wstring& folder, const std::wstring& focusPat
     s.cur = folder;
     s.rows.clear();
     if (!s.cur.empty()) s.rows.push_back(-1);
-    auto it = s.children.find(ToLower(s.cur));
-    if (it != s.children.end()) s.rows.insert(s.rows.end(), it->second.begin(), it->second.end());
+    if (s.mode == 4) {
+        // „Mit Unterverzeichnissen“: alle Dateien des Ordners und seiner Unterordner, Name mit Teilpfad
+        std::wstring prefix = s.cur.empty() ? L"" : s.cur + L"\\";
+        for (size_t i = 0; i < s.entries.size(); ++i)
+            if (!s.entries[i].isDir && (prefix.empty() || StartsWithI(s.entries[i].path, prefix))) s.rows.push_back((int)i);
+    } else {
+        auto it = s.children.find(ToLower(s.cur));
+        if (it != s.children.end()) s.rows.insert(s.rows.end(), it->second.begin(), it->second.end());
+    }
     SortRows(s);
     Fill(s, focusPath);
 }
@@ -524,13 +538,14 @@ LRESULT OnNotify(State& s, NMHDR* nm) {
     case NM_KILLFOCUS:
         s.focused = nm->code == NM_SETFOCUS;
         UpdateColors(s);
+        App::UpdateViewButtons();   // Ansichtssymbole zeigen die Ansicht der aktiven Archivliste
         return 0;
     case NM_CUSTOMDRAW: {
         auto* cd = reinterpret_cast<NMLVCUSTOMDRAW*>(nm);
         if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
         if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
             // Gestreift (Option): im aktiven Zustand jede zweite Zeile im abgetönten Gelb
-            if (App::Opt().striped && s.focused && (cd->nmcd.dwItemSpec % 2) == 1) {
+            if (App::Opt().striped && s.focused && s.mode != 2 && s.mode != 3 && (cd->nmcd.dwItemSpec % 2) == 1) {
                 cd->clrTextBk = kToned;
                 return CDRF_NEWFONT;
             }
@@ -632,6 +647,37 @@ LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
+// Ansicht wie bei den Listen (Werkzeugleiste „Details“, „Liste“ …), wenn die Archivliste aktiv ist
+void ApplyMode(State& s) {
+    DWORD view = LV_VIEW_DETAILS;
+    switch (s.mode) {
+    case 1: view = LV_VIEW_LIST; break;
+    case 2:
+    case 3: view = LV_VIEW_ICON; break;
+    default: break;
+    }
+    if (s.mode == 2 || s.mode == 3) {
+        HIMAGELIST il = nullptr;
+        if (s.mode == 3) {
+            // Miniaturansicht: Archive enthalten keine fertigen Vorschaubilder – sehr große Symbole (48 px)
+            // IID_IImageList lokal (MinGW kennt das Symbol nicht in seiner uuid-Bibliothek)
+            static const IID kIidImageList = {0x46EB5926, 0x582E, 0x4017, {0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50}};
+            void* xl = nullptr;
+            if (SUCCEEDED(SHGetImageList(SHIL_EXTRALARGE, kIidImageList, &xl)) && xl) il = (HIMAGELIST)xl;
+        }
+        if (!il) {
+            SHFILEINFOW sfi{};
+            il = (HIMAGELIST)SHGetFileInfoW(L"x", FILE_ATTRIBUTE_DIRECTORY, &sfi, sizeof(sfi),
+                                            SHGFI_SYSICONINDEX | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES);
+        }
+        if (il) ListView_SetImageList(s.list, il, LVSIL_NORMAL);
+    }
+    LONG_PTR style = GetWindowLongPtrW(s.list, GWL_STYLE);
+    SetWindowLongPtrW(s.list, GWL_STYLE, view == LV_VIEW_ICON ? (style | LVS_AUTOARRANGE) : (style & ~(LONG_PTR)LVS_AUTOARRANGE));
+    ListView_SetView(s.list, view);
+    if (view == LV_VIEW_ICON) ListView_Arrange(s.list, LVA_DEFAULT);
+}
+
 HWND CreateArchiveView(HWND parent, int id) {
     static bool registered = false;
     if (!registered) {
@@ -673,6 +719,35 @@ void ArchiveViewClear(HWND view) {
 HWND ArchiveViewList(HWND view) {
     State* s = Get(view);
     return s ? s->list : nullptr;
+}
+
+HWND ArchiveViewFromWindow(HWND h) {
+    for (; h; h = GetParent(h)) {
+        wchar_t cls[64] = {};
+        GetClassNameW(h, cls, 64);
+        if (wcscmp(cls, kClass) == 0) return IsWindowVisible(h) ? h : nullptr;
+    }
+    return nullptr;
+}
+
+int ArchiveViewGetMode(HWND view) {
+    State* s = Get(view);
+    return s ? s->mode : 0;
+}
+
+void ArchiveViewSetMode(HWND view, int mode) {
+    State* s = Get(view);
+    if (!s || mode < 0 || mode > 4) return;
+    bool listChange = (s->mode == 4) != (mode == 4);
+    s->mode = mode;
+    ApplyMode(*s);
+    if (listChange && !s->search) {
+        int f = FocusedRow(*s);
+        std::wstring focusPath = f >= 0 && s->rows[f] >= 0 ? s->entries[s->rows[f]].path : L"";
+        Navigate(*s, s->cur, focusPath);
+    } else {
+        InvalidateRect(s->list, nullptr, TRUE);
+    }
 }
 
 } // namespace qf

@@ -57,6 +57,8 @@ dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 
 F11 (oder Strg+Q) schaltet die Schnellansicht ein. Die jeweils andere Liste zeigt dann den Inhalt der Datei, auf
 der in der aktiven Liste der Fokus steht. Die Anzeige folgt beim Blättern und lässt sich mit Esc beenden.
+Wird in der Kopfleiste der Liste mit der Dateianzeige etwas betätigt (Laufwerk, Verzeichnisfeld, Schaltflächen), endet
+die Dateianzeige zuerst (wie mit F11), und diese Liste wird sofort aktiv.
 
 | Dateityp | Darstellung |
 |---|---|
@@ -99,6 +101,9 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 
 - Spalten Name, Typ, Größe, Gepackt, Geändert, Methode (soweit das Format die Angaben liefert); Sortieren per Klick
   auf den Spaltenkopf (Verzeichnisse zuerst, wie in den Listen), Spaltenbreiten veränderbar, Tippen springt zum Namen.
+- Ansicht wie in den Listen über die fünf Ansichtssymbole der Werkzeugleiste bzw. Strg+Umschalt+1…5, solange die
+  Archivliste aktiv ist: Details, Liste, Symbole, Miniaturansicht (sehr große Symbole – Archive enthalten keine
+  Vorschaubilder) und Mit Unterverzeichnissen (alle Dateien des Ordners und seiner Unterordner mit Teilpfad).
 - Ordner öffnen mit Doppelklick bzw. Eingabe, zurück mit „..“ oder Rücktaste. **Strg+F** sucht im ganzen Archiv
   (Muster mit `*`/`?`, sonst Teil des Namens); die Treffer erscheinen mit Pfad, Rücktaste oder Esc beendet die Suche.
 - **Herauskopieren mit der Maus**: Dateien und Ordner in eine Liste, den Baum, auf den Desktop oder in ein anderes
@@ -146,9 +151,11 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     Festplatten an USB, FireWire oder SD) und RAM-Disks. Der Tooltip nennt Art, Ziel (subst bzw. Freigabe) und
     Bezeichnung; der Verzeichnisbaum zeigt bei subst-Laufwerken das Ziel.
   - Verzeichnis-Textfeld mit Verlauf und Autovervollständigung; Umgebungsvariablen wie `%USERPROFILE%` sind erlaubt.
-  - Zurück/Vor, Übergeordnet, Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
+  - Zurück/Vor, Übergeordnet, **„\“** (oberste Verzeichnisebene des Laufwerks bzw. der Freigabe, Strg+Rücktaste),
+    Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
     Verzeichnisse dieser Sitzung (zuletzt aufgerufene oben); die Zurück/Vor-Liste wird nicht gespeichert.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
+  - Die Zeile mit den Spaltenköpfen hat die Farbe der Laufwerksleiste (aktive Liste hellblau).
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar) und
   **Mit Unterverzeichnissen** (Strg+Umschalt+5): wie Details, aber statt „Name“ die Spalten „Dateiname“ und
   „Unterverzeichnis“. Gezeigt werden alle Dateien des Verzeichnisses und seiner Unterverzeichnisse; „Unterverzeichnis“
@@ -361,7 +368,7 @@ Weitere:
 | Alt+F1 · Alt+F2 | Verzeichnisbaum · Lesezeichenliste |
 | Leertaste / Einfg · Num+ / Num− / Num* | Markieren · Gruppe markieren / abwählen / umkehren |
 | Umschalt+F10 | Kontextmenü |
-| F1 | Vollständige Übersicht aller Tastenkürzel |
+| F1 | Übersicht aller Tastenkürzel (auch „Tastenkürzel“ in der Menüleiste): je Kürzel eine Zeile; ein Klick auf die Zeile schließt die Übersicht und löst die Taste aus |
 
 ---
 

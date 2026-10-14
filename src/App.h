@@ -61,6 +61,8 @@ public:
     static void NavigateToFile(const std::wstring& fullPath);
     // Alle Listen und den Baum neu einlesen.
     static void RefreshPanes();
+    // Ansichtssymbole der Werkzeugleiste neu setzen (z. B. wenn die Archivliste den Fokus bekommt oder verliert)
+    static void UpdateViewButtons();
     static PaneContext ActivePaneContext();
 };
 

@@ -403,7 +403,7 @@ void FilePane::Layout() {
     rcStatus_ = {0, std::max<LONG>(hh + ph, rc.bottom - sh), rc.right, rc.bottom};
     rcList_ = {0, hh + ph, rc.right, rcStatus_.top};
     int btnW = ToPx(kNavBtnW);
-    int comboW = std::max<int>(ToPx(40), rc.right - 5 * btnW - ToPx(6));
+    int comboW = std::max<int>(ToPx(40), rc.right - 6 * btnW - ToPx(6));
     // Combobox vertikal zentriert
     RECT cr;
     GetWindowRect(pathCombo_, &cr);
@@ -474,7 +474,7 @@ void FilePane::BuildHitRects() {
     // ganz rechts: Kreis für aktive/inaktive Liste
     hits_.push_back({HitArea::Active, -1, {px - btnW, top, px, bottom}});
     px -= btnW;
-    HitArea order[4] = {HitArea::Browse, HitArea::Up, HitArea::Forward, HitArea::Back};
+    HitArea order[5] = {HitArea::Browse, HitArea::Root, HitArea::Up, HitArea::Forward, HitArea::Back};
     for (HitArea a : order) {
         hits_.push_back({a, -1, {px - btnW, top, px, bottom}});
         px -= btnW;
@@ -502,6 +502,7 @@ void FilePane::UpdateTooltips() {
         case HitArea::Back: text = L"Zurück (Alt+←) – Rechtsklick: Liste"; break;
         case HitArea::Forward: text = L"Vor (Alt+→) – Rechtsklick: Liste"; break;
         case HitArea::Up: text = L"Übergeordnetes Verzeichnis (Rücktaste)"; break;
+        case HitArea::Root: text = L"Oberste Verzeichnisebene des Laufwerks (Strg+Rücktaste)"; break;
         case HitArea::Browse: text = L"Verzeichnis wählen…"; break;
         case HitArea::Active: text = L"Aktive Liste (grün) – Klick macht diese Liste aktiv"; break;
         default: break;
@@ -539,6 +540,25 @@ void FilePane::DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot) {
     case HitArea::Forward: g = Glyph::Forward; enabled = CanGoForward(); break;
     case HitArea::Up: g = Glyph::Up; enabled = !dir_.empty() && LocationHasParent(dir_); break;
     case HitArea::Browse: g = Glyph::Browse; break;
+    case HitArea::Root: {
+        // „\“ fett in der Schrift der Laufwerksbuchstaben; grau, wenn das Verzeichnis schon die oberste Ebene ist
+        bool atRoot = true;
+        if (IsRemoteUrl(dir_)) {
+            RemoteUrl u;
+            atRoot = !ParseRemoteUrl(dir_, u) || u.path.empty() || u.path == L"/";
+        } else if (!dir_.empty() && !IsNetworkVirtual(dir_)) {
+            std::wstring d = dir_, r = PathRoot(dir_);
+            if (!d.empty() && d.back() != L'\\') d += L'\\';
+            atRoot = r.empty() || EqualsI(d, r);
+        }
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, GetSysColor(atRoot ? COLOR_GRAYTEXT : COLOR_BTNTEXT));
+        HGDIOBJ old = SelectObject(dc, DriveFont());
+        RECT tr = rc;
+        DrawTextW(dc, L"\\", 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOPREFIX);
+        SelectObject(dc, old);
+        return;
+    }
     case HitArea::Split: g = splitButton_ == SplitButton::Split ? Glyph::Split : Glyph::Unsplit; break;
     case HitArea::Bookmark: g = Glyph::Bookmark; break;
     default: return;
@@ -598,7 +618,8 @@ void FilePane::PaintNavButtons(HDC dc) {
     HBRUSH b = GetSysColorBrush(COLOR_BTNFACE);
     FillRect(dc, &rcPath_, b);
     for (auto& h : hits_)
-        if (h.area == HitArea::Back || h.area == HitArea::Forward || h.area == HitArea::Up || h.area == HitArea::Browse)
+        if (h.area == HitArea::Back || h.area == HitArea::Forward || h.area == HitArea::Up || h.area == HitArea::Root ||
+            h.area == HitArea::Browse)
             DrawGlyph(dc, h.area, h.rc, hot_ == &h);
         else if (h.area == HitArea::Active) {
             // Kreis: grün gefüllt = aktive Liste, hohl = nicht aktiv (Klick aktiviert)
@@ -682,6 +703,9 @@ void FilePane::SetActiveLook(bool active) {
     if (activeLook_ == active) return;
     activeLook_ = active;
     UpdateListColors();
+    if (list_) {
+        if (HWND header = ListView_GetHeader(list_)) InvalidateRect(header, nullptr, TRUE);
+    }
     if (App::Opt().striped) RedrawList();
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
     InvalidateRect(hwnd_, &rcPath_, FALSE);
@@ -715,6 +739,7 @@ void FilePane::OnClickArea(const HitRect& h) {
     case HitArea::Back: GoBack(); break;
     case HitArea::Forward: GoForward(); break;
     case HitArea::Up: GoUp(); break;
+    case HitArea::Root: GoRoot(); break;
     case HitArea::Browse: {
         std::wstring d = BrowseForFolder(GetAncestor(hwnd_, GA_ROOT), L"Verzeichnis wählen", IsVirtual() ? L"" : dir_);
         if (!d.empty()) Navigate(d);
@@ -2028,9 +2053,95 @@ LRESULT CALLBACK FilePane::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(h, msg, wp, lp);
 }
 
+// Spaltenköpfe in der Farbe der Laufwerksleiste (aktive Liste hellblau, sonst wie Kopf- und Fußleiste)
+COLORREF FilePane::HeaderBarColor() const {
+    return activeLook_ ? Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 150) : GetSysColor(COLOR_BTNFACE);
+}
+
+LRESULT FilePane::OnHeaderCustomDraw(NMCUSTOMDRAW* cd) {
+    HWND header = cd->hdr.hwndFrom;
+    COLORREF bg = HeaderBarColor();
+    switch (cd->dwDrawStage) {
+    case CDDS_PREPAINT: {
+        RECT rc;
+        GetClientRect(header, &rc);
+        HBRUSH b = CreateSolidBrush(bg);
+        FillRect(cd->hdc, &rc, b);
+        DeleteObject(b);
+        // Trennlinie unten
+        HPEN pen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_3DSHADOW));
+        HGDIOBJ op = SelectObject(cd->hdc, pen);
+        MoveToEx(cd->hdc, rc.left, rc.bottom - 1, nullptr);
+        LineTo(cd->hdc, rc.right, rc.bottom - 1);
+        SelectObject(cd->hdc, op);
+        DeleteObject(pen);
+        return CDRF_NOTIFYITEMDRAW;
+    }
+    case CDDS_ITEMPREPAINT: {
+        int idx = (int)cd->dwItemSpec;
+        RECT rc = cd->rc;
+        COLORREF fill = bg;
+        if (cd->uItemState & CDIS_SELECTED) fill = Blend(bg, RGB(0, 0, 0), 30);
+        else if (cd->uItemState & CDIS_HOT) fill = Blend(bg, RGB(255, 255, 255), 110);
+        HBRUSH b = CreateSolidBrush(fill);
+        RECT fr = rc;
+        fr.bottom -= 1;
+        FillRect(cd->hdc, &fr, b);
+        DeleteObject(b);
+        // senkrechter Trennstrich rechts
+        HPEN pen = CreatePen(PS_SOLID, 1, Blend(bg, RGB(0, 0, 0), 60));
+        HGDIOBJ op = SelectObject(cd->hdc, pen);
+        MoveToEx(cd->hdc, rc.right - 1, rc.top + ToPx(3), nullptr);
+        LineTo(cd->hdc, rc.right - 1, rc.bottom - ToPx(3));
+        SelectObject(cd->hdc, op);
+        DeleteObject(pen);
+        wchar_t text[260] = {};
+        HDITEMW hi{};
+        hi.mask = HDI_TEXT | HDI_FORMAT;
+        hi.pszText = text;
+        hi.cchTextMax = 260;
+        Header_GetItem(header, idx, &hi);
+        int pad = ToPx(6);
+        RECT tr{rc.left + pad, rc.top, rc.right - pad, rc.bottom - 1};
+        bool up = (hi.fmt & HDF_SORTUP) != 0, down = (hi.fmt & HDF_SORTDOWN) != 0;
+        if (up || down) {
+            // Sortierpfeil wie bei Windows oben mittig über dem Text
+            int cx = (rc.left + rc.right) / 2, top = rc.top + ToPx(1);
+            int hw = ToPx(4), hh = ToPx(3);
+            POINT tri[3];
+            if (up) tri[0] = {cx - hw, top + hh}, tri[1] = {cx + hw, top + hh}, tri[2] = {cx, top};
+            else tri[0] = {cx - hw, top}, tri[1] = {cx + hw, top}, tri[2] = {cx, top + hh};
+            HBRUSH ab = CreateSolidBrush(GetSysColor(COLOR_GRAYTEXT));
+            HPEN ap = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_GRAYTEXT));
+            HGDIOBJ ob = SelectObject(cd->hdc, ab), opn = SelectObject(cd->hdc, ap);
+            Polygon(cd->hdc, tri, 3);
+            SelectObject(cd->hdc, ob);
+            SelectObject(cd->hdc, opn);
+            DeleteObject(ab);
+            DeleteObject(ap);
+        }
+        UINT fmt = DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX;
+        if ((hi.fmt & HDF_JUSTIFYMASK) == HDF_RIGHT) fmt |= DT_RIGHT;
+        else if ((hi.fmt & HDF_JUSTIFYMASK) == HDF_CENTER) fmt |= DT_CENTER;
+        if (cd->uItemState & CDIS_SELECTED) OffsetRect(&tr, 1, 1);
+        SetBkMode(cd->hdc, TRANSPARENT);
+        SetTextColor(cd->hdc, GetSysColor(COLOR_BTNTEXT));
+        DrawTextW(cd->hdc, text, -1, &tr, fmt);
+        return CDRF_SKIPDEFAULT;
+    }
+    default: return CDRF_DODEFAULT;
+    }
+}
+
 LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR ref) {
     auto* self = (FilePane*)ref;
     switch (msg) {
+    case WM_NOTIFY: {
+        auto* nm = (NMHDR*)lp;
+        if (nm && nm->code == NM_CUSTOMDRAW && nm->hwndFrom == ListView_GetHeader(h))
+            return self->OnHeaderCustomDraw((NMCUSTOMDRAW*)lp);
+        break;
+    }
     case WM_KEYDOWN:
         if (wp == VK_RETURN && GetKeyState(VK_CONTROL) >= 0 && GetKeyState(VK_MENU) >= 0) {
             if (GetKeyState(VK_SHIFT) < 0) {

@@ -16,6 +16,7 @@
 #include "resource.h"
 
 #include <commctrl.h>
+#include <uxtheme.h>
 #include <dbt.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -229,6 +230,10 @@ void App::NavigateToFile(const std::wstring& fullPath) {
 }
 void App::RefreshPanes() {
     if (g_main) g_main->RefreshAll();
+}
+void App::UpdateViewButtons() {
+    // nachgestellt: beim Fokuswechsel steht der neue Fokus erst danach fest
+    if (g_main && g_main->Hwnd()) PostMessageW(g_main->Hwnd(), WM_APP + 2, 0, 0);
 }
 PaneContext App::ActivePaneContext() {
     if (g_main) return g_main->ActiveContext();
@@ -583,6 +588,8 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::Options, L"&Optionen…");
     AppendMenuW(menu_, MF_POPUP, (UINT_PTR)m, L"&Werkzeuge");
 
+    // „Tastenkürzel“ direkt in der Menüleiste (F1)
+    AppendMenuW(menu_, MF_STRING, cmd::Shortcuts, L"&Tastenkürzel");
     m = CreatePopupMenu();
     AddItem(m, cmd::Shortcuts, L"&Tastenkürzel\tF1");
     AddSep(m);
@@ -618,7 +625,9 @@ void MainWindow::UpdateMenu(HMENU m) {
     check(cmd::TwoPanes, twoPanes_);
     check(cmd::SplitToggle, split_[active_ % 2]);
     check(cmd::QuickView, quickView_);
-    CheckMenuRadioItem(m, cmd::ViewDetails, cmd::ViewRecursive, cmd::ViewDetails + (int)a.View(), MF_BYCOMMAND);
+    HWND arcView = FocusedArchiveView();
+    CheckMenuRadioItem(m, cmd::ViewDetails, cmd::ViewRecursive,
+                       cmd::ViewDetails + (arcView ? ArchiveViewGetMode(arcView) : (int)a.View()), MF_BYCOMMAND);
     CheckMenuRadioItem(m, cmd::SortName, cmd::SortCreated, cmd::SortName + (int)a.Sort(), MF_BYCOMMAND);
     check(cmd::SortDescending, a.SortDescending());
     check(cmd::ShowHidden, App::Opt().showHidden);
@@ -1242,7 +1251,7 @@ void MainWindow::SetTwoPanes(bool on) {
     SetActive(active_, true);
 }
 
-void MainWindow::SetQuickView(bool on) {
+void MainWindow::SetQuickView(bool on, bool focus) {
     if (on) {
         int o = OtherIndex(active_);
         if (o < 0 || !PaneVisible(o)) {
@@ -1260,7 +1269,7 @@ void MainWindow::SetQuickView(bool on) {
         if (quickViewPane_ >= 0) panes_[quickViewPane_]->SetQuickView(false);
         quickViewPane_ = -1;
     }
-    Active().FocusList();
+    if (focus) Active().FocusList();
 }
 
 void MainWindow::UpdateQuickView() {
@@ -1287,9 +1296,17 @@ void MainWindow::UpdateTitle() {
 }
 
 // Ansichtssymbole der Werkzeugleiste: Ansicht der aktiven Liste eingedrückt zeigen
+// Archivliste der Dateianzeige mit dem Tastaturfokus: Die Ansichtssymbole wirken dann auf sie
+HWND MainWindow::FocusedArchiveView() const {
+    HWND f = GetFocus();
+    if (!f || !IsChild(hwnd_, f)) return nullptr;
+    return ArchiveViewFromWindow(f);
+}
+
 void MainWindow::UpdateViewButtons() {
     if (!toolbar_ || !panes_[active_]) return;
-    int cur = cmd::ViewDetails + (int)Active().View();
+    HWND arc = FocusedArchiveView();
+    int cur = cmd::ViewDetails + (arc ? ArchiveViewGetMode(arc) : (int)Active().View());
     bool changed = false;
     for (int id = cmd::ViewDetails; id <= cmd::ViewRecursive; ++id) {
         bool want = id == cur;
@@ -1335,6 +1352,9 @@ void MainWindow::UpdateStatusBar() {
 // ===================== IPaneHost =====================
 
 void MainWindow::OnPaneActivated(FilePane* p) {
+    // Kopfleiste der Liste mit der Dateianzeige betätigt (Laufwerk, Verzeichnisfeld, Schaltflächen): erst die Dateianzeige
+    // beenden (wie F11), dann wird diese Liste aktiv. Den Fokus setzt der Aufrufer (z. B. bleibt er im Verzeichnisfeld).
+    if (quickView_ && p->Index() == quickViewPane_) SetQuickView(false, false);
     if (p->Index() != active_) SetActive(p->Index(), false);
 }
 
@@ -1637,76 +1657,235 @@ void MainWindow::OpenSpecialFolder(int index) {
     Active().FocusList();
 }
 
+namespace {
+
+// Ein Tastenkürzel je Zeile; Klick auf die Zeile löst die Taste aus (siehe MainWindow::ShowShortcuts)
+struct ShortcutRow {
+    std::wstring keys, desc;
+    UINT vk = 0;            // 0 = Gruppenüberschrift
+    bool ctrl = false, shift = false, alt = false;
+};
+
+constexpr UINT WM_QF_SENDKEY = WM_APP + 3;   // wParam = virtuelle Taste, lParam = Bit 0 Strg, 1 Umschalt, 2 Alt
+
+std::vector<ShortcutRow> ShortcutRows(const std::vector<FunctionKey>& fkeys) {
+    std::vector<ShortcutRow> r;
+    auto group = [&](const wchar_t* g) { r.push_back({g, L"", 0}); };
+    auto key = [&](const std::wstring& k, const std::wstring& d, UINT vk, bool c = false, bool sh = false, bool al = false) {
+        r.push_back({k, d, vk, c, sh, al});
+    };
+    group(L"Funktionstasten (Fußzeile)");
+    key(L"F1", L"Tastenkürzel (diese Übersicht)", VK_F1);
+    key(L"F2", L"Umbenennen (Dialog; bei mehreren markierten Dateien: Dateigruppe umbenennen)", VK_F2);
+    key(L"F3", L"Dateien suchen", VK_F3);
+    key(L"F4", L"Bearbeiten (Texteditor)", VK_F4);
+    key(L"F5", L"Aktualisieren (Verzeichnisse neu einlesen)", VK_F5);
+    key(L"F6", L"Markierung umkehren", VK_F6);
+    key(L"F7", L"Verzeichnisse vergleichen (bei Split mit Auswahl der Vergleichsliste)", VK_F7);
+    key(L"F8", L"Neues Verzeichnis", VK_F8);
+    key(L"F9", L"Neue Datei", VK_F9);
+    key(L"Umschalt+F9", L"Neue Textdatei (öffnet den Editor)", VK_F9, false, true);
+    key(L"F10", L"Duplizieren (Name + „ - Kopie“, Knopf „Nummeriert“)", VK_F10);
+    key(L"F11", L"Anzeigen (Dateianzeige im anderen Fenster)", VK_F11);
+    key(L"Umschalt+F11", L"Anzeigefenster", VK_F11, false, true);
+    key(L"Alt+F11", L"Hex-Editor", VK_F11, false, false, true);
+    group(L"Dateilisten");
+    key(L"Eingabe", L"Öffnen (Verzeichnis wechseln, Archiv anzeigen, Datei mit Standardprogramm)", VK_RETURN);
+    key(L"Umschalt+Eingabe", L"Mit Standardprogramm öffnen", VK_RETURN, false, true);
+    key(L"Rücktaste", L"Übergeordnetes Verzeichnis", VK_BACK);
+    key(L"Strg+Rücktaste", L"Stammverzeichnis (oberste Ebene des Laufwerks)", VK_BACK, true);
+    key(L"Alt+←", L"Zurück", VK_LEFT, false, false, true);
+    key(L"Alt+→", L"Vor", VK_RIGHT, false, false, true);
+    key(L"Tab", L"Nächste Liste", VK_TAB);
+    for (int i = 1; i <= 4; ++i) key(L"Strg+" + std::to_wstring(i), L"Liste " + std::to_wstring(i), (UINT)('0' + i), true);
+    key(L"Leertaste", L"Markieren (bei Verzeichnissen wird die Größe berechnet)", VK_SPACE);
+    key(L"Einfg", L"Markieren und weiter", VK_INSERT);
+    key(L"Num +", L"Gruppe markieren", VK_ADD);
+    key(L"Num -", L"Gruppe abwählen", VK_SUBTRACT);
+    key(L"Num *", L"Markierung umkehren", VK_MULTIPLY);
+    key(L"Num /", L"Markierung aufheben", VK_DIVIDE);
+    key(L"Strg+A", L"Alles markieren", 'A', true);
+    key(L"Umschalt+F10", L"Kontextmenü", VK_F10, false, true);
+    group(L"Dateien");
+    key(L"Umschalt+F5", L"Kopieren in die andere Liste", VK_F5, false, true);
+    key(L"Umschalt+F6", L"Verschieben in die andere Liste", VK_F6, false, true);
+    key(L"Entf", L"Löschen (Papierkorb)", VK_DELETE);
+    key(L"Umschalt+Entf", L"Endgültig löschen", VK_DELETE, false, true);
+    key(L"Alt+Entf", L"Radieren", VK_DELETE, false, false, true);
+    key(L"Strg+M", L"Dateigruppe umbenennen", 'M', true);
+    key(L"Alt+Eingabe", L"Eigenschaften", VK_RETURN, false, false, true);
+    key(L"Alt+Umschalt+Eingabe", L"Verzeichnisgrößen berechnen", VK_RETURN, false, true, true);
+    key(L"Strg+Umschalt+A", L"Attribute und Datum ändern", 'A', true, true);
+    key(L"Alt+F5", L"ZIP erstellen", VK_F5, false, false, true);
+    key(L"Alt+F9", L"Archiv anzeigen und entpacken", VK_F9, false, false, true);
+    key(L"Strg+X", L"Ausschneiden (Zwischenablage)", 'X', true);
+    key(L"Strg+C", L"Kopieren (Zwischenablage)", 'C', true);
+    key(L"Strg+V", L"Einfügen (Zwischenablage)", 'V', true);
+    key(L"Strg+Z", L"Rückgängig (Kopieren, Verschieben, Umbenennen, Anlegen)", 'Z', true);
+    group(L"Ansicht");
+    key(L"Strg+T", L"Aktive Liste teilen (Split) / Teilung aufheben", 'T', true);
+    key(L"Strg+Umschalt+L", L"Eine / zwei Dateilisten", 'L', true, true);
+    key(L"Strg+Q", L"Dateianzeige im jeweils anderen Fenster ein/aus", 'Q', true);
+    const wchar_t* views[] = {L"Details", L"Liste", L"Symbole", L"Miniaturansicht", L"Mit Unterverzeichnissen"};
+    for (int i = 0; i < 5; ++i) key(L"Strg+Umschalt+" + std::to_wstring(i + 1), std::wstring(L"Ansicht: ") + views[i], (UINT)('1' + i), true, true);
+    key(L"Strg+H", L"Versteckte Dateien ein/aus", 'H', true);
+    key(L"Strg+Umschalt+F", L"Dateifilter", 'F', true, true);
+    key(L"Strg+R", L"Aktualisieren", 'R', true);
+    group(L"Navigation und Werkzeuge");
+    key(L"Strg+L", L"Verzeichnis eingeben", 'L', true);
+    key(L"Strg+G", L"Verzeichnis eingeben", 'G', true);
+    key(L"Strg+E", L"Befehlszeile", 'E', true);
+    key(L"Strg+Eingabe", L"Name in die Befehlszeile übernehmen", VK_RETURN, true);
+    key(L"Alt+F1", L"Verzeichnisbaum", VK_F1, false, false, true);
+    key(L"Alt+F2", L"Lesezeichenliste", VK_F2, false, false, true);
+    key(L"Strg+D", L"Gewähltes Verzeichnis den Lesezeichen hinzufügen", 'D', true);
+    key(L"Strg+U", L"Listen tauschen", 'U', true);
+    key(L"Strg+Umschalt+O", L"Gegenseite auf dasselbe Verzeichnis", 'O', true, true);
+    key(L"Strg+K", L"Dateien vergleichen", 'K', true);
+    key(L"Strg+Umschalt+Y", L"Verzeichnisse synchronisieren", 'Y', true, true);
+    key(L"Strg+P", L"Verzeichnisliste drucken", 'P', true);
+    group(L"Programmierbare Funktionstasten (Werkzeuge → Funktionstasten belegen)");
+    for (int i = 0; i < kFunctionKeyCount; ++i) {
+        bool shift = i >= 12;
+        std::wstring k = std::wstring(shift ? L"Strg+Umschalt+F" : L"Strg+F") + std::to_wstring(i % 12 + 1);
+        std::wstring d = L"–";
+        if (i < (int)fkeys.size() && !fkeys[i].IsEmpty())
+            d = fkeys[i].label.empty() ? PathStem(fkeys[i].program) : fkeys[i].label;
+        key(k, d, (UINT)(VK_F1 + i % 12), true, shift);
+    }
+    return r;
+}
+
+// Taste so senden, als würde sie jetzt gedrückt (mit Strg/Umschalt/Alt)
+void SendKeyStroke(UINT vk, bool ctrl, bool shift, bool alt) {
+    auto extended = [](UINT k) {
+        return k == VK_LEFT || k == VK_RIGHT || k == VK_UP || k == VK_DOWN || k == VK_INSERT || k == VK_DELETE ||
+               k == VK_HOME || k == VK_END || k == VK_PRIOR || k == VK_NEXT || k == VK_DIVIDE;
+    };
+    std::vector<INPUT> in;
+    auto add = [&](UINT k, bool up) {
+        INPUT i{};
+        i.type = INPUT_KEYBOARD;
+        i.ki.wVk = (WORD)k;
+        i.ki.wScan = (WORD)MapVirtualKeyW(k, MAPVK_VK_TO_VSC);
+        i.ki.dwFlags = (up ? KEYEVENTF_KEYUP : 0) | (extended(k) ? KEYEVENTF_EXTENDEDKEY : 0);
+        in.push_back(i);
+    };
+    if (ctrl) add(VK_CONTROL, false);
+    if (shift) add(VK_SHIFT, false);
+    if (alt) add(VK_MENU, false);
+    add(vk, false);
+    add(vk, true);
+    if (alt) add(VK_MENU, true);
+    if (shift) add(VK_SHIFT, true);
+    if (ctrl) add(VK_CONTROL, true);
+    SendInput((UINT)in.size(), in.data(), sizeof(INPUT));
+}
+
+} // namespace
+
 void MainWindow::ShowShortcuts() {
-    const wchar_t* text =
-        L"Funktionstasten (Fußzeile)\r\n"
-        L"  F2\tUmbenennen (Dialog; bei mehreren markierten Dateien: Dateigruppe umbenennen)\r\n"
-        L"  F3\tDateien suchen\r\n"
-        L"  F4\tBearbeiten (Texteditor)\r\n"
-        L"  F5\tAktualisieren (Verzeichnisse neu einlesen)\r\n"
-        L"  F6\tMarkierung umkehren\r\n"
-        L"  F7\tVerzeichnisse vergleichen (bei Split mit Auswahl der Vergleichsliste)\r\n"
-        L"  F8\tNeues Verzeichnis\r\n"
-        L"  F9\tNeue Datei;  Umschalt+F9: neue Textdatei (öffnet den Editor)\r\n"
-        L"  F10\tDuplizieren (Name + „ - Kopie“, Knopf „Nummeriert“)\r\n"
-        L"  F11\tAnzeigen (Dateianzeige im anderen Fenster);  Umschalt+F11: Anzeigefenster;  Alt+F11: Hex-Editor\r\n"
-        L"\r\n"
-        L"Dateilisten\r\n"
-        L"  Eingabe\tÖffnen (Verzeichnis wechseln, Archiv anzeigen, Datei mit Standardprogramm)\r\n"
-        L"  Umschalt+Eingabe\tMit Standardprogramm öffnen\r\n"
-        L"  Rücktaste\tÜbergeordnetes Verzeichnis;  Strg+Rücktaste: Stammverzeichnis\r\n"
-        L"  Alt+← / Alt+→\tZurück / Vor\r\n"
-        L"  Tab\tNächste Liste;  Strg+1…4: Liste 1…4;  Klick auf den Kreis in der Pfadzeile aktiviert eine Liste\r\n"
-        L"  Leertaste / Einfg\tMarkieren (Leertaste berechnet bei Verzeichnissen die Größe)\r\n"
-        L"  Num + / Num - / Num * / Num /\tGruppe markieren / abwählen / umkehren / aufheben\r\n"
-        L"  Strg+A\tAlles markieren\r\n"
-        L"  Umschalt+F10\tKontextmenü\r\n"
-        L"\r\n"
-        L"Dateien\r\n"
-        L"  Umschalt+F5 / Umschalt+F6\tKopieren / Verschieben in die andere Liste\r\n"
-        L"  Entf\tLöschen (Papierkorb);  Umschalt+Entf: endgültig;  Alt+Entf: Radieren\r\n"
-        L"  Strg+M\tDateigruppe umbenennen\r\n"
-        L"  Alt+Eingabe\tEigenschaften;  Alt+Umschalt+Eingabe: Verzeichnisgrößen\r\n"
-        L"  Strg+Umschalt+A\tAttribute und Datum ändern\r\n"
-        L"  Alt+F5 / Alt+F9\tZIP erstellen / Archiv anzeigen und entpacken\r\n"
-        L"  Strg+X / C / V\tAusschneiden / Kopieren / Einfügen (Zwischenablage)\r\n"
-        L"  Strg+Z\tRückgängig (Kopieren, Verschieben, Umbenennen, Anlegen)\r\n"
-        L"\r\n"
-        L"Ansicht\r\n"
-        L"  Strg+T\tAktive Liste teilen (Split) / Teilung aufheben\r\n"
-        L"  Strg+Umschalt+L\tEine / zwei Dateilisten\r\n"
-        L"  Strg+Q\tDateianzeige im jeweils anderen Fenster ein/aus\r\n"
-        L"  Strg+Umschalt+1…5\tDetails / Liste / Symbole / Miniaturen / Mit Unterverzeichnissen\r\n"
-        L"  Strg+H\tVersteckte Dateien;  Strg+Umschalt+F: Dateifilter;  Strg+R: Aktualisieren\r\n"
-        L"\r\n"
-        L"Navigation und Werkzeuge\r\n"
-        L"  Strg+L / Strg+G\tVerzeichnis eingeben;  Strg+E: Befehlszeile;  Strg+Eingabe: Name in die Befehlszeile\r\n"
-        L"  Alt+F1 / Alt+F2\tVerzeichnisbaum / Lesezeichenliste\r\n"
-        L"  Strg+D\tGewähltes Verzeichnis den Lesezeichen hinzufügen\r\n"
-        L"  Strg+U\tListen tauschen;  Strg+Umschalt+O: Gegenseite auf dasselbe Verzeichnis\r\n"
-        L"  Strg+K\tDateien vergleichen;  Strg+Umschalt+Y: Synchronisieren\r\n"
-        L"  Strg+P\tVerzeichnisliste drucken\r\n"
-        L"  Strg+F1…F12, Strg+Umschalt+F1…F12\t24 programmierbare Funktionstasten (Werkzeuge → Funktionstasten belegen)\r\n";
     class ShortcutDlg : public DialogBase {
     public:
-        const wchar_t* text = nullptr;
+        std::vector<ShortcutRow> rows;
+        int chosen = -1;
+        HFONT bold = nullptr;
         BOOL OnInit() override {
-            SetText(100, text);
-            int tabs = 120;
-            SendMessageW(Item(100), EM_SETTABSTOPS, 1, (LPARAM)&tabs);
+            HWND lv = Item(100);
+            ListView_SetExtendedListViewStyle(lv, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_TRACKSELECT |
+                                                      LVS_EX_ONECLICKACTIVATE | LVS_EX_UNDERLINEHOT);
+            SetWindowTheme(lv, L"Explorer", nullptr);
+            LVCOLUMNW c{};
+            c.mask = LVCF_TEXT | LVCF_WIDTH;
+            c.cx = DpiScale(hwnd_, 170);
+            c.pszText = const_cast<wchar_t*>(L"Taste");
+            ListView_InsertColumn(lv, 0, &c);
+            c.cx = DpiScale(hwnd_, 520);
+            c.pszText = const_cast<wchar_t*>(L"Funktion (Klick: Fenster schließen und Taste auslösen)");
+            ListView_InsertColumn(lv, 1, &c);
+            for (size_t i = 0; i < rows.size(); ++i) {
+                LVITEMW it{};
+                it.mask = LVIF_TEXT | LVIF_PARAM;
+                it.iItem = (int)i;
+                it.lParam = (LPARAM)i;
+                it.pszText = const_cast<wchar_t*>(rows[i].keys.c_str());
+                ListView_InsertItem(lv, &it);
+                ListView_SetItemText(lv, (int)i, 1, const_cast<wchar_t*>(rows[i].desc.c_str()));
+            }
+            LOGFONTW lf{};
+            GetObjectW((HFONT)SendMessageW(lv, WM_GETFONT, 0, 0), sizeof(lf), &lf);
+            lf.lfWeight = FW_BOLD;
+            bold = CreateFontIndirectW(&lf);
             SetAnchor(100, AnchorAll);
             SetAnchor(IDOK, AnchorBottomRight);
             EnableResizing();
-            SetFocus(Item(IDOK));
+            RestorePlacement(L"TastenkuerzelFenster");
+            SetFocus(lv);
+            ListView_SetItemState(lv, 1, LVIS_FOCUSED, LVIS_FOCUSED);
             return FALSE;
         }
+        void Choose(int item) {
+            if (item < 0 || item >= (int)rows.size() || rows[item].vk == 0) return;
+            chosen = item;
+            End(IDOK);
+        }
+        BOOL OnCommand(int id, int code, HWND ctl) override {
+            // Eingabetaste in der Liste: Zeile auslösen (statt nur zu schließen)
+            if (id == IDOK && GetFocus() == Item(100)) {
+                int f = ListView_GetNextItem(Item(100), -1, LVNI_FOCUSED);
+                if (f >= 0 && f < (int)rows.size() && rows[f].vk != 0) {
+                    Choose(f);
+                    return TRUE;
+                }
+                return TRUE;
+            }
+            return DialogBase::OnCommand(id, code, ctl);
+        }
+        INT_PTR OnMessage(UINT msg, WPARAM, LPARAM lp) override {
+            if (msg == WM_NOTIFY) {
+                auto* nm = (NMHDR*)lp;
+                if (nm->idFrom != 100) return FALSE;
+                if (nm->code == LVN_ITEMACTIVATE) {
+                    Choose(((NMITEMACTIVATE*)lp)->iItem);
+                    return TRUE;
+                }
+                if (nm->code == NM_CUSTOMDRAW) {
+                    auto* cd = (NMLVCUSTOMDRAW*)lp;
+                    LRESULT r = CDRF_DODEFAULT;
+                    if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) r = CDRF_NOTIFYITEMDRAW;
+                    else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                        size_t i = (size_t)cd->nmcd.dwItemSpec;
+                        if (i < rows.size() && rows[i].vk == 0) {
+                            // Gruppenüberschrift: fett, hellblau hinterlegt
+                            SelectObject(cd->nmcd.hdc, bold);
+                            cd->clrTextBk = Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 150);
+                            cd->clrText = GetSysColor(COLOR_WINDOWTEXT);
+                            r = CDRF_NEWFONT;
+                        }
+                    }
+                    SetWindowLongPtrW(hwnd_, DWLP_MSGRESULT, r);
+                    return TRUE;
+                }
+            }
+            return FALSE;
+        }
+        void OnDestroy() override {
+            SavePlacement(L"TastenkuerzelFenster");
+            if (bold) DeleteObject(bold);
+        }
     };
-    DialogTemplate t(L"Tastenkürzel", 420, 300, DialogTemplate::kResizable);
-    t.MultiEdit(100, 7, 7, 406, 266, ES_READONLY | WS_HSCROLL | ES_AUTOHSCROLL);
-    t.DefButton(IDOK, L"Schließen", 353, 279, 60, 14);
+    DialogTemplate t(L"Tastenkürzel", 460, 320, DialogTemplate::kResizable);
+    t.Custom(100, WC_LISTVIEWW, 7, 7, 446, 286,
+             WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS);
+    t.DefButton(IDOK, L"Schließen", 393, 299, 60, 14);
     ShortcutDlg dlg;
-    dlg.text = text;
+    dlg.rows = ShortcutRows(fkeyDefs_);
     dlg.DoModal(hwnd_, t);
+    if (dlg.chosen >= 0) {
+        const ShortcutRow& r = dlg.rows[dlg.chosen];
+        // nach dem Schließen (Fokus wieder in der Liste) wie einen echten Tastendruck auslösen
+        PostMessageW(hwnd_, WM_QF_SENDKEY, r.vk, (r.ctrl ? 1 : 0) | (r.shift ? 2 : 0) | (r.alt ? 4 : 0));
+    }
 }
 
 // ===================== Netzwerkebenen und FTP/SFTP =====================
@@ -2278,11 +2457,20 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::QuickView: SetQuickView(!quickView_); break;
-    case cmd::ViewDetails: a.SetView(PaneView::Details); UpdateViewButtons(); break;
-    case cmd::ViewList: a.SetView(PaneView::List); UpdateViewButtons(); break;
-    case cmd::ViewIcons: a.SetView(PaneView::Icons); UpdateViewButtons(); break;
-    case cmd::ViewThumbnails: a.SetView(PaneView::Thumbnails); UpdateViewButtons(); break;
-    case cmd::ViewRecursive: a.SetView(PaneView::Recursive); UpdateViewButtons(); break;
+    case cmd::ViewDetails:
+    case cmd::ViewList:
+    case cmd::ViewIcons:
+    case cmd::ViewThumbnails:
+    case cmd::ViewRecursive:
+        if (HWND arc = FocusedArchiveView()) {
+            // aktive Archivliste in der Dateianzeige
+            ArchiveViewSetMode(arc, id - cmd::ViewDetails);
+            UpdateViewButtons();
+            break;
+        }
+        a.SetView((PaneView)(id - cmd::ViewDetails));
+        UpdateViewButtons();
+        break;
     case cmd::SortName: a.SetSort(SortKey::Name, a.SortDescending()); break;
     case cmd::SortExt: a.SetSort(SortKey::Ext, a.SortDescending()); break;
     case cmd::SortSize: a.SetSort(SortKey::Size, a.SortDescending()); break;
@@ -2796,6 +2984,12 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             if (!f || !IsChild(hwnd_, f)) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
         }
         break;
+    case WM_APP + 2:
+        UpdateViewButtons();
+        return 0;
+    case WM_QF_SENDKEY:
+        SendKeyStroke((UINT)wp, (lp & 1) != 0, (lp & 2) != 0, (lp & 4) != 0);
+        return 0;
     case WM_APP + 1:
         // nur, wenn das Hauptfenster noch aktiv ist: Inzwischen kann ein anderes Fenster dieses Programms aktiv
         // geworden sein (z. B. das Anzeigefenster von „Anzeigen“ in der Archivliste); SetFocus würde das Hauptfenster

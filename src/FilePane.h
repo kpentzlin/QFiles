@@ -156,7 +156,7 @@ private:
     void OnTreeBatch(WPARAM gen);
     void OnTreeDone(WPARAM gen);
     bool AcceptEntry(const DirEntry& e) const;
-    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Browse, Active };
+    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Root, Browse, Active };
     struct HitRect {
         HitArea area;
         int drive;          // Laufwerksindex bei Drive
@@ -169,6 +169,8 @@ private:
     LRESULT Proc(UINT msg, WPARAM wp, LPARAM lp);
     LRESULT OnNotify(NMHDR* nm);
     LRESULT OnCustomDraw(NMLVCUSTOMDRAW* cd);
+    LRESULT OnHeaderCustomDraw(NMCUSTOMDRAW* cd);
+    COLORREF HeaderBarColor() const;
     void OnGetDispInfo(NMLVDISPINFOW* di);
     void Layout();
     void Paint(HDC dc);

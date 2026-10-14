@@ -29,6 +29,7 @@ public:
     void NavigateActive(const std::wstring& dir, const std::wstring& select);
     void NavigateToFile(const std::wstring& path);
     void RefreshAll();
+    void UpdateViewButtons();
     PaneContext ActiveContext() const;
     void SaveState();
 
@@ -69,7 +70,6 @@ private:
     void BuildAccelerators();
     void BuildFKeyCells();
     void UpdateTitle();
-    void UpdateViewButtons();
     void UpdateStatusBar();
     void UpdateCmdLabel();
     void LoadState();
@@ -77,7 +77,8 @@ private:
     void SetActive(int index, bool focus = true);
     void SetSplit(int column, bool on);
     void SetTwoPanes(bool on);
-    void SetQuickView(bool on);
+    void SetQuickView(bool on, bool focus = true);
+    HWND FocusedArchiveView() const;
     void UpdateQuickView();
     int OtherIndex(int index) const;
     FilePane& Active() { return *panes_[active_]; }
