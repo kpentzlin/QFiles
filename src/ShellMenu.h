@@ -37,6 +37,16 @@ DWORD StartFileDrag(HWND hwnd, const std::wstring& dir, const std::vector<std::w
 // (gleiches Laufwerk verschieben, anderes kopieren; Strg = kopieren, Umschalt = verschieben).
 void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done,
                             bool listPane = false);
+
+// Ziel für die Dateilisten: dir = Zielverzeichnis; alt (nicht leer) = Zweifelsfall – der Mauszeiger steht im Leerraum
+// hinter dem Namen eines Unterverzeichnisses (alt). Beim Ablegen wird dann gefragt, welches gemeint ist.
+struct DropTargetInfo {
+    std::wstring dir;
+    std::wstring alt;
+};
+// Wie oben, mit Zweifelsfall-Abfrage. leave wird beim Verlassen und nach dem Ablegen aufgerufen (Hervorhebung zurück).
+void RegisterFileDropTargetEx(HWND hwnd, std::function<DropTargetInfo(POINT)> resolver, std::function<void()> done,
+                              std::function<void()> leave, bool listPane);
 void RevokeFileDropTarget(HWND hwnd);
 
 } // namespace qf

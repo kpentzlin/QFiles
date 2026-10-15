@@ -2,6 +2,7 @@
 #include "App.h"
 #include "FileOps.h"
 #include "Location.h"
+#include "Dialog.h"
 #include "Remote.h"
 #include "Util.h"
 
@@ -1008,8 +1009,10 @@ namespace {
 
 class DropTarget : public IDropTarget {
 public:
-    DropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done, bool listPane)
-        : hwnd_(hwnd), resolver_(std::move(resolver)), done_(std::move(done)), listPane_(listPane) {
+    DropTarget(HWND hwnd, std::function<DropTargetInfo(POINT)> resolver, std::function<void()> done,
+               std::function<void()> leave, bool listPane)
+        : hwnd_(hwnd), resolver_(std::move(resolver)), done_(std::move(done)), leave_(std::move(leave)),
+          listPane_(listPane) {
         CoCreateInstance(CLSID_DragDropHelper, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&helper_));
     }
     virtual ~DropTarget() {
@@ -1053,6 +1056,7 @@ public:
     IFACEMETHODIMP DragLeave() override {
         if (helper_) helper_->DragLeave();
         files_.clear();
+        if (leave_) leave_();
         return S_OK;
     }
     IFACEMETHODIMP Drop(IDataObject* data, DWORD keys, POINTL pt, DWORD* effect) override {
@@ -1062,7 +1066,17 @@ public:
         }
         if (files_.empty()) ReadFiles(data);
         DWORD eff = Decide(keys, pt, *effect);
-        std::wstring target = resolver_ ? resolver_(POINT{pt.x, pt.y}) : L"";
+        DropTargetInfo info = resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{};
+        if (leave_) leave_();
+        std::wstring target = info.dir;
+        if (eff != DROPEFFECT_NONE && !info.alt.empty()) {
+            // Leerraum hinter dem Namen eines Unterverzeichnisses: nachfragen, sofern beide Ziele möglich sind
+            bool dirOk = ValidTarget(info.dir), altOk = ValidTarget(info.alt);
+            if (dirOk && altOk)
+                target = AskTarget(info.dir, info.alt, eff);
+            else
+                target = altOk ? info.alt : (dirOk ? info.dir : L"");
+        }
         if (eff == DROPEFFECT_NONE || target.empty() || files_.empty()) {
             *effect = DROPEFFECT_NONE;
             return S_OK;
@@ -1119,19 +1133,59 @@ private:
         }
     }
 
-    DWORD Decide(DWORD keys, POINTL pt, DWORD allowed) {
-        if (files_.empty()) return DROPEFFECT_NONE;
-        std::wstring target = resolver_ ? resolver_(POINT{pt.x, pt.y}) : L"";
-        if (target.empty()) return DROPEFFECT_NONE;
-        bool remote = IsRemoteUrl(target);
-        // Nicht in sich selbst bzw. in dasselbe Verzeichnis
-        bool sameDir = !remote;
+    // Nicht in sich selbst bzw. in dasselbe Verzeichnis
+    bool ValidTarget(const std::wstring& target) const {
+        if (target.empty()) return false;
+        if (IsRemoteUrl(target)) return true;
+        bool sameDir = true;
         for (auto& f : files_) {
-            if (remote) break;
-            if (EqualsI(f, target) || StartsWithI(target, f + L"\\")) return DROPEFFECT_NONE;
+            if (EqualsI(f, target) || StartsWithI(target, f + L"\\")) return false;
             if (!EqualsI(PathParent(f), target)) sameDir = false;
         }
-        if (sameDir) return DROPEFFECT_NONE;
+        return !sameDir;
+    }
+
+    // Zweifelsfall beim Ablegen: Listenverzeichnis oder Unterverzeichnis? Leer = Abbruch.
+    std::wstring AskTarget(const std::wstring& dir, const std::wstring& sub, DWORD eff) {
+        enum { kDir = 201, kSub = 202 };
+        class AskDlg : public DialogBase {
+        public:
+            std::wstring text;
+            BOOL OnInit() override {
+                SetText(101, text);
+                return TRUE;
+            }
+            BOOL OnCommand(int id, int code, HWND ctl) override {
+                if (id == kDir || id == kSub) {
+                    End(id);
+                    return TRUE;
+                }
+                return DialogBase::OnCommand(id, code, ctl);
+            }
+        };
+        std::wstring what = files_.size() == 1 ? L"„" + PathFileName(files_[0]) + L"“"
+                                               : std::to_wstring(files_.size()) + L" Elemente";
+        std::wstring verb = eff == DROPEFFECT_MOVE ? L"verschieben" : L"kopieren";
+        DialogTemplate t(eff == DROPEFFECT_MOVE ? L"Verschieben" : L"Kopieren", 300, 92);
+        t.Label(101, L"", 7, 7, 286, 44);
+        t.DefButton(kDir, L"&Listenverzeichnis", 7, 71, 92, 14);
+        t.Button(kSub, L"&Unterverzeichnis", 104, 71, 92, 14);
+        t.Button(IDCANCEL, L"Abbrechen", 233, 71, 60, 14);
+        AskDlg dlg;
+        dlg.text = what + L" " + verb + L" – wohin?\n\nListenverzeichnis:  " + LocationDisplay(dir) +
+                   L"\nUnterverzeichnis:  " + LocationDisplay(sub);
+        INT_PTR r = dlg.DoModal(GetAncestor(hwnd_, GA_ROOT), t);
+        return r == kDir ? dir : r == kSub ? sub : L"";
+    }
+
+    DWORD Decide(DWORD keys, POINTL pt, DWORD allowed) {
+        if (files_.empty()) return DROPEFFECT_NONE;
+        DropTargetInfo info = resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{};
+        // Zweifelsfall: Ablage möglich, wenn eines der beiden Ziele geht (beim Ablegen wird gefragt)
+        std::wstring target = info.dir;
+        if (!info.alt.empty() && !ValidTarget(info.dir)) target = info.alt;
+        if (!ValidTarget(target)) return DROPEFFECT_NONE;
+        bool remote = IsRemoteUrl(target);
         DWORD eff;
         if (listPane_) eff = (keys & (MK_CONTROL | MK_SHIFT)) ? DROPEFFECT_COPY : DROPEFFECT_MOVE;   // Dateilisten
         else if (remote) eff = (keys & MK_SHIFT) && !(keys & MK_CONTROL) ? DROPEFFECT_MOVE : DROPEFFECT_COPY;
@@ -1145,8 +1199,9 @@ private:
 
     ULONG ref_ = 1;
     HWND hwnd_;
-    std::function<std::wstring(POINT)> resolver_;
+    std::function<DropTargetInfo(POINT)> resolver_;
     std::function<void()> done_;
+    std::function<void()> leave_;
     IDropTargetHelper* helper_ = nullptr;
     std::vector<std::wstring> files_;
     bool rightButton_ = false;
@@ -1157,9 +1212,17 @@ private:
 
 void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolver, std::function<void()> done,
                             bool listPane) {
-    auto* t = new DropTarget(hwnd, std::move(resolver), std::move(done), listPane);
+    auto wrapped = [resolver](POINT pt) { return DropTargetInfo{resolver ? resolver(pt) : L"", L""}; };
+    auto* t = new DropTarget(hwnd, wrapped, std::move(done), nullptr, listPane);
     RegisterDragDrop(hwnd, t);
     t->Release(); // RegisterDragDrop hält eine eigene Referenz
+}
+
+void RegisterFileDropTargetEx(HWND hwnd, std::function<DropTargetInfo(POINT)> resolver, std::function<void()> done,
+                              std::function<void()> leave, bool listPane) {
+    auto* t = new DropTarget(hwnd, std::move(resolver), std::move(done), std::move(leave), listPane);
+    RegisterDragDrop(hwnd, t);
+    t->Release();
 }
 
 void RevokeFileDropTarget(HWND hwnd) { RevokeDragDrop(hwnd); }

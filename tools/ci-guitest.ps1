@@ -20,6 +20,16 @@ public static class W {
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
+  public static void Drag(int x1, int y1, int x2, int y2) {
+    SetCursorPos(x1, y1); System.Threading.Thread.Sleep(200);
+    mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(150);
+    for (int i = 1; i <= 25; i++) {
+      SetCursorPos(x1 + (x2 - x1) * i / 25, y1 + (y2 - y1) * i / 25);
+      mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(40);
+    }
+    SetCursorPos(x2, y2); mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(400);
+    mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
+  }
   public static void Key(byte vk) { keybd_event(vk, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(60); keybd_event(vk, 0, 2, IntPtr.Zero); }
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
   public delegate bool EnumProc(IntPtr h, IntPtr l);
@@ -448,6 +458,81 @@ if (-not $tarOk -or -not $rarOk) {
 }
 if ($tarOk) { Write-Output ("::notice title=Archivanzeige::" + ($al -join ' / ')) }
 else { Write-Output ("::warning title=Archivanzeige (tar.exe)::" + ($al -join ' / ')) }
+
+# ---- Ziehen in eine Liste: Ziel je nach Spalte und Stelle in der Namensspalte ----
+# Links Quelle mit q1–q3, rechts Ziel mit dem Unterverzeichnis „Unterordner“ (Details-Ansicht).
+# q1 auf den Namen „Unterordner“ -> ins Unterverzeichnis; q2 in den Leerraum hinter dem Namen -> Abfrage, „Listenverzeichnis“;
+# q3 in die Spalte „Typ“ der Verzeichniszeile -> ins Listenverzeichnis (ohne Abfrage).
+$dragBase = "C:\QFilesZiehen"
+Remove-Item $dragBase -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path "$dragBase\Quelle", "$dragBase\Ziel\Unterordner" | Out-Null
+foreach ($n in "q1", "q2", "q3") { Set-Content -Path "$dragBase\Quelle\$n.txt" -Value $n -Encoding UTF8 }
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + "$dragBase\Quelle" + '"'), ('"' + "$dragBase\Ziel" + '"') -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Ziehen)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+$panes = @()
+$h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($p.MainWindowHandle, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $panes += [pscustomobject]@{ H = $h; L = $r.L; T = $r.T }
+}
+$panes = @($panes | Sort-Object T, L)
+$srcList = [W]::FindWindowEx($panes[0].H, [IntPtr]::Zero, "SysListView32", $null)
+$dstList = [W]::FindWindowEx($panes[1].H, [IntPtr]::Zero, "SysListView32", $null)
+$sr = New-Object W+RECT; [W]::GetWindowRect($srcList, [ref]$sr) | Out-Null
+$dr = New-Object W+RECT; [W]::GetWindowRect($dstList, [ref]$dr) | Out-Null
+# Zielliste: Details-Ansicht
+[W]::Click($dr.L + 60, $dr.B - 30, $false); Start-Sleep -Milliseconds 500
+[System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
+[W]::GetWindowRect($dstList, [ref]$dr) | Out-Null
+# Namensspalte auf 160 px setzen (LVM_SETCOLUMNWIDTH), damit auch die Spalte „Typ“ in der schmalen Liste sichtbar ist
+[W]::SendMessage($dstList, 0x101E, [IntPtr]::Zero, [IntPtr]160) | Out-Null
+Start-Sleep -Milliseconds 300
+$nameW = ([W]::SendMessage($dstList, 0x101D, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETCOLUMNWIDTH
+$rowY = $dr.T + 24 + 1 * 20 + 10     # Zeile 2 (nach „..“): Unterordner
+$srcY = $sr.T + 24 + 1 * 20 + 10     # Zeile 2 der Quelle: jeweils die erste verbliebene Datei
+Write-Output "Ziehen: Namensspalte $nameW px"
+# 1) auf den Namen
+[W]::Click($sr.L + 40, $srcY, $false); Start-Sleep -Milliseconds 400
+[W]::Drag($sr.L + 40, $srcY, $dr.L + 45, $rowY); Start-Sleep -Seconds 3
+Check-Alive "Ziehen 1"
+# 2) Leerraum hinter dem Namen: Abfrage „Listenverzeichnis“
+[W]::Click($sr.L + 40, $srcY, $false); Start-Sleep -Milliseconds 400
+[W]::Drag($sr.L + 40, $srcY, $dr.L + $nameW - 12, $rowY); Start-Sleep -Seconds 2
+$ask = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $ask -eq [IntPtr]::Zero; $t++) {
+  $ask = [W]::FindWindow("#32770", "Verschieben")
+  if ($ask -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 }
+}
+$askSeen = $ask -ne [IntPtr]::Zero
+if ($askSeen) {
+  Shot "screenshot22.png"
+  [W]::SendMessage([W]::GetDlgItem($ask, 201), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # BM_CLICK „Listenverzeichnis“
+  Start-Sleep -Seconds 3
+}
+Check-Alive "Ziehen 2"
+# 3) Spalte „Typ“ der Verzeichniszeile
+[W]::Click($sr.L + 40, $srcY, $false); Start-Sleep -Milliseconds 400
+[W]::Drag($sr.L + 40, $srcY, $dr.L + $nameW + 25, $rowY); Start-Sleep -Seconds 3
+Check-Alive "Ziehen 3"
+Shot "screenshot23.png"
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$d1 = Test-Path "$dragBase\Ziel\Unterordner\q1.txt"
+$d2 = (Test-Path "$dragBase\Ziel\q2.txt") -and $askSeen
+$d3 = (Test-Path "$dragBase\Ziel\q3.txt") -and -not (Test-Path "$dragBase\Ziel\Unterordner\q3.txt")
+$dragInfo = "Name -> Unterverzeichnis: $d1; Leerraum -> Abfrage/Listenverzeichnis: $d2; Spalte Typ -> Listenverzeichnis: $d3"
+$left = (Get-ChildItem "$dragBase" -Recurse -File | ForEach-Object { $_.FullName.Substring($dragBase.Length) }) -join ', '
+if ($d1 -and $d2 -and $d3) { Write-Output "::notice title=Ziehen in Liste::$dragInfo" }
+else {
+  Write-Output "::error title=Ziehen in Liste::$dragInfo (Dateien: $left)"
+  "Ablageziel beim Ziehen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
 
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1

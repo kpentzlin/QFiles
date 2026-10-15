@@ -187,7 +187,7 @@ bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
     SetWindowTheme(list_, L"Explorer", nullptr);
     ListView_SetImageList(list_, g_sysSmall, LVSIL_SMALL);
     ListView_SetImageList(list_, g_sysLarge, LVSIL_NORMAL);
-    ListView_SetCallbackMask(list_, LVIS_CUT);
+    ListView_SetCallbackMask(list_, LVIS_CUT | LVIS_DROPHILITED);
     CreateListFont();
     SetupColumns();
     ApplyViewStyle();
@@ -196,12 +196,13 @@ bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
     tooltip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0,
                                hwnd_, nullptr, App::Instance(), nullptr);
 
-    RegisterFileDropTarget(
-        list_, [this](POINT pt) { return DropTargetDirAt(pt); },
+    RegisterFileDropTargetEx(
+        list_, [this](POINT pt) { return DropTargetAt(pt); },
         [this]() {
             Reload();
             if (host_) host_->OnPaneFilesDropped(this);
         },
+        [this]() { ClearDropHighlight(); },
         true);   // Dateiliste: Ziehen verschiebt, Umschalt/Strg kopiert
     UpdateDrives();
     return true;
@@ -1429,7 +1430,8 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
     if (di->item.mask & LVIF_STATE) {
         di->item.state = 0;
         if (!it.isParent && ((it.e.attributes & FILE_ATTRIBUTE_HIDDEN) || IsCutItem(it))) di->item.state |= LVIS_CUT;
-        di->item.stateMask |= LVIS_CUT;
+        if (i == dropHilite_) di->item.state |= LVIS_DROPHILITED;   // Ablageziel beim Ziehen
+        di->item.stateMask |= LVIS_CUT | LVIS_DROPHILITED;
     }
 }
 
@@ -1753,19 +1755,71 @@ void FilePane::OpenFocused() {
     if (host_) host_->OnPaneOpenItem(this);
 }
 
-std::wstring FilePane::DropTargetDirAt(POINT screenPt) const {
+// Ablageziel beim Ziehen von Dateien in diese Liste:
+// - Details/„Mit Unterverzeichnissen“: in einer anderen Spalte als „Name“ immer das Verzeichnis der Liste;
+// - Liste/Details/„Mit Unterverzeichnissen“, Spalte „Name“ einer Verzeichniszeile: auf dem Namen (Symbol und Text)
+//   das Unterverzeichnis, im Leerraum dahinter Zweifelsfall (beim Ablegen wird gefragt);
+// - Symbole/Miniaturen: auf dem Element das Unterverzeichnis.
+DropTargetInfo FilePane::DropTargetAt(POINT screenPt) {
+    DropTargetInfo info;
     bool remote = IsRemote();
-    if (dir_.empty() || (IsVirtual() && !remote)) return L"";
+    if (dir_.empty() || (IsVirtual() && !remote)) {
+        ClearDropHighlight();
+        return info;
+    }
+    info.dir = dir_;
     LVHITTESTINFO ht{};
     ht.pt = screenPt;
     ScreenToClient(list_, &ht.pt);
-    int i = ListView_HitTest(list_, &ht);
+    int i = ListView_SubItemHitTest(list_, &ht);
+    int hilite = -1;
     if (i >= 0 && i < (int)items_.size() && (ht.flags & LVHT_ONITEM)) {
         const Item& it = items_[i];
-        if (it.isParent) return remote ? LocationParent(dir_) : PathParent(dir_);
-        if (it.e.IsDir()) return remote ? LocationCombine(dir_, it.e.name) : PathCombine(dir_, RelName(it));
+        if (it.isParent || it.e.IsDir()) {
+            std::wstring sub = it.isParent ? (remote ? LocationParent(dir_) : PathParent(dir_))
+                                           : (remote ? LocationCombine(dir_, it.e.name) : PathCombine(dir_, RelName(it)));
+            bool report = view_ == PaneView::Details || view_ == PaneView::Recursive;
+            bool listLike = report || view_ == PaneView::List;
+            int col = ht.iSubItem;
+            bool nameCol = !report || (col >= 0 && col < (int)colIds_.size() && colIds_[col] == ColName);
+            if (!nameCol) {
+                // andere Spalte: Verzeichnis der Liste
+            } else if (!listLike) {
+                info.dir = sub;
+                hilite = i;
+            } else {
+                // Ende des tatsächlichen Namens: Beschriftung beginnt bei LVIR_LABEL, Text mit kleinem Rand
+                RECT lr{};
+                ListView_GetItemRect(list_, i, &lr, LVIR_LABEL);
+                std::wstring shown = it.isParent ? L".." : it.e.name;
+                int textRight = lr.left + ListView_GetStringWidth(list_, shown.c_str()) + ToPx(8);
+                if (ht.pt.x <= std::min<int>(textRight, lr.right)) {
+                    info.dir = sub;
+                    hilite = i;
+                } else {
+                    info.alt = sub;   // Leerraum hinter dem Namen
+                }
+            }
+        }
     }
-    return dir_;
+    if (hilite != dropHilite_) {
+        ClearDropHighlight();
+        if (hilite >= 0) {
+            dropHilite_ = hilite;   // Darstellung über LVN_GETDISPINFO (Liste ohne eigene Daten)
+            ListView_RedrawItems(list_, hilite, hilite);
+            UpdateWindow(list_);
+        }
+    }
+    return info;
+}
+
+void FilePane::ClearDropHighlight() {
+    int old = dropHilite_;
+    dropHilite_ = -1;
+    if (old >= 0 && list_) {
+        ListView_RedrawItems(list_, old, old);
+        UpdateWindow(list_);
+    }
 }
 
 // ===================== Schnellansicht =====================

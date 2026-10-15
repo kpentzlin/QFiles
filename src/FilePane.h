@@ -8,6 +8,7 @@
 //   Statuszeile
 
 #include "Drives.h"
+#include "ShellMenu.h"
 #include <windows.h>
 #include <commctrl.h>
 #include <atomic>
@@ -136,7 +137,9 @@ public:
     void SaveState(Config& c, const std::wstring& section) const;
 
     // Für DragDrop: Zielverzeichnis an einem Bildschirmpunkt (Ordner unter dem Mauszeiger oder aktuelles Verzeichnis)
-    std::wstring DropTargetDirAt(POINT screenPt) const;
+    DropTargetInfo DropTargetAt(POINT screenPt);   // Ablageziel (mit Hervorhebung des Unterverzeichnisses)
+    void ClearDropHighlight();
+    int dropHilite_ = -1;
 
 private:
     struct Item {
