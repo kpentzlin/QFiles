@@ -1070,12 +1070,16 @@ public:
         if (leave_) leave_();
         std::wstring target = info.dir;
         if (eff != DROPEFFECT_NONE && !info.alt.empty()) {
-            // Leerraum hinter dem Namen eines Unterverzeichnisses: nachfragen, sofern beide Ziele möglich sind
+            // Leerraum hinter dem Namen eines Unterverzeichnisses: nachfragen – auch wenn die Dateien schon im
+            // Listenverzeichnis liegen (dann bewirkt „Listenverzeichnis“ nichts). Ohne Frage nur, wenn das
+            // Unterverzeichnis selbst nicht in Frage kommt (es ist unter den gezogenen Elementen).
             bool dirOk = ValidTarget(info.dir), altOk = ValidTarget(info.alt);
-            if (dirOk && altOk)
+            if (altOk) {
                 target = AskTarget(info.dir, info.alt, eff);
-            else
-                target = altOk ? info.alt : (dirOk ? info.dir : L"");
+                if (target == info.dir && !dirOk) target.clear();   // schon dort: nichts zu tun
+            } else {
+                target = dirOk ? info.dir : L"";
+            }
         }
         if (eff == DROPEFFECT_NONE || target.empty() || files_.empty()) {
             *effect = DROPEFFECT_NONE;

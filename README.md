@@ -205,7 +205,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   Verschieben. Ziel in einer Liste: In den Ansichten Details und „Mit Unterverzeichnissen“ legt das Loslassen in einer
   anderen Spalte als „Name“ immer im Verzeichnis der Liste ab. In der Spalte „Name“ (auch in der Ansicht Liste) einer
   Verzeichniszeile gilt: auf dem Namen selbst (Symbol und Text, beim Ziehen hervorgehoben) ins Unterverzeichnis; im
-  Leerraum hinter dem Namen fragt QFiles, ob das Listenverzeichnis oder das Unterverzeichnis gemeint ist (mit Abbruch).
+  Leerraum hinter dem Namen fragt QFiles, ob das Listenverzeichnis oder das Unterverzeichnis gemeint ist (mit Abbruch) –
+  auch wenn die Dateien schon im Listenverzeichnis liegen.
 - Zwischenablage: Ausschneiden, Kopieren, Einfügen, kompatibel mit dem Explorer. Ausgeschnittene Dateien erscheinen
   in mittelgrauer Schrift (und mit blassem Symbol), solange „Einfügen“ sie verschieben würde – also bis sie eingefügt
   sind oder etwas anderes in die Zwischenablage kommt (auch aus dem Explorer).

@@ -520,15 +520,32 @@ Check-Alive "Ziehen 2"
 [W]::Drag($sr.L + 40, $srcY, $dr.L + $nameW + 25, $rowY); Start-Sleep -Seconds 3
 Check-Alive "Ziehen 3"
 Shot "screenshot23.png"
+# 4) innerhalb der Zielliste: q3 (liegt schon im Listenverzeichnis) in den Leerraum hinter „Unterordner“ -> ebenfalls
+#    Abfrage; „Abbrechen“ lässt q3 an seinem Platz (Zeilen: .., Unterordner, q2.txt, q3.txt)
+$q3Y = $dr.T + 24 + 3 * 20 + 10
+[W]::Click($dr.L + 40, $q3Y, $false); Start-Sleep -Milliseconds 400
+[W]::Drag($dr.L + 40, $q3Y, $dr.L + $nameW - 12, $rowY); Start-Sleep -Seconds 2
+$ask2 = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $ask2 -eq [IntPtr]::Zero; $t++) {
+  $ask2 = [W]::FindWindow("#32770", "Verschieben")
+  if ($ask2 -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 }
+}
+$askSame = $ask2 -ne [IntPtr]::Zero
+if ($askSame) {
+  [W]::SendMessage([W]::GetDlgItem($ask2, 2), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # BM_CLICK „Abbrechen“
+  Start-Sleep -Seconds 2
+}
+Check-Alive "Ziehen 4"
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $d1 = Test-Path "$dragBase\Ziel\Unterordner\q1.txt"
 $d2 = (Test-Path "$dragBase\Ziel\q2.txt") -and $askSeen
 $d3 = (Test-Path "$dragBase\Ziel\q3.txt") -and -not (Test-Path "$dragBase\Ziel\Unterordner\q3.txt")
-$dragInfo = "Name -> Unterverzeichnis: $d1; Leerraum -> Abfrage/Listenverzeichnis: $d2; Spalte Typ -> Listenverzeichnis: $d3"
+$d4 = $askSame -and (Test-Path "$dragBase\Ziel\q3.txt")
+$dragInfo = "Name -> Unterverzeichnis: $d1; Leerraum -> Abfrage/Listenverzeichnis: $d2; Spalte Typ -> Listenverzeichnis: $d3; gleiche Liste -> Abfrage: $d4"
 $left = (Get-ChildItem "$dragBase" -Recurse -File | ForEach-Object { $_.FullName.Substring($dragBase.Length) }) -join ', '
-if ($d1 -and $d2 -and $d3) { Write-Output "::notice title=Ziehen in Liste::$dragInfo" }
+if ($d1 -and $d2 -and $d3 -and $d4) { Write-Output "::notice title=Ziehen in Liste::$dragInfo" }
 else {
   Write-Output "::error title=Ziehen in Liste::$dragInfo (Dateien: $left)"
   "Ablageziel beim Ziehen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
