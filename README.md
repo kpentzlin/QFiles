@@ -202,7 +202,10 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   mit gedrückter **Umschalt- oder Strg-Taste** wird kopiert. Ist das Ziel ein FTP/SFTP/WebDAV-Verzeichnis, wird erst
   nachgefragt (OK = verschieben, **Kopieren** = nur hochladen, Abbrechen). Auf Baum und Lesezeichen gilt die
   Explorer-Regel (gleiches Laufwerk verschieben, sonst kopieren). Die rechte Maustaste fragt nach Kopieren oder
-  Verschieben.
+  Verschieben. Ziel in einer Liste: In den Ansichten Details und „Mit Unterverzeichnissen“ legt das Loslassen in einer
+  anderen Spalte als „Name“ immer im Verzeichnis der Liste ab. In der Spalte „Name“ (auch in der Ansicht Liste) einer
+  Verzeichniszeile gilt: auf dem Namen selbst (Symbol und Text, beim Ziehen hervorgehoben) ins Unterverzeichnis; im
+  Leerraum hinter dem Namen fragt QFiles, ob das Listenverzeichnis oder das Unterverzeichnis gemeint ist (mit Abbruch).
 - Zwischenablage: Ausschneiden, Kopieren, Einfügen, kompatibel mit dem Explorer. Ausgeschnittene Dateien erscheinen
   in mittelgrauer Schrift (und mit blassem Symbol), solange „Einfügen“ sie verschieben würde – also bis sie eingefügt
   sind oder etwas anderes in die Zwischenablage kommt (auch aus dem Explorer).
