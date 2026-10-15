@@ -1,0 +1,141 @@
+--- Kontextmenü ---
+Anzeigen
+Bearbeiten
+Kopieren in andere Liste
+Verschieben in andere Liste
+Duplizieren…
+Umbenennen…
+Attribute/Datum ändern…
+ZIP-Archiv erstellen…
+----
+Open
+Print
+Edit
+Add to Favorites
+7-Zip
+Open with...
+QFiles-Testeintrag B
+Copy as path
+Share
+Restore previous versions
+----
+Send to
+----
+Cut
+Copy
+----
+Create shortcut
+Delete
+Rename
+----
+Properties
+Ausgeschlossen: QFilesTestA {6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001} „QFiles Testerweiterung QFilesTestA“ – C:\QFilesTest\ArchiCrypt Testerweiterung\QFilesTestExt.dll
+--- Kontextmenü ---
+Neues Verzeichnis…
+Neue Datei…
+Neue Textdatei…
+Aktualisieren
+Den Lesezeichen hinzufügen
+----
+Open in Terminal
+Open with Visual Studio
+QFiles-Testeintrag B
+----
+Give access to
+----
+New
+----
+Properties
+Ausgeschlossen: QFilesTestA {6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001} „QFiles Testerweiterung QFilesTestA“ – C:\QFilesTest\ArchiCrypt Testerweiterung\QFilesTestExt.dll
+--- Kontextmenü ---
+Anzeigen
+Bearbeiten
+Kopieren in andere Liste
+Verschieben in andere Liste
+Duplizieren…
+Umbenennen…
+Attribute/Datum ändern…
+ZIP-Archiv erstellen…
+----
+Open
+Pin to Quick access
+Open in Terminal
+7-Zip
+QFiles-Testeintrag B
+Copy as path
+----
+Send to
+----
+Cut
+Copy
+----
+Create shortcut
+Delete
+Rename
+----
+Properties
+Ausgeschlossen: QFilesTestA {6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001} „QFiles Testerweiterung QFilesTestA“ – C:\QFilesTest\ArchiCrypt Testerweiterung\QFilesTestExt.dll
+--- Kontextmenü ---
+Kopieren in andere Liste
+Verschieben in andere Liste
+Duplizieren…
+Umbenennen…
+Attribute/Datum ändern…
+ZIP-Archiv erstellen…
+----
+Open
+Pin to Quick access
+Open in Terminal
+Open with Visual Studio
+7-Zip
+QFiles-Testeintrag B
+----
+Give access to
+Restore previous versions
+Include in library
+Pin to Start
+Copy as path
+----
+Send to
+----
+Cut
+Copy
+----
+Create shortcut
+Delete
+Rename
+----
+Properties
+Ausgeschlossen: QFilesTestA {6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001} „QFiles Testerweiterung QFilesTestA“ – C:\QFilesTest\ArchiCrypt Testerweiterung\QFilesTestExt.dll
+--- Kontextmenü ---
+Anzeigen
+Bearbeiten
+Kopieren in andere Liste
+Verschieben in andere Liste
+Duplizieren…
+Umbenennen…
+Attribute/Datum ändern…
+ZIP-Archiv erstellen…
+----
+Open
+Print
+Edit
+Add to Favorites
+7-Zip
+Open with...
+QFiles-Testeintrag B
+Copy as path
+Share
+Restore previous versions
+----
+Send to
+----
+Cut
+Copy
+----
+Create shortcut
+Delete
+Rename
+----
+Properties
+Ausgeschlossen: QFilesTestA {6E3A0C41-8F0B-4C55-9C1D-51A1E5F0A001} „QFiles Testerweiterung QFilesTestA“ – C:\QFilesTest\ArchiCrypt Testerweiterung\QFilesTestExt.dll

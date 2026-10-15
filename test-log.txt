@@ -1,0 +1,35 @@
+Testverzeichnis: C:\Users\RUNNER~1\AppData\Local\Temp\QFilesTest ✓ 270984
+Einstellungsdatei (Standard): C:\ProgramData\QFiles\QFiles.ini
+FEHLER: Ein Dateiname darf keines der folgenden Zeichen enthalten:
+\ / : * ? " < > |
+Archiv-Fehlermeldung: Das Format wird nicht unterstützt oder die Datei ist beschädigt.
+
+tar.exe: Error opening archive: Unrecognized archive format
+RAR über Pfad
+RAR-Einträge: Alt; Bilder; Quellen; Quellen\Unter; liesmich.txt; Grüße €.txt; Quellen\main.cpp; Quellen\Unter\tief ?.txt; Bilder\leer.txt; Alt\BEIN08.TXT; 
+RAR über Standardeingabe
+RAR-Einträge: Alt; Bilder; Quellen; Quellen\Unter; liesmich.txt; Grüße €.txt; Quellen\main.cpp; Quellen\Unter\tief ?.txt; Bilder\leer.txt; Alt\BEIN08.TXT; 
+Laufwerke: C: – Lokales Laufwerk – Windows | D: – Lokales Laufwerk – Temporary Storage | 
+subst: Q: – subst-Laufwerk → C:\Users\RUNNER~1\AppData\Local\Temp\QFilesTest ✓ 270984 – Windows
+Server-Test: ftp://test@127.0.0.1:2121/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: dav://test@127.0.0.1:8090/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: dav://test@127.0.0.1:8091/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: ftp://demo@test.rebex.net/ (lesend)
+  Startverzeichnis: /
+  2 Einträge in /
+  heruntergeladen: readme.txt (379 Bytes)
+Server-Test: sftp://demo@test.rebex.net/ (lesend)
+  Hostschlüssel test.rebex.net:22: ecdsa-sha2-nistp256 SHA256:OzvpQxRUzSfV9F/ECMXbQ7B7zbK0aTngrhFCBUno65c
+  Startverzeichnis: /
+  2 Einträge in /
+  heruntergeladen: readme.txt (379 Bytes)
+Bestanden: 268, fehlgeschlagen: 0

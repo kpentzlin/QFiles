@@ -1,0 +1,5 @@
+a-Projekt.zip | Archiv | 1 Verz. | 6 Dateien | Datum bei 7 von 7
+b-Quellen.tar.gz | Archiv | 0 Verz. | 6 Dateien | Datum bei 6 von 6
+c-geheim.zip | Archivfehler | „c-geheim.zip“ ist kennwortgeschützt. /  / Der Inhalt kann ohne Kennwort nicht angezeigt werden.
+d-kaputt.zip | Archivfehler | „d-kaputt.zip“ kann nicht angezeigt werden. /  / Das Format wird nicht unterstützt oder die Datei ist beschädigt. /  / tar.exe: Error opening archive: Unrecognized archive format
+e-Projekt.rar | Archiv | 4 Verz. | 6 Dateien | Datum bei 10 von 10
