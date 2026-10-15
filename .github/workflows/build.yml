@@ -32,6 +32,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Bauen
+        id: build
         run: |
           cmake --build build --config Release --parallel 2>&1 | Tee-Object -FilePath build-log.txt
           if ($LASTEXITCODE -ne 0) { exit 1 }
@@ -86,7 +87,9 @@ jobs:
             }
           }
 
+      # Das Programm steht auch dann zum Herunterladen bereit, wenn ein Test fehlschlägt (der Lauf bleibt rot)
       - name: Paket erstellen
+        if: always() && steps.build.outcome == 'success'
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item build\Release\QFiles.exe dist\
@@ -94,6 +97,7 @@ jobs:
           Compress-Archive -Path dist\* -DestinationPath QFiles-x64.zip -Force
 
       - uses: actions/upload-artifact@v4
+        if: always() && steps.build.outcome == 'success'
         with:
           name: QFiles-x64
           path: |

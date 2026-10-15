@@ -222,15 +222,21 @@ $env:QFILES_TEST_SHELLFAULT = "1"
 $log = "C:\ProgramData\QFiles\QFiles-Kontextmenue.txt"
 Remove-Item $log -ErrorAction SilentlyContinue
 $script:p = Start-Process -FilePath $Exe -ArgumentList '"C:\QFilesDemo"','"C:\Windows"' -PassThru
-Start-Sleep -Seconds 6
+Start-Sleep -Seconds 8
 Check-Alive "Start (Fehlersimulation)"
-[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
-[W]::Click($x, $y, $false); Start-Sleep -Milliseconds 500
-[W]::Click($x, $y, $true); Start-Sleep -Seconds 2
-[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 2
-Shot "screenshot5.png"
-Check-Alive "Fehlersimulation"
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Milliseconds 800
+# Rechtsklick auf die Datei öffnet das Kontextmenü (mit der simulierten Ausnahme). Der Rechner ist mitunter noch mit dem
+# Start beschäftigt – bis zu drei Versuche, bis das Protokoll geschrieben ist.
+for ($try = 1; $try -le 3 -and -not (Test-Path $log); $try++) {
+  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+  Start-Sleep -Milliseconds 500
+  [W]::Click($x, $y, $false); Start-Sleep -Milliseconds 700
+  [W]::Click($x, $y, $true); Start-Sleep -Seconds 3
+  [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 2
+  if ($try -eq 1) { Shot "screenshot5.png" }
+  Check-Alive "Fehlersimulation"
+  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 1
+  if (-not (Test-Path $log)) { Write-Output "Fehlersimulation: Versuch $try ohne Protokoll" }
+}
 if (-not (Test-Path $log)) { "Protokoll $log wurde nicht geschrieben" | Tee-Object -FilePath smoke-log.txt; exit 1 }
 Copy-Item $log .\kontextmenue-log.txt
 Get-Content $log
