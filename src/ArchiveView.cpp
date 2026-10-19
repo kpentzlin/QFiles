@@ -433,8 +433,8 @@ void ContextMenu(State& s, POINT pt) {
 void CreateListFont(State& s) {
     const Options& o = App::Opt();
     int h = -MulDiv(o.listFontSize, (int)GetWindowDpi(s.hwnd), 72);
-    HFONT f = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                          CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.listFontName.c_str());
+    HFONT f = CreateFontW(h, 0, 0, 0, o.listFontWeight, o.listFontItalic, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                          CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.listFontName.c_str());
     SendMessageW(s.list, WM_SETFONT, (WPARAM)f, TRUE);
     if (s.listFont) DeleteObject(s.listFont);
     s.listFont = f;

@@ -797,7 +797,8 @@ void EditorWindow::ApplyFont() {
     const Options& o = App::Opt();
     int size = o.editorFontSize > 0 ? o.editorFontSize : 10;
     std::wstring name = o.editorFontName.empty() ? std::wstring(L"Consolas") : o.editorFontName;
-    HFONT f = CreateFontW(-MulDiv(size, (int)dpi_, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    HFONT f = CreateFontW(-MulDiv(size, (int)dpi_, 72), 0, 0, 0, o.editorFontWeight, o.editorFontItalic, FALSE, FALSE,
+                          DEFAULT_CHARSET,
                           OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
                           name.c_str());
     if (!f) return;
@@ -1334,7 +1335,8 @@ void EditorWindow::Print() {
 
     std::wstring face = o.editorFontName.empty() ? std::wstring(L"Consolas") : o.editorFontName;
     int pt = o.editorFontSize > 0 ? o.editorFontSize : 10;
-    HFONT body = CreateFontW(-MulDiv(pt, dpiY, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+    HFONT body = CreateFontW(-MulDiv(pt, dpiY, 72), 0, 0, 0, o.editorFontWeight, o.editorFontItalic, FALSE, FALSE,
+                             DEFAULT_CHARSET,
                              OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, face.c_str());
     HFONT head = CreateFontW(-MulDiv(pt, dpiY, 72), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                              OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, face.c_str());
@@ -1762,7 +1764,8 @@ void EditorWindow::OnCommand(int id) {
         HDC dc = GetDC(nullptr);
         lf.lfHeight = -MulDiv(o.editorFontSize > 0 ? o.editorFontSize : 10, GetDeviceCaps(dc, LOGPIXELSY), 72);
         ReleaseDC(nullptr, dc);
-        lf.lfWeight = FW_NORMAL;
+        lf.lfWeight = o.editorFontWeight;
+        lf.lfItalic = o.editorFontItalic;
         lf.lfCharSet = DEFAULT_CHARSET;
         lstrcpynW(lf.lfFaceName, o.editorFontName.c_str(), LF_FACESIZE);
         CHOOSEFONTW cf{};
@@ -1773,6 +1776,8 @@ void EditorWindow::OnCommand(int id) {
         if (ChooseFontW(&cf)) {
             App::Opt().editorFontName = lf.lfFaceName;
             App::Opt().editorFontSize = std::max(1, (cf.iPointSize + 5) / 10);
+            App::Opt().editorFontWeight = lf.lfWeight > 0 ? lf.lfWeight : FW_NORMAL;
+            App::Opt().editorFontItalic = lf.lfItalic != 0;
             for (auto* e : g_editors) e->ApplyFont(); // Einstellung gilt für alle Editorfenster
             UpdateStatus();
         }

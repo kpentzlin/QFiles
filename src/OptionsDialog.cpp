@@ -188,7 +188,13 @@ int PageOfId(int id) {
     return (id - 1000) / 100;
 }
 
-std::wstring FontText(const std::wstring& name, int size) { return name + L", " + std::to_wstring(size) + L" pt"; }
+std::wstring FontText(const std::wstring& name, int size, int weight = FW_NORMAL, bool italic = false) {
+    std::wstring t = name + L", " + std::to_wstring(size) + L" pt";
+    if (weight >= FW_SEMIBOLD) t += L", fett";
+    else if (weight > 0 && weight <= FW_LIGHT) t += L", leicht";
+    if (italic) t += L", kursiv";
+    return t;
+}
 
 class OptionsDlg : public DialogBase {
 public:
@@ -223,10 +229,14 @@ protected:
         InitSpin(kThumbSpin, kThumbEdit, 32, 256, opt.thumbnailSize);
         listFont_ = opt.listFontName;
         listSize_ = opt.listFontSize;
-        SetText(kListFontText, FontText(listFont_, listSize_));
+        listWeight_ = opt.listFontWeight;
+        listItalic_ = opt.listFontItalic;
+        SetText(kListFontText, FontText(listFont_, listSize_, listWeight_, listItalic_));
         SetCheck(kDirSizes, opt.showDirSizes);
         bmFont_ = opt.bookmarkFontName;
         bmSize_ = opt.bookmarkFontSize;
+        bmWeight_ = opt.bookmarkFontWeight;
+        bmItalic_ = opt.bookmarkFontItalic;
         UpdateBookmarkFontText();
         // Bedienung
         SetCheck(kConfirmDelete, opt.confirmDelete);
@@ -245,7 +255,9 @@ protected:
         // Editor
         edFont_ = opt.editorFontName;
         edSize_ = opt.editorFontSize;
-        SetText(kEdFontText, FontText(edFont_, edSize_));
+        edWeight_ = opt.editorFontWeight;
+        edItalic_ = opt.editorFontItalic;
+        SetText(kEdFontText, FontText(edFont_, edSize_, edWeight_, edItalic_));
         InitSpin(kTabSpin, kTabEdit, 1, 16, opt.editorTabWidth);
         SetCheck(kWordWrap, opt.editorWordWrap);
         for (int e = 0; e <= (int)TextEncoding::Oem; ++e) {
@@ -271,14 +283,19 @@ protected:
     BOOL OnCommand(int id, int code, HWND ctl) override {
         switch (id) {
         case kListFontBtn:
-            if (ChooseFontFor(listFont_, listSize_)) SetText(kListFontText, FontText(listFont_, listSize_));
+            if (ChooseFontFor(listFont_, listSize_, listWeight_, listItalic_))
+                SetText(kListFontText, FontText(listFont_, listSize_, listWeight_, listItalic_));
             return TRUE;
         case kBmFontBtn: {
             std::wstring name = bmFont_.empty() ? L"Segoe UI" : bmFont_;
             int size = bmSize_ > 0 ? bmSize_ : 9;
-            if (ChooseFontFor(name, size)) {
+            int weight = bmFont_.empty() ? FW_NORMAL : bmWeight_;
+            bool italic = !bmFont_.empty() && bmItalic_;
+            if (ChooseFontFor(name, size, weight, italic)) {
                 bmFont_ = name;
                 bmSize_ = size;
+                bmWeight_ = weight;
+                bmItalic_ = italic;
                 UpdateBookmarkFontText();
             }
             return TRUE;
@@ -286,10 +303,13 @@ protected:
         case kBmFontDefault:
             bmFont_.clear();
             bmSize_ = 9;
+            bmWeight_ = FW_NORMAL;
+            bmItalic_ = false;
             UpdateBookmarkFontText();
             return TRUE;
         case kEdFontBtn:
-            if (ChooseFontFor(edFont_, edSize_)) SetText(kEdFontText, FontText(edFont_, edSize_));
+            if (ChooseFontFor(edFont_, edSize_, edWeight_, edItalic_))
+                SetText(kEdFontText, FontText(edFont_, edSize_, edWeight_, edItalic_));
             return TRUE;
         case kExtEditorBtn: BrowseProgram(kExtEditor, L"Externen Editor auswählen"); return TRUE;
         case kExtViewerBtn: BrowseProgram(kExtViewer, L"Externe Anzeige auswählen"); return TRUE;
@@ -375,15 +395,18 @@ private:
     }
 
     void UpdateBookmarkFontText() {
-        SetText(kBmFontText, bmFont_.empty() ? std::wstring(L"Oberflächenschrift (Standard)") : FontText(bmFont_, bmSize_));
+        SetText(kBmFontText, bmFont_.empty() ? std::wstring(L"Oberflächenschrift (Standard)")
+                                             : FontText(bmFont_, bmSize_, bmWeight_, bmItalic_));
     }
 
-    bool ChooseFontFor(std::wstring& name, int& size) {
+    // Schriftdialog; übernimmt Name, Größe, Stärke (fett) und Kursiv
+    bool ChooseFontFor(std::wstring& name, int& size, int& weight, bool& italic) {
         LOGFONTW lf{};
         HDC dc = GetDC(hwnd_);
         lf.lfHeight = -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72);
         ReleaseDC(hwnd_, dc);
-        lf.lfWeight = FW_NORMAL;
+        lf.lfWeight = weight > 0 ? weight : FW_NORMAL;
+        lf.lfItalic = italic ? TRUE : FALSE;
         lf.lfCharSet = DEFAULT_CHARSET;
         for (size_t i = 0; i < name.size() && i + 1 < LF_FACESIZE; ++i) lf.lfFaceName[i] = name[i];
         CHOOSEFONTW cf{};
@@ -394,6 +417,8 @@ private:
         if (!ChooseFontW(&cf)) return false;
         name = lf.lfFaceName;
         size = std::max(1, (cf.iPointSize + 5) / 10);
+        weight = lf.lfWeight > 0 ? lf.lfWeight : FW_NORMAL;
+        italic = lf.lfItalic != 0;
         return true;
     }
 
@@ -420,9 +445,13 @@ private:
         opt.thumbnailSize = SpinValue(kThumbEdit, 32, 256, opt.thumbnailSize);
         opt.listFontName = listFont_;
         opt.listFontSize = listSize_;
+        opt.listFontWeight = listWeight_;
+        opt.listFontItalic = listItalic_;
         opt.showDirSizes = IsChecked(kDirSizes);
         opt.bookmarkFontName = bmFont_;
         opt.bookmarkFontSize = bmSize_;
+        opt.bookmarkFontWeight = bmWeight_;
+        opt.bookmarkFontItalic = bmItalic_;
 
         opt.confirmDelete = IsChecked(kConfirmDelete);
         opt.useRecycleBin = IsChecked(kRecycle);
@@ -442,6 +471,8 @@ private:
 
         opt.editorFontName = edFont_;
         opt.editorFontSize = edSize_;
+        opt.editorFontWeight = edWeight_;
+        opt.editorFontItalic = edItalic_;
         opt.editorTabWidth = SpinValue(kTabEdit, 1, 16, opt.editorTabWidth);
         opt.editorWordWrap = IsChecked(kWordWrap);
         int enc = ComboSel(kEncCombo);
@@ -459,6 +490,8 @@ private:
     std::vector<std::pair<HWND, std::wstring>> mnemonicTexts_;   // Steuerelemente mit Zugriffstaste
     std::wstring listFont_, edFont_, bmFont_;
     int listSize_ = 9, edSize_ = 10, bmSize_ = 9;
+    int listWeight_ = FW_NORMAL, edWeight_ = FW_NORMAL, bmWeight_ = FW_NORMAL;
+    bool listItalic_ = false, edItalic_ = false, bmItalic_ = false;
 };
 
 } // namespace

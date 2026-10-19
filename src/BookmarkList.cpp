@@ -116,7 +116,8 @@ void BookmarkList::ApplyFont() {
     HFONT f = nullptr;
     if (!o.bookmarkFontName.empty()) {
         int h = -MulDiv(o.bookmarkFontSize > 0 ? o.bookmarkFontSize : 9, (int)GetWindowDpi(list_), 72);
-        f = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        f = CreateFontW(h, 0, 0, 0, o.bookmarkFontWeight, o.bookmarkFontItalic, FALSE, FALSE, DEFAULT_CHARSET,
+                        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.bookmarkFontName.c_str());
     }
     SendMessageW(list_, WM_SETFONT, (WPARAM)(f ? f : App::UIFont()), TRUE);

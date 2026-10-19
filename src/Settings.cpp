@@ -211,6 +211,8 @@ void Options::Load(const Config& c) {
     showDirSizes = c.GetBool(S, L"Verzeichnisgroessen", d.showDirSizes);
     bookmarkFontName = c.Get(S, L"LesezeichenSchrift", d.bookmarkFontName);
     bookmarkFontSize = c.GetInt(S, L"LesezeichenSchriftgroesse", d.bookmarkFontSize);
+    bookmarkFontWeight = c.GetInt(S, L"LesezeichenSchriftstaerke", d.bookmarkFontWeight);
+    bookmarkFontItalic = c.GetBool(S, L"LesezeichenSchriftKursiv", d.bookmarkFontItalic);
     sizeInBytes = c.GetBool(S, L"GroesseInBytes", d.sizeInBytes);
     fullRowSelect = c.GetBool(S, L"GanzeZeileMarkieren", d.fullRowSelect);
     showExtensionsColumn = c.GetBool(S, L"SpalteTyp", d.showExtensionsColumn);
@@ -220,6 +222,8 @@ void Options::Load(const Config& c) {
     thumbnailSize = c.GetInt(S, L"Miniaturgroesse", d.thumbnailSize);
     listFontName = c.Get(S, L"ListenSchrift", d.listFontName);
     listFontSize = c.GetInt(S, L"ListenSchriftgroesse", d.listFontSize);
+    listFontWeight = c.GetInt(S, L"ListenSchriftstaerke", d.listFontWeight);
+    listFontItalic = c.GetBool(S, L"ListenSchriftKursiv", d.listFontItalic);
     confirmDelete = c.GetBool(S, L"LoeschenBestaetigen", d.confirmDelete);
     useRecycleBin = c.GetBool(S, L"Papierkorb", d.useRecycleBin);
     confirmOverwrite = c.GetBool(S, L"UeberschreibenBestaetigen", d.confirmOverwrite);
@@ -231,6 +235,8 @@ void Options::Load(const Config& c) {
     textExtensions = c.Get(S, L"Textdateien", d.textExtensions);
     editorFontName = c.Get(S, L"EditorSchrift", d.editorFontName);
     editorFontSize = c.GetInt(S, L"EditorSchriftgroesse", d.editorFontSize);
+    editorFontWeight = c.GetInt(S, L"EditorSchriftstaerke", d.editorFontWeight);
+    editorFontItalic = c.GetBool(S, L"EditorSchriftKursiv", d.editorFontItalic);
     editorTabWidth = c.GetInt(S, L"EditorTabweite", d.editorTabWidth);
     editorWordWrap = c.GetBool(S, L"EditorZeilenumbruch", d.editorWordWrap);
     newFileEncoding = (TextEncoding)c.GetInt(S, L"NeueDateiKodierung", (int)d.newFileEncoding);
@@ -262,6 +268,8 @@ void Options::Save(Config& c) const {
     c.SetBool(S, L"Verzeichnisgroessen", showDirSizes);
     c.Set(S, L"LesezeichenSchrift", bookmarkFontName);
     c.SetInt(S, L"LesezeichenSchriftgroesse", bookmarkFontSize);
+    c.SetInt(S, L"LesezeichenSchriftstaerke", bookmarkFontWeight);
+    c.SetBool(S, L"LesezeichenSchriftKursiv", bookmarkFontItalic);
     c.SetBool(S, L"GroesseInBytes", sizeInBytes);
     c.SetBool(S, L"GanzeZeileMarkieren", fullRowSelect);
     c.SetBool(S, L"SpalteTyp", showExtensionsColumn);
@@ -271,6 +279,8 @@ void Options::Save(Config& c) const {
     c.SetInt(S, L"Miniaturgroesse", thumbnailSize);
     c.Set(S, L"ListenSchrift", listFontName);
     c.SetInt(S, L"ListenSchriftgroesse", listFontSize);
+    c.SetInt(S, L"ListenSchriftstaerke", listFontWeight);
+    c.SetBool(S, L"ListenSchriftKursiv", listFontItalic);
     c.SetBool(S, L"LoeschenBestaetigen", confirmDelete);
     c.SetBool(S, L"Papierkorb", useRecycleBin);
     c.SetBool(S, L"UeberschreibenBestaetigen", confirmOverwrite);
@@ -282,6 +292,8 @@ void Options::Save(Config& c) const {
     c.Set(S, L"Textdateien", textExtensions);
     c.Set(S, L"EditorSchrift", editorFontName);
     c.SetInt(S, L"EditorSchriftgroesse", editorFontSize);
+    c.SetInt(S, L"EditorSchriftstaerke", editorFontWeight);
+    c.SetBool(S, L"EditorSchriftKursiv", editorFontItalic);
     c.SetInt(S, L"EditorTabweite", editorTabWidth);
     c.SetBool(S, L"EditorZeilenumbruch", editorWordWrap);
     c.SetInt(S, L"NeueDateiKodierung", (int)newFileEncoding);

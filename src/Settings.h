@@ -61,6 +61,8 @@ struct Options {
     bool showDirSizes = false;          // Verzeichnisgrößen in den Listen automatisch berechnen und anzeigen
     std::wstring bookmarkFontName;      // Schrift der Lesezeichenliste (leer = Oberflächenschrift)
     int bookmarkFontSize = 9;           // Punkt
+    int bookmarkFontWeight = FW_NORMAL; // Schriftstärke (FW_BOLD = fett)
+    bool bookmarkFontItalic = false;
     bool sizeInBytes = false;          // Größe immer in Bytes statt automatischer Einheit
     bool fullRowSelect = true;
     bool showExtensionsColumn = true;
@@ -70,6 +72,8 @@ struct Options {
     int thumbnailSize = 96;            // Pixel
     std::wstring listFontName = L"Segoe UI";
     int listFontSize = 9;              // Punkt
+    int listFontWeight = FW_NORMAL;
+    bool listFontItalic = false;
     // Bedienung
     bool confirmDelete = true;
     bool useRecycleBin = true;
@@ -83,6 +87,8 @@ struct Options {
     // Editor
     std::wstring editorFontName = L"Consolas";
     int editorFontSize = 10;
+    int editorFontWeight = FW_NORMAL;
+    bool editorFontItalic = false;
     int editorTabWidth = 4;
     bool editorWordWrap = false;
     TextEncoding newFileEncoding = TextEncoding::Utf8;   // leere/neue Dateien: UTF-8 ohne BOM

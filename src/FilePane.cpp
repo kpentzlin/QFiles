@@ -219,8 +219,9 @@ void FilePane::Show(bool show) { ShowWindow(hwnd_, show ? SW_SHOW : SW_HIDE); }
 void FilePane::CreateListFont() {
     const Options& o = App::Opt();
     int h = -MulDiv(o.listFontSize, (int)GetWindowDpi(hwnd_), 72);
-    HFONT font = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.listFontName.c_str());
+    HFONT font = CreateFontW(h, 0, 0, 0, o.listFontWeight, o.listFontItalic, FALSE, FALSE, DEFAULT_CHARSET,
+                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
+                             o.listFontName.c_str());
     // Erst die neue Schrift setzen, dann die alte freigeben (die Liste darf nie eine gelöschte Schrift halten)
     SendMessageW(list_, WM_SETFONT, (WPARAM)font, TRUE);
     if (listFont_) DeleteObject(listFont_);
