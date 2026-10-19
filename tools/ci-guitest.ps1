@@ -172,8 +172,8 @@ Shot "screenshot2.png"
 # Optionen: „Dateidatum sekundengenau“ (Alt+K) und „Spalte Erstellt“ (Alt+E) per Zugriffstaste einschalten,
 # mit OK speichern (prüft auch, dass die Zugriffstasten eindeutig sind und Kontrollkästchen umschalten)
 [W]::SetForegroundWindow($main) | Out-Null
-[System.Windows.Forms.SendKeys]::SendWait("%w"); Start-Sleep -Milliseconds 600
-[System.Windows.Forms.SendKeys]::SendWait("o"); Start-Sleep -Seconds 2
+# „Optionen“ steht direkt in der Menüleiste (Alt+O)
+[System.Windows.Forms.SendKeys]::SendWait("%o"); Start-Sleep -Seconds 2
 $dlg = [W]::FindWindow("#32770", "Optionen")
 if ($dlg -eq [IntPtr]::Zero) { "Optionen-Dialog nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1 }
 [W]::SetForegroundWindow($dlg) | Out-Null
