@@ -132,6 +132,11 @@ constexpr int kDisplayGroup1 = 1017;   // eigene IDs: 1015/1016 gehören den Kon
 constexpr int kDisplayGroup2 = 1018;
 constexpr int kGrayInactive = 1019;
 constexpr int kStriped = 1020;
+constexpr int kDirSizes = 1021;
+constexpr int kDisplayGroup3 = 1022;
+constexpr int kBmFontText = 1023;
+constexpr int kBmFontBtn = 1024;
+constexpr int kBmFontDefault = 1025;
 // ---- Seite 1: Bedienung ----
 constexpr int kConfirmDelete = 1101;
 constexpr int kRecycle = 1102;
@@ -219,6 +224,10 @@ protected:
         listFont_ = opt.listFontName;
         listSize_ = opt.listFontSize;
         SetText(kListFontText, FontText(listFont_, listSize_));
+        SetCheck(kDirSizes, opt.showDirSizes);
+        bmFont_ = opt.bookmarkFontName;
+        bmSize_ = opt.bookmarkFontSize;
+        UpdateBookmarkFontText();
         // Bedienung
         SetCheck(kConfirmDelete, opt.confirmDelete);
         SetCheck(kRecycle, opt.useRecycleBin);
@@ -263,6 +272,21 @@ protected:
         switch (id) {
         case kListFontBtn:
             if (ChooseFontFor(listFont_, listSize_)) SetText(kListFontText, FontText(listFont_, listSize_));
+            return TRUE;
+        case kBmFontBtn: {
+            std::wstring name = bmFont_.empty() ? L"Segoe UI" : bmFont_;
+            int size = bmSize_ > 0 ? bmSize_ : 9;
+            if (ChooseFontFor(name, size)) {
+                bmFont_ = name;
+                bmSize_ = size;
+                UpdateBookmarkFontText();
+            }
+            return TRUE;
+        }
+        case kBmFontDefault:
+            bmFont_.clear();
+            bmSize_ = 9;
+            UpdateBookmarkFontText();
             return TRUE;
         case kEdFontBtn:
             if (ChooseFontFor(edFont_, edSize_)) SetText(kEdFontText, FontText(edFont_, edSize_));
@@ -350,6 +374,10 @@ private:
             SetWindowTextW(c, PageOfId(GetDlgCtrlID(c)) == page ? text.c_str() : StripMnemonic(text).c_str());
     }
 
+    void UpdateBookmarkFontText() {
+        SetText(kBmFontText, bmFont_.empty() ? std::wstring(L"Oberflächenschrift (Standard)") : FontText(bmFont_, bmSize_));
+    }
+
     bool ChooseFontFor(std::wstring& name, int& size) {
         LOGFONTW lf{};
         HDC dc = GetDC(hwnd_);
@@ -392,6 +420,9 @@ private:
         opt.thumbnailSize = SpinValue(kThumbEdit, 32, 256, opt.thumbnailSize);
         opt.listFontName = listFont_;
         opt.listFontSize = listSize_;
+        opt.showDirSizes = IsChecked(kDirSizes);
+        opt.bookmarkFontName = bmFont_;
+        opt.bookmarkFontSize = bmSize_;
 
         opt.confirmDelete = IsChecked(kConfirmDelete);
         opt.useRecycleBin = IsChecked(kRecycle);
@@ -426,8 +457,8 @@ private:
 
     bool mnemonicsCollected_ = false;
     std::vector<std::pair<HWND, std::wstring>> mnemonicTexts_;   // Steuerelemente mit Zugriffstaste
-    std::wstring listFont_, edFont_;
-    int listSize_ = 9, edSize_ = 10;
+    std::wstring listFont_, edFont_, bmFont_;
+    int listSize_ = 9, edSize_ = 10, bmSize_ = 9;
 };
 
 } // namespace
@@ -452,14 +483,19 @@ bool ShowOptionsDialog(HWND owner) {
     t.Check(kColType, L"Spalte „&Typ“ anzeigen", px + 160, py + 38, 140, 10);
     t.Check(kColAttr, L"Spalte „&Attribute“ anzeigen", px + 160, py + 51, 140, 10);
     t.Check(kColCreated, L"Spalte „&Erstellt“ anzeigen", px + 160, py + 64, 150, 10);
-    t.Label(kThumbLabel, L"&Miniaturgröße (32–256 Pixel):", px + 4, py + 86, 110, 10);
-    t.Edit(kThumbEdit, px + 118, py + 84, 40, 13, ES_NUMBER);
+    t.Check(kDirSizes, L"Verzeich&nisgrößen anzeigen", px + 4, py + 77, 150, 10);
+    t.Label(kThumbLabel, L"&Miniaturgröße (32–256 Pixel):", px + 4, py + 91, 110, 10);
+    t.Edit(kThumbEdit, px + 118, py + 89, 40, 13, ES_NUMBER);
     t.UpDown(kThumbSpin, 0, 0, 10, 13);
     t.Check(kGrayInactive, L"Nicht aktive Listen gra&u hinterlegen", px + 160, py + 80, 150, 10);
     t.Check(kStriped, L"Listenanzeige gest&reift", px + 160, py + 92, 150, 10);
     t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 112, pw + 8, 34);
     t.Edit(kListFontText, px + 4, py + 126, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
     t.Button(kListFontBtn, L"Sc&hriftart …", px + 200, py + 125, 70, 14);
+    t.Group(kDisplayGroup3, L"Schrift der Lesezeichenliste", px - 4, py + 148, pw + 8, 34);
+    t.Edit(kBmFontText, px + 4, py + 162, 150, 13, ES_AUTOHSCROLL | ES_READONLY);
+    t.Button(kBmFontBtn, L"Schri&ft …", px + 160, py + 161, 70, 14);
+    t.Button(kBmFontDefault, L"Stan&dard", px + 234, py + 161, 50, 14);
 
     // ---- Bedienung ----
     t.Check(kConfirmDelete, L"&Löschen bestätigen", px, py, 150, 10);

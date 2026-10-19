@@ -71,7 +71,7 @@ die Dateianzeige zuerst (wie mit F11), und diese Liste wird sofort aktiv.
 | Office, HTML, RTF … | über die Windows-Vorschauhandler |
 | Verzeichnisse | Übersicht |
 
-Unter *Werkzeuge → Optionen → Dateianzeige* lässt sich stattdessen „in eigenem Fenster“ wählen.
+Unter *Optionen → Dateianzeige* lässt sich stattdessen „in eigenem Fenster“ wählen.
 
 **PDF** (über Windows.Data.Pdf von Windows 10/11): Eine einseitige PDF-Datei erscheint wie ein Bild. Hat sie mindestens
 4 Seiten und sind die ersten 4 im Hochformat, zeigt QFiles diese 4 Seiten in 2 Zeilen zu je 2 Seiten; ebenso bei
@@ -130,6 +130,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   (z. B. `N:  \\fritz.box\FRITZ.NAS\media1`), Wechseldatenträger mit ihrer Bezeichnung.
 - Lesezeichenliste daneben:
   - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen.
+  - Eigene Schrift einstellbar (*Optionen → Anzeige → Schrift der Lesezeichenliste*; „Standard“ = Oberflächenschrift).
   - Hintergrundfarben: Windows-Standardverzeichnisse (Desktop, Dokumente, Downloads, Bilder, Musik, Videos,
     Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, Cloud-Speicher (Dropbox, Google Drive,
     OneDrive) **hell-lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
@@ -165,14 +166,14 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   Umbenennen, Anzeigen und Bearbeiten wirken auf die Dateien in ihren Unterverzeichnissen. Für lokale Verzeichnisse
   und Netzwerkfreigaben; auf FTP/SFTP/WebDAV-Servern und in der Netzwerkübersicht zeigt sie den normalen Inhalt.
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
-  (beides unter *Werkzeuge → Optionen → Anzeige*).
+  (beides unter *Optionen → Anzeige*).
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
   wie im Explorer.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
 - Spalte „Typ“: Endung der Datei; bei Verzeichnissen bleibt sie leer.
-- Optional (*Werkzeuge → Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
+- Optional (*Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
   Listen mit hellgrauem Hintergrund wie Kopf- und Fußleiste.
-- Optional (*Werkzeuge → Optionen → Anzeige → „Listenanzeige gestreift“*) ist in der aktiven Liste jede zweite Zeile
+- Optional (*Optionen → Anzeige → „Listenanzeige gestreift“*) ist in der aktiven Liste jede zweite Zeile
   in diesem Hellgrau hinterlegt (Ansichten Details, Liste und Mit Unterverzeichnissen; in der Archivliste im
   abgetönten Gelb).
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
@@ -212,7 +213,10 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   sind oder etwas anderes in die Zwischenablage kommt (auch aus dem Explorer).
 - Explorer-Kontextmenü, „Öffnen mit“, Eigenschaften (Alt+Eingabe).
 - Attribute und Zeitstempel ändern, auch rekursiv. Das Datum lässt sich aus dem EXIF-Aufnahmedatum übernehmen.
-- Verzeichnisgrößen berechnen (Leertaste auf einem Verzeichnis oder Alt+Umschalt+Eingabe für alle).
+- Verzeichnisgrößen berechnen (Leertaste auf einem Verzeichnis oder Alt+Umschalt+Eingabe für alle). Mit der Option
+  **„Verzeichnisgrößen anzeigen“** (*Optionen → Anzeige* oder *Ansicht*) berechnen die Listen die Größen aller
+  Unterverzeichnisse automatisch im Hintergrund, sobald ein Verzeichnis angezeigt wird (nicht auf FTP/SFTP/WebDAV und
+  in der Netzwerkübersicht); beim Aktualisieren bleiben berechnete Größen erhalten.
 
 ### Netzwerk
 
@@ -404,7 +408,7 @@ Speicherort:
 
 Weitere Befehlszeilenargumente: `QFiles.exe [Verzeichnis Liste 1] [Verzeichnis Liste 2]`.
 
-**Exportieren / Importieren** (*Werkzeuge → Optionen*, Knöpfe unten links): Der Export schreibt alle Optionen, die
+**Exportieren / Importieren** (*Optionen*, Knöpfe unten links): Der Export schreibt alle Optionen, die
 Lesezeichen und die FTP/SFTP/WebDAV-Zugangsdaten **ohne Kennwörter** in eine INI-Datei (UTF-8). Beim Import werden die
 Optionen übernommen; für die Lesezeichen fragt QFiles, ob sie die bisherigen **ersetzen** (Ja), **ergänzen** (Nein,
 vorhandene Pfade werden übersprungen) oder nicht übernommen werden sollen (Abbrechen). Kennwörter sind mit der
@@ -471,7 +475,7 @@ Aufrufstapel mit der vermutlich verursachenden DLL. Die vollständigen Angaben w
 
 ### Kontextmenü-Erweiterungen ausschließen
 
-Unter *Werkzeuge → Optionen → Programme* („Kontextmenü-Erweiterungen nicht laden“, in der INI-Datei
+Unter *Optionen → Programme* („Kontextmenü-Erweiterungen nicht laden“, in der INI-Datei
 `[Optionen] KontextmenueAusschluss=`) stehen Muster, durch `;` getrennt. Kontextmenü- und Drag-&-Drop-Erweiterungen,
 deren Name, Beschreibung oder DLL-Pfad (in Langform, ohne Groß-/Kleinschreibung) eines der Muster enthält, lädt
 QFiles nicht; ihre Einträge fehlen im Kontextmenü von QFiles. Dazu registriert QFiles nur innerhalb des eigenen

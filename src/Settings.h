@@ -58,6 +58,9 @@ struct Options {
     bool showGridLines = false;
     bool grayInactive = false;          // nicht aktive Listen hellgrau hinterlegen
     bool striped = false;               // aktive Liste gestreift (jede zweite Zeile hellgrau)
+    bool showDirSizes = false;          // Verzeichnisgrößen in den Listen automatisch berechnen und anzeigen
+    std::wstring bookmarkFontName;      // Schrift der Lesezeichenliste (leer = Oberflächenschrift)
+    int bookmarkFontSize = 9;           // Punkt
     bool sizeInBytes = false;          // Größe immer in Bytes statt automatischer Einheit
     bool fullRowSelect = true;
     bool showExtensionsColumn = true;

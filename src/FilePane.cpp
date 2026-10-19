@@ -150,6 +150,7 @@ FilePane::~FilePane() {
 
 bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
     index_ = index;
+    dirSizesOpt_ = App::Opt().showDirSizes;
     host_ = host;
     static bool registered = false;
     if (!registered) {
@@ -367,6 +368,11 @@ void FilePane::ApplyOptions() {
     SetupColumns();
     ApplyViewStyle();
     if (!dir_.empty()) Reload();
+    // „Verzeichnisgrößen anzeigen“ ausgeschaltet: berechnete Größen ausblenden (eingeschaltet: Reload berechnet sie)
+    if (dirSizesOpt_ != App::Opt().showDirSizes) {
+        dirSizesOpt_ = App::Opt().showDirSizes;
+        if (!dirSizesOpt_) UpdateDirSizesOption();
+    }
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -1060,6 +1066,8 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         StartWatch();
         if (sizeCancel_) *sizeCancel_ = true;
     }
+    // Option „Verzeichnisgrößen anzeigen“: Größen der Unterverzeichnisse im Hintergrund berechnen
+    if (App::Opt().showDirSizes && !IsVirtual() && view_ != PaneView::Recursive) ComputeDirSizes(false);
     UpdateFreeSpace();
     UpdatePathCombo();
     UpdateStatus();
@@ -1140,6 +1148,8 @@ void FilePane::Reload() {
     if (recursive) StartTreeWalk();
     UpdateFreeSpace();
     UpdateStatus();
+    // Option „Verzeichnisgrößen anzeigen“: noch fehlende Größen berechnen (vorhandene bleiben beim Neueinlesen erhalten)
+    if (App::Opt().showDirSizes && !recursive) ComputeDirSizes(false, true);
     if (host_) host_->OnPaneFocusItemChanged(this);
 }
 
@@ -1854,10 +1864,27 @@ void FilePane::QuickViewLoad(const std::wstring& path) {
 
 // ===================== Verzeichnisgrößen =====================
 
-void FilePane::ComputeDirSizes(bool selectedOnly) {
+void FilePane::UpdateDirSizesOption() {
+    dirSizesOpt_ = App::Opt().showDirSizes;
+    if (App::Opt().showDirSizes) {
+        ComputeDirSizes(false, true);
+    } else {
+        // ausgeschaltet: laufende Berechnung abbrechen, Größen wieder ausblenden
+        if (sizeCancel_) *sizeCancel_ = true;
+        for (auto& it : items_) it.dirSize = UINT64_MAX;
+        if (statusText_ == L"Berechne Verzeichnisgrößen …") statusText_.clear();
+        RedrawList();
+        UpdateStatus();
+    }
+}
+
+void FilePane::ComputeDirSizes(bool selectedOnly, bool onlyMissing) {
     if (IsVirtual()) return;
     std::vector<std::wstring> names;
-    if (selectedOnly) {
+    if (onlyMissing) {
+        for (auto& it : items_)
+            if (!it.isParent && it.e.IsDir() && it.dirSize == UINT64_MAX) names.push_back(RelName(it));
+    } else if (selectedOnly) {
         for (auto& n : SelectedOrFocusedNames()) {
             int i = FindItem(n);
             if (i >= 0 && items_[i].e.IsDir()) names.push_back(n);

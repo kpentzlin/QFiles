@@ -121,7 +121,8 @@ public:
 
     // Aktionen
     void BeginRename();
-    void ComputeDirSizes(bool selectedOnly);
+    void ComputeDirSizes(bool selectedOnly, bool onlyMissing = false);
+    void UpdateDirSizesOption();   // Option „Verzeichnisgrößen anzeigen“ geändert
     void ToggleSelectFocused(bool moveDown);
     void FocusList();
     void FocusPath();
@@ -140,6 +141,7 @@ public:
     DropTargetInfo DropTargetAt(POINT screenPt);   // Ablageziel (mit Hervorhebung des Unterverzeichnisses)
     void ClearDropHighlight();
     int dropHilite_ = -1;
+    bool dirSizesOpt_ = false;   // zuletzt angewandter Stand der Option „Verzeichnisgrößen anzeigen“
 
 private:
     struct Item {

@@ -533,6 +533,7 @@ void MainWindow::BuildMenu() {
     AddItem(sort, cmd::SortDescending, L"&Absteigend");
     AppendMenuW(m, MF_POPUP, (UINT_PTR)sort, L"&Sortieren nach");
     AddItem(m, cmd::ShowHidden, L"&Versteckte Dateien anzeigen\tStrg+H");
+    AddItem(m, cmd::ShowDirSizes, L"Verzeichnis&größen anzeigen");
     AddItem(m, cmd::Filter, L"Datei&filter…\tStrg+Umschalt+F");
     AddSep(m);
     AddItem(m, cmd::ToggleToolbar, L"&Werkzeugleiste");
@@ -585,8 +586,9 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::CommandPrompt, L"&Eingabeaufforderung hier öffnen");
     AddSep(m);
     AddItem(m, cmd::FunctionKeys, L"&Funktionstasten belegen…");
-    AddItem(m, cmd::Options, L"&Optionen…");
     AppendMenuW(menu_, MF_POPUP, (UINT_PTR)m, L"&Werkzeuge");
+    // „Optionen“ direkt in der Menüleiste
+    AppendMenuW(menu_, MF_STRING, cmd::Options, L"&Optionen");
 
     // „Tastenkürzel“ direkt in der Menüleiste (F1)
     AppendMenuW(menu_, MF_STRING, cmd::Shortcuts, L"&Tastenkürzel");
@@ -631,6 +633,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     CheckMenuRadioItem(m, cmd::SortName, cmd::SortCreated, cmd::SortName + (int)a.Sort(), MF_BYCOMMAND);
     check(cmd::SortDescending, a.SortDescending());
     check(cmd::ShowHidden, App::Opt().showHidden);
+    check(cmd::ShowDirSizes, App::Opt().showDirSizes);
     check(cmd::Filter, a.Filter().IsActive());
     check(cmd::ToggleToolbar, showToolbar_);
     check(cmd::ToggleCommandLine, showCmdLine_);
@@ -1528,6 +1531,7 @@ PaneContext MainWindow::ActiveContext() const {
 void MainWindow::ApplyOptionsAll() {
     for (auto& p : panes_) p->ApplyOptions();
     tree_.ApplyOptions();
+    bookmarks_.ApplyFont();
     if (App::Opt().treeFollowsPane) tree_.SelectPath(Active().Dir());
 }
 
@@ -2057,7 +2061,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::CmdLineInsertName: case cmd::TwoPanes: case cmd::SplitToggle: case cmd::QuickView: case cmd::ViewDetails:
     case cmd::ViewList: case cmd::ViewIcons: case cmd::ViewThumbnails: case cmd::ViewRecursive: case cmd::SortName: case cmd::SortExt:
     case cmd::SortSize: case cmd::SortDate: case cmd::SortAttr: case cmd::SortCreated: case cmd::SortDescending:
-    case cmd::ShowHidden: case cmd::Filter: case cmd::Refresh: case cmd::ToggleToolbar: case cmd::ToggleFKeyBar:
+    case cmd::ShowHidden: case cmd::ShowDirSizes: case cmd::Filter: case cmd::Refresh: case cmd::ToggleToolbar: case cmd::ToggleFKeyBar:
     case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
     case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
@@ -2482,6 +2486,10 @@ void MainWindow::OnCommand(int id) {
         App::Opt().showHidden = !App::Opt().showHidden;
         App::Opt().showSystem = App::Opt().showHidden && App::Opt().showSystem;
         ApplyOptionsAll();
+        break;
+    case cmd::ShowDirSizes:
+        App::Opt().showDirSizes = !App::Opt().showDirSizes;
+        for (auto& p : panes_) p->UpdateDirSizesOption();
         break;
     case cmd::Filter: {
         PaneFilter f = a.Filter();

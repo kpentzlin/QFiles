@@ -32,6 +32,8 @@ public:
     void SortByCategory();
     LRESULT OnNotify(NMHDR* nm);
     void Resize();
+    // Schrift aus den Optionen (Lesezeichen-Schrift; leer = Oberflächenschrift), auch nach DPI-Wechsel
+    void ApplyFont();
 
 private:
     void Rebuild(int select);
@@ -40,6 +42,7 @@ private:
     static LRESULT CALLBACK Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR ref);
 
     HWND list_ = nullptr;
+    HFONT font_ = nullptr;
     Callbacks cb_;
     std::vector<Bookmark> items_;
     std::vector<int> kinds_;   // Art je Eintrag (lokal, Netzwerk, FTP/SFTP, Standardverzeichnis, WebDAV, Cloud) – Farbe/Sortierung

@@ -111,6 +111,7 @@ enum : int {
     CommandPrompt,
     FunctionKeys,
     Options,
+    ShowDirSizes,      // Ansicht: Verzeichnisgrößen anzeigen (Option)
 
     // Hilfe
     Shortcuts = 40600,

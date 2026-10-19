@@ -90,7 +90,7 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
     SHFILEINFOW sfi{};
     HIMAGELIST il = (HIMAGELIST)SHGetFileInfoW(L"C:\\", 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON);
     ListView_SetImageList(list_, il, LVSIL_SMALL);
-    SendMessageW(list_, WM_SETFONT, (WPARAM)App::UIFont(), TRUE);
+    ApplyFont();
     LVCOLUMNW c{};
     c.mask = LVCF_WIDTH;
     c.cx = 200;
@@ -108,6 +108,22 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
         },
         []() { App::RefreshPanes(); });
     return true;
+}
+
+void BookmarkList::ApplyFont() {
+    if (!list_) return;
+    const Options& o = App::Opt();
+    HFONT f = nullptr;
+    if (!o.bookmarkFontName.empty()) {
+        int h = -MulDiv(o.bookmarkFontSize > 0 ? o.bookmarkFontSize : 9, (int)GetWindowDpi(list_), 72);
+        f = CreateFontW(h, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, o.bookmarkFontName.c_str());
+    }
+    SendMessageW(list_, WM_SETFONT, (WPARAM)(f ? f : App::UIFont()), TRUE);
+    if (font_) DeleteObject(font_);
+    font_ = f;
+    // Zeilenhöhe neu berechnen lassen (die ListView übernimmt sie erst beim Neuaufbau der Einträge)
+    Rebuild(Selected());
 }
 
 void BookmarkList::Resize() {
