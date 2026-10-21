@@ -7,6 +7,7 @@
 #include "Util.h"
 
 #include <shellapi.h>
+#include <windowsx.h>
 #include <shlobj.h>
 #include <uxtheme.h>
 #include <algorithm>
@@ -94,7 +95,11 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
     LVCOLUMNW c{};
     c.mask = LVCF_WIDTH;
     c.cx = 200;
-    ListView_InsertColumn(list_, 0, &c);
+    ListView_InsertColumn(list_, 0, &c);   // Name (mit Symbol)
+    c.cx = IconColumnWidth();
+    ListView_InsertColumn(list_, 1, &c);   // schmale Symbolspalte: Klick öffnet in der anderen Liste
+    int order[2] = {1, 0};                 // Symbolspalte links anzeigen
+    ListView_SetColumnOrderArray(list_, 2, order);
     SetWindowSubclass(list_, Subclass, 1, (DWORD_PTR)this);
     RegisterFileDropTarget(
         list_,
@@ -127,10 +132,23 @@ void BookmarkList::ApplyFont() {
     Rebuild(Selected());
 }
 
+int BookmarkList::IconColumnWidth() const { return DpiScale(list_, 22); }
+
 void BookmarkList::Resize() {
     RECT rc;
     GetClientRect(list_, &rc);
-    ListView_SetColumnWidth(list_, 0, rc.right);
+    int iw = IconColumnWidth();
+    ListView_SetColumnWidth(list_, 1, iw);
+    ListView_SetColumnWidth(list_, 0, std::max<int>(0, rc.right - iw));
+}
+
+// Liegt der Punkt (Bildschirmkoordinaten) in der Symbolspalte? Liefert den Eintrag oder -1.
+int BookmarkList::IconColumnItemAt(POINT screenPt) const {
+    LVHITTESTINFO ht{};
+    ht.pt = screenPt;
+    ScreenToClient(list_, &ht.pt);
+    int i = ListView_SubItemHitTest(list_, &ht);
+    return (i >= 0 && i < (int)items_.size() && ht.iSubItem == 1) ? i : -1;
 }
 
 void BookmarkList::Set(const std::vector<Bookmark>& b) {
@@ -163,6 +181,14 @@ void BookmarkList::Rebuild(int select) {
         it.pszText = const_cast<wchar_t*>(items_[i].name.c_str());
         it.iImage = icon;
         ListView_InsertItem(list_, &it);
+    }
+    icons_.clear();
+    for (size_t i = 0; i < items_.size(); ++i) {
+        LVITEMW it{};
+        it.mask = LVIF_IMAGE;
+        it.iItem = (int)i;
+        ListView_GetItem(list_, &it);
+        icons_.push_back(it.iImage);
     }
     if (select >= 0 && select < (int)items_.size()) {
         ListView_SetItemState(list_, select, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
@@ -311,6 +337,11 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         int i = ia->iItem >= 0 ? ia->iItem : Selected();
         if (i >= 0 && i < (int)items_.size() && cb_.navigate) {
             bool other = (ia->uKeyFlags & LVKF_SHIFT) != 0;
+            // Klick auf das Symbol in der linken Spalte: in der anderen Liste öffnen (nicht bei der Eingabetaste)
+            if (GetKeyState(VK_RETURN) >= 0) {
+                DWORD mp = GetMessagePos();
+                if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == i) other = true;
+            }
             cb_.navigate(items_[i].path, other);
         }
         return 0;
@@ -362,14 +393,44 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         return 0;
     case NM_CUSTOMDRAW: {
         auto* cd = (NMLVCUSTOMDRAW*)nm;
-        if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
-        if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+        switch (cd->nmcd.dwDrawStage) {
+        case CDDS_PREPAINT: return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+        case CDDS_ITEMPREPAINT: return CDRF_NOTIFYSUBITEMDRAW;
+        case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
             size_t i = (size_t)cd->nmcd.dwItemSpec;
+            if (cd->iSubItem == 1) {
+                // Symbolspalte: hellgrau wie Kopf- und Fußleisten, Symbol des Lesezeichens mittig
+                RECT rc{};
+                ListView_GetSubItemRect(list_, (int)i, 1, LVIR_BOUNDS, &rc);
+                FillRect(cd->nmcd.hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+                HIMAGELIST il = ListView_GetImageList(list_, LVSIL_SMALL);
+                int sz = DpiScale(list_, 16);
+                if (il && i < icons_.size())
+                    ImageList_DrawEx(il, icons_[i], cd->nmcd.hdc, (rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2,
+                                     sz, sz, CLR_NONE, CLR_NONE, ILD_TRANSPARENT);
+                return CDRF_SKIPDEFAULT;
+            }
             if (i < kinds_.size() && kinds_[i]) {
                 cd->clrTextBk = KindColor(kinds_[i]);
                 cd->clrText = RGB(0, 0, 0);
                 return CDRF_NEWFONT;
             }
+            return CDRF_DODEFAULT;
+        }
+        case CDDS_POSTPAINT: {
+            // Symbolspalte auch unterhalb der Einträge grau
+            RECT client{};
+            GetClientRect(list_, &client);
+            int top = 0;
+            int n = ListView_GetItemCount(list_);
+            if (n > 0) {
+                RECT last{};
+                if (ListView_GetItemRect(list_, n - 1, &last, LVIR_BOUNDS)) top = std::max<int>(0, last.bottom);
+            }
+            RECT strip{0, top, IconColumnWidth(), client.bottom};
+            if (strip.top < strip.bottom) FillRect(cd->nmcd.hdc, &strip, GetSysColorBrush(COLOR_BTNFACE));
+            return CDRF_DODEFAULT;
+        }
         }
         return CDRF_DODEFAULT;
     }

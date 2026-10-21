@@ -1131,6 +1131,16 @@ void MainWindow::Paint(HDC dc) {
     // Splitter, Überschriften, Funktionstasten, Befehlszeile
     for (const RECT* r : {&rcSplitTree_, &rcSplitBook_, &rcSplitCol_, &rcSplitRow_[0], &rcSplitRow_[1], &rcCmd_})
         FillRect(dc, r, face);
+    // dünne, unauffällige Trennlinie zwischen linkem und rechtem Listenbereich
+    if (rcSplitCol_.right > rcSplitCol_.left) {
+        HPEN pen = CreatePen(PS_SOLID, 1, Blend(GetSysColor(COLOR_BTNFACE), RGB(0, 0, 0), 45));
+        HGDIOBJ op = SelectObject(dc, pen);
+        int lx = (rcSplitCol_.left + rcSplitCol_.right) / 2;
+        MoveToEx(dc, lx, rcSplitCol_.top, nullptr);
+        LineTo(dc, lx, rcSplitCol_.bottom);
+        SelectObject(dc, op);
+        DeleteObject(pen);
+    }
     auto S = [&](int v) { return DpiScale(hwnd_, v); };
     HGDIOBJ oldFont = SelectObject(dc, App::UIFont());
     SetBkMode(dc, TRANSPARENT);

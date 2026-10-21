@@ -38,6 +38,8 @@ public:
 private:
     void Rebuild(int select);
     int Selected() const;
+    int IconColumnWidth() const;
+    int IconColumnItemAt(POINT screenPt) const;
     void ContextMenu(POINT pt);
     static LRESULT CALLBACK Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR ref);
 
@@ -45,6 +47,7 @@ private:
     HFONT font_ = nullptr;
     Callbacks cb_;
     std::vector<Bookmark> items_;
+    std::vector<int> icons_;   // Symbol je Eintrag (für die Symbolspalte)
     std::vector<int> kinds_;   // Art je Eintrag (lokal, Netzwerk, FTP/SFTP, Standardverzeichnis, WebDAV, Cloud) – Farbe/Sortierung
 };
 

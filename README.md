@@ -129,7 +129,9 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Im Baum unten der aufklappbare Knoten **Netzwerk** (wie in Idoswin Pro), Netzlaufwerke mit ihrer Freigabe
   (z. B. `N:  \\fritz.box\FRITZ.NAS\media1`), Wechseldatenträger mit ihrer Bezeichnung.
 - Lesezeichenliste daneben:
-  - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen.
+  - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen. Links neben den Namen
+    steht eine schmale, hellgraue Spalte mit den Symbolen der Lesezeichen: Ein Klick auf ein Symbol öffnet das
+    Lesezeichen in der anderen Liste.
   - Eigene Schrift einstellbar (*Optionen → Anzeige → Schrift der Lesezeichenliste*; „Standard“ = Oberflächenschrift).
   - Hintergrundfarben: Windows-Standardverzeichnisse (Desktop, Dokumente, Downloads, Bilder, Musik, Videos,
     Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, Cloud-Speicher (Dropbox, Google Drive,
@@ -143,7 +145,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
   - Umbenennen mit F2, Entfernen mit Entf, Verschieben mit Alt+↑/↓, Pfad über das Kontextmenü ändern.
   - Dateien lassen sich auf ein Lesezeichen ziehen.
-- Eine oder zwei Dateilisten (Strg+Umschalt+L), jede teilbar (Split). Die aktive Liste ist farbig markiert.
+- Eine oder zwei Dateilisten (Strg+Umschalt+L), jede teilbar (Split). Die aktive Liste ist farbig markiert. Zwischen
+  linkem und rechtem Listenbereich verläuft eine dünne Trennlinie.
 - Je Liste:
   - Laufwerksymbole: Ein Klick springt zum zuletzt besuchten Verzeichnis des Laufwerks; ein Rechtsklick öffnet das
     Kontextmenü des Laufwerks. Die Symbole unterscheiden lokale Laufwerke (mit dem Symbol von Windows, also z. B.
