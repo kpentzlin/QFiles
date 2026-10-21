@@ -151,6 +151,7 @@ constexpr int kTextExt = 1110;
 constexpr int kHistoryLabel = 1111;
 constexpr int kHistoryEdit = 1112;
 constexpr int kHistorySpin = 1113;
+constexpr int kPrivateMode = 1114;
 // ---- Seite 2: Dateianzeige ----
 constexpr int kQvGroup = 1201;
 constexpr int kQvOther = 1202;
@@ -249,6 +250,7 @@ protected:
         SetCheck(kSaveOnExit, opt.saveOnExit);
         SetText(kTextExt, opt.textExtensions);
         InitSpin(kHistorySpin, kHistoryEdit, 5, 500, opt.historySize);
+        SetCheck(kPrivateMode, opt.privateMode);
         // Dateianzeige
         CheckRadioButton(hwnd_, kQvOther, kQvWindow,
                          opt.quickViewTarget == QuickViewTarget::Window ? kQvWindow : kQvOther);
@@ -466,6 +468,7 @@ private:
         ext = Trim(ext);
         if (!ext.empty()) opt.textExtensions = ext;
         opt.historySize = SpinValue(kHistoryEdit, 5, 500, opt.historySize);
+        opt.privateMode = IsChecked(kPrivateMode);
 
         opt.quickViewTarget = IsChecked(kQvWindow) ? QuickViewTarget::Window : QuickViewTarget::OtherPane;
 
@@ -544,6 +547,8 @@ bool ShowOptionsDialog(HWND owner) {
     t.Label(kHistoryLabel, L"Länge des &Verlaufs (Einträge):", px, py + 135, 120, 10);
     t.Edit(kHistoryEdit, px + 124, py + 133, 40, 13, ES_NUMBER);
     t.UpDown(kHistorySpin, 0, 0, 10, 13);
+    t.Check(kPrivateMode, L"Privater M&odus: Verlauf nicht speichern (auch Schaltfläche „P“ in der Kopfzeile der Listen)",
+            px, py + 152, pw, 10);
 
     // ---- Dateianzeige ----
     t.Group(kQvGroup, L"Dateianzeige (Schnellansicht)", px - 4, py, pw + 8, 50);

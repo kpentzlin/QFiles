@@ -557,6 +557,33 @@ else {
   "Ablageziel beim Ziehen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
+# ---- Favoriten und privater Modus: Liste 1 zeigt die Favoriten (hellgelb, Spalte „Verzeichnis“), eine nicht mehr
+#      vorhandene Datei entfällt stillschweigend; Kopfzeilen im privaten Modus grün ----
+$favLog = "$PWD\favoriten-log.txt"
+Remove-Item $favLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_PANELOG = $favLog
+Add-Content -Path $ini -Value ("`r`n[Favoriten]`r`nDatei1=C:\QFilesDemo\liesmich.txt`r`nDatei2=C:\QFilesDemo\Ünïcödé 日本語 ✓\Grüße €.txt" +
+  "`r`nDatei3=C:\QFilesDemo\gibt es nicht.txt`r`n[Optionen]`r`nPrivaterModus=1") -Encoding UTF8
+$script:p = Start-Process -FilePath $Exe -ArgumentList 'Favoriten','"C:\Windows"' -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Favoriten)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+Start-Sleep -Milliseconds 500
+Shot "screenshot24.png"
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_PANELOG
+$fl = if (Test-Path $favLog) { (Get-Content $favLog -Encoding UTF8) -join ' / ' } else { "" }
+$favOk = ($fl -match 'Liste 1 \| Favoriten \|') -and ($fl -match 'liesmich\.txt') -and ($fl -match 'Grüße') -and ($fl -notmatch 'gibt es nicht')
+$iniText = Get-Content $ini -Raw -Encoding UTF8
+$favPruned = $iniText -notmatch 'gibt es nicht\.txt'
+if ($favOk -and $favPruned) { Write-Output "::notice title=Favoriten::$fl" }
+else {
+  Write-Output "::error title=Favoriten::Liste: $fl; fehlende Datei entfernt: $favPruned"
+  "Favoriten nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {
   "Einstellungsdatei wurde nicht in C:\ProgramData\QFiles angelegt" | Tee-Object -FilePath smoke-log.txt; exit 1
 }

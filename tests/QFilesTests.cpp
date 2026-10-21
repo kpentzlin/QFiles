@@ -74,6 +74,13 @@ static void TestStrings() {
     CHECK(IsRootPath(L"\\\\server\\share"));
     CHECK(Utf8ToWide(WideToUtf8(L"Grüße 😀 ✓")) == L"Grüße 😀 ✓");
     CHECK(CanonicalPath(L"C:\\") == L"C:\\");
+    // Favoriten: vollständige Pfade bleiben beim Zusammensetzen erhalten
+    CHECK(PathCombine(L"Favoriten", L"C:\\Daten\\a.txt") == L"C:\\Daten\\a.txt");
+    CHECK(PathCombine(L"C:\\X", L"\\\\Server\\Freigabe\\b.txt") == L"\\\\Server\\Freigabe\\b.txt");
+    CHECK(PathCombine(L"C:\\X", L"Unter\\c.txt") == L"C:\\X\\Unter\\c.txt");
+    CHECK(IsAbsolutePath(L"D:") && IsAbsolutePath(L"d:\\x") && !IsAbsolutePath(L"x\\y") && !IsAbsolutePath(L"\\x"));
+    CHECK(NormalizeSpecialLocation(L"favoriten") == kFavoritesLocation);
+    CHECK(LocationParent(kFavoritesLocation).empty());
 }
 
 static void TestEncoding(const std::wstring& dir) {

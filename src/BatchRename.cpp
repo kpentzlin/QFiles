@@ -598,8 +598,10 @@ void BatchRenameDialog::SaveSettings() {
     Config& c = App::Cfg();
     AddToHistory(histName_, GetText(CID_NAMEMASK));
     AddToHistory(histExt_, GetText(CID_EXTMASK));
-    c.SetList(kSection, L"Name", histName_);
-    c.SetList(kSection, L"Erw", histExt_);
+    if (!App::Opt().privateMode) {   // privater Modus: Verlauf nicht speichern
+        c.SetList(kSection, L"Name", histName_);
+        c.SetList(kSection, L"Erw", histExt_);
+    }
     c.SetInt(kSection, L"ZaehlerStart", (int)GetInt(CID_START, 1));
     c.SetInt(kSection, L"ZaehlerSchritt", (int)GetInt(CID_STEP, 1));
     c.SetInt(kSection, L"ZaehlerStellen", (int)GetInt(CID_DIGITS, 3));

@@ -95,6 +95,10 @@ enum : int {
     BookmarkNewRemote = 40401,  // Neuer FTP/sFTP-Zugriff
     BookmarkSort = 40402,       // Lesezeichen sortieren
     BookmarkAddCloud = 40403,   // Cloud-Speicher (Dropbox, Google Drive, OneDrive) hinzufügen
+    BookmarkFavorites = 40404,  // Favoriten anzeigen
+    FavoriteAdd = 40405,        // Als Favorit kennzeichnen
+    FavoriteRemove = 40406,     // Aus Favoriten entfernen
+    FavoriteGotoDir = 40407,    // Favoriten: zum Verzeichnis der Datei wechseln
     BookmarkFirst = 40410,    // dynamische Einträge
     BookmarkLast = 40499,
 
@@ -112,6 +116,8 @@ enum : int {
     FunctionKeys,
     Options,
     ShowDirSizes,      // Ansicht: Verzeichnisgrößen anzeigen (Option)
+    PrivateMode,       // Privater Modus (kein Verlauf speichern) ein/aus
+    ClearHistory,      // Verlauf löschen
 
     // Hilfe
     Shortcuts = 40600,

@@ -1,6 +1,7 @@
 #include "FilePane.h"
 #include "App.h"
 #include "Commands.h"
+#include "Favorites.h"
 #include "FileOps.h"
 #include "Glyphs.h"
 #include "Location.h"
@@ -292,7 +293,10 @@ void FilePane::SetupColumns(bool capture) {
             int need = ListView_GetStringWidth(list_, sample.c_str()) + ToPx(16);
             if (c.cx < need) c.cx = need;
         }
-        c.pszText = const_cast<wchar_t*>(id == ColName && view_ == PaneView::Recursive ? L"Dateiname" : kColumnTitles[id]);
+        const wchar_t* title = kColumnTitles[id];
+        if (id == ColName && view_ == PaneView::Recursive) title = L"Dateiname";
+        if (id == ColSubdir && IsFavorites()) title = L"Verzeichnis";   // Favoriten: vollständiger Pfad
+        c.pszText = const_cast<wchar_t*>(title);
         c.iSubItem = id;
         ListView_InsertColumn(list_, pos++, &c);
         colIds_.push_back(id);  // Spaltenindex -> Spalten-ID (LVN_GETDISPINFO liefert den Index)
@@ -453,11 +457,15 @@ void FilePane::BuildHitRects() {
     // ganz rechts: Split, links daneben: Lesezeichen
     hits_.push_back({HitArea::Split, -1, {x - bs, pad, x, pad + bs}});
     x -= bs + pad;
-    // Lesezeichensymbol entfällt bei FTP/SFTP (Zugänge entstehen über „Lesezeichen → Neuer FTP/sFTP-Zugriff“)
-    if (!IsRemoteUrl(dir_)) {
+    // Lesezeichensymbol entfällt bei FTP/SFTP (Zugänge entstehen über „Lesezeichen → Neuer FTP/sFTP-Zugriff“) und in
+    // den Favoriten (die haben ihr eigenes Lesezeichen)
+    if (!IsRemoteUrl(dir_) && !IsFavorites()) {
         hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
         x -= bs + pad;
     }
+    // „P“: privater Modus
+    hits_.push_back({HitArea::Private, -1, {x - bs, pad, x, pad + bs}});
+    x -= bs + pad;
     int rightLimit = x - ToPx(6);
     // Laufwerke von links
     HDC dc = GetDC(hwnd_);
@@ -507,6 +515,10 @@ void FilePane::UpdateTooltips() {
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
             break;
         case HitArea::Bookmark: text = L"Gewähltes Verzeichnis den Lesezeichen hinzufügen (Strg+D)"; break;
+        case HitArea::Private:
+            text = App::Opt().privateMode ? L"Privater Modus ist eingeschaltet (Verlauf wird nicht gespeichert) – Klick schaltet aus"
+                                          : L"Privater Modus: Verlauf nicht speichern – Klick schaltet ein";
+            break;
         case HitArea::Back: text = L"Zurück (Alt+←) – Rechtsklick: Liste"; break;
         case HitArea::Forward: text = L"Vor (Alt+→) – Rechtsklick: Liste"; break;
         case HitArea::Up: text = L"Übergeordnetes Verzeichnis (Rücktaste)"; break;
@@ -575,9 +587,49 @@ void FilePane::DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot) {
     qf::DrawGlyph(dc, g, rc, col);
 }
 
+// Kopfzeile und Spaltenköpfe der aktiven Liste: hellblau, im privaten Modus hellgrün
+COLORREF FilePane::ActiveBarColor() const {
+    return App::Opt().privateMode ? RGB(170, 222, 178) : Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 150);
+}
+
+// Schaltfläche „P“ (privater Modus): Buchstabe P in einem abgerundeten Viereck, grün gefüllt = eingeschaltet
+void FilePane::PaintPrivateButton(HDC dc, const RECT& rc, bool hot) {
+    bool on = App::Opt().privateMode;
+    if (hot) {
+        HBRUSH hb = CreateSolidBrush(Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 190));
+        FillRect(dc, &rc, hb);
+        DeleteObject(hb);
+    }
+    int w = rc.right - rc.left, h = rc.bottom - rc.top;
+    int d = std::max(10, std::min(w, h) * 72 / 100);
+    int l = (rc.left + rc.right - d) / 2, t = (rc.top + rc.bottom - d) / 2;
+    COLORREF line = on ? RGB(20, 120, 40) : RGB(90, 90, 90);
+    HPEN pen = CreatePen(PS_SOLID, std::max(1, ToPx(1) + (on ? 0 : 0)), line);
+    HBRUSH br = on ? CreateSolidBrush(RGB(40, 180, 70)) : (HBRUSH)GetStockObject(NULL_BRUSH);
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, br);
+    int rr = std::max(3, d / 3);
+    RoundRect(dc, l, t, l + d + 1, t + d + 1, rr, rr);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(pen);
+    if (on) DeleteObject(br);
+    LOGFONTW lf{};
+    GetObjectW(App::UIFont(), sizeof(lf), &lf);
+    lf.lfHeight = -std::max(8, d * 70 / 100);
+    lf.lfWeight = FW_BOLD;
+    HFONT f = CreateFontIndirectW(&lf);
+    HGDIOBJ of = SelectObject(dc, f);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, on ? RGB(255, 255, 255) : RGB(70, 70, 70));
+    RECT tr{l, t, l + d + 1, t + d + 1};
+    DrawTextW(dc, L"P", 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOPREFIX);
+    SelectObject(dc, of);
+    DeleteObject(f);
+}
+
 void FilePane::PaintHeader(HDC dc, const RECT& rc) {
     COLORREF face = GetSysColor(COLOR_BTNFACE);
-    COLORREF bg = activeLook_ ? Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 150) : face;
+    COLORREF bg = activeLook_ ? ActiveBarColor() : face;
     HBRUSH b = CreateSolidBrush(bg);
     FillRect(dc, &rc, b);
     DeleteObject(b);
@@ -610,6 +662,8 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             SelectObject(dc, prev);
         } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark) {
             DrawGlyph(dc, h.area, h.rc, hot_ == &h);
+        } else if (h.area == HitArea::Private) {
+            PaintPrivateButton(dc, h.rc, hot_ == &h);
         }
     }
     // Trennlinie unten
@@ -700,7 +754,10 @@ bool FilePane::IsCutItem(const Item& it) const {
 
 void FilePane::UpdateListColors() {
     if (!list_) return;
-    COLORREF bg = (!activeLook_ && App::Opt().grayInactive) ? GetSysColor(COLOR_BTNFACE) : GetSysColor(COLOR_WINDOW);
+    // Favoriten hellgelb (außer nicht aktiv mit der Option „Nicht aktive Listen grau hinterlegen“)
+    COLORREF bg = (!activeLook_ && App::Opt().grayInactive) ? GetSysColor(COLOR_BTNFACE)
+                  : IsFavorites()                          ? kFavoritesBack
+                                                           : GetSysColor(COLOR_WINDOW);
     if (ListView_GetBkColor(list_) == bg) return;
     ListView_SetBkColor(list_, bg);
     ListView_SetTextBkColor(list_, bg);
@@ -744,12 +801,16 @@ void FilePane::OnClickArea(const HitRect& h) {
     case HitArea::Bookmark:
         if (host_) host_->OnPaneBookmarkButton(this);
         break;
+    case HitArea::Private:
+        if (host_) host_->OnPanePrivateButton(this);
+        break;
     case HitArea::Back: GoBack(); break;
     case HitArea::Forward: GoForward(); break;
     case HitArea::Up: GoUp(); break;
     case HitArea::Root: GoRoot(); break;
     case HitArea::Browse: {
-        std::wstring d = BrowseForFolder(GetAncestor(hwnd_, GA_ROOT), L"Verzeichnis wählen", IsVirtual() ? L"" : dir_);
+        std::wstring d = BrowseForFolder(GetAncestor(hwnd_, GA_ROOT), L"Verzeichnis wählen",
+                                         IsVirtual() || IsFavorites() ? L"" : dir_);
         if (!d.empty()) Navigate(d);
         break;
     }
@@ -762,6 +823,40 @@ void FilePane::OnClickArea(const HitRect& h) {
 
 bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
     std::vector<DirEntry> entries;
+    if (IsFavoritesLocation(dir)) {
+        // Favoriten: Datei, vollständiges Verzeichnis (Spalte „Verzeichnis“). Nicht mehr vorhandene Dateien entfallen
+        // stillschweigend aus der Favoritenliste; nicht erreichbare (Server aus, keine Rechte) bleiben gespeichert,
+        // erscheinen aber nicht.
+        std::vector<Item> items;
+        std::vector<std::wstring> gone;
+        for (auto& p : Favorites()) {
+            WIN32_FILE_ATTRIBUTE_DATA d{};
+            if (!GetFileAttributesExW(LongPath(p).c_str(), GetFileExInfoStandard, &d)) {
+                DWORD e = GetLastError();
+                if (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND || e == ERROR_INVALID_NAME ||
+                    e == ERROR_DIRECTORY)
+                    gone.push_back(p);
+                continue;
+            }
+            if (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                gone.push_back(p);
+                continue;
+            }
+            Item it;
+            it.e.name = PathFileName(p);
+            it.sub = PathParent(p);
+            it.e.attributes = d.dwFileAttributes;
+            it.e.size = ((uint64_t)d.nFileSizeHigh << 32) | d.nFileSizeLow;
+            it.e.created = d.ftCreationTime;
+            it.e.modified = d.ftLastWriteTime;
+            it.e.accessed = d.ftLastAccessTime;
+            items.push_back(std::move(it));
+        }
+        if (!gone.empty()) RemoveFavorites(gone, false);
+        if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
+        items_ = std::move(items);
+        return true;
+    }
     if (IsNetworkVirtual(dir)) {
         // Rechner bzw. Freigaben werden im Hintergrund gesucht (StartNetScan)
     } else if (IsRemoteUrl(dir)) {
@@ -784,7 +879,7 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
         items.push_back(up);
     }
     (void)o;
-    bool recursive = view_ == PaneView::Recursive && !IsVirtualLocation(dir);
+    bool recursive = ViewFor(dir) == PaneView::Recursive && !IsVirtualLocation(dir);
     for (auto& e : entries) {
         if (!AcceptEntry(e)) continue;
         if (recursive && e.IsDir()) continue;   // Unterverzeichnisse: deren Dateien kommen über StartTreeWalk
@@ -1028,8 +1123,25 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         if (focus.empty() && !oldDir.empty() && EqualsI(LocationParent(oldDir), dir)) focus = LocationFileName(oldDir);
     }
     bool remoteChanged = IsRemoteUrl(dir) != IsRemoteUrl(dir_);
+    bool wasFav = IsFavorites(), toFav = IsFavoritesLocation(dir);
     dir_ = dir;
-    if (remoteChanged) BuildHitRects();
+    if (wasFav != toFav) {
+        // Favoriten: immer wie „Mit Unterverzeichnissen“ (Spalte „Verzeichnis“), hellgelb; beim Verlassen die vorherige
+        // Ansicht wieder herstellen
+        if (toFav) {
+            viewBeforeFav_ = view_;
+            view_ = PaneView::Recursive;
+        } else {
+            view_ = viewBeforeFav_;
+            if (sortKey_ == SortKey::Subdir && view_ != PaneView::Recursive) sortKey_ = SortKey::Name;
+        }
+        if (view_ != PaneView::Thumbnails) StopThumbWorker();
+        ApplyViewStyle();
+        SetupColumns();
+        UpdateListColors();
+        if (host_) host_->OnPaneLayoutChanged(this);
+    }
+    if (remoteChanged || wasFav != toFav) BuildHitRects();
     SortItems();
     FillList(focus, {}, 0);
     if (IsNetworkVirtual(dir_)) {
@@ -1040,14 +1152,17 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         netCancelled_ = false;
         walkCancelled_ = false;
         pendingFocus_.clear();
-        if (view_ == PaneView::Recursive && !IsVirtual()) {
+        if (view_ == PaneView::Recursive && !IsVirtual() && !IsFavorites()) {
             walkFocus_ = FindItem(focus) < 0 ? focus : L"";
             walkSel_.clear();
             StartTreeWalk();
         }
     }
     if (!sameDir) {
-        if (addHistory) {
+        // (gespeicherter Verlauf beim Start: das aktuelle Verzeichnis steht schon an der Position)
+        bool atCurrent = histPos_ >= 0 && histPos_ < (int)hist_.size() &&
+                         (IsRemoteUrl(dir_) ? hist_[histPos_] == dir_ : EqualsI(hist_[histPos_], dir_));
+        if (addHistory && !atCurrent) {
             // Vorwärtsliste abschneiden
             if (histPos_ + 1 < (int)hist_.size()) hist_.erase(hist_.begin() + histPos_ + 1, hist_.end());
             hist_.push_back(dir_);
@@ -1135,7 +1250,7 @@ void FilePane::Reload() {
     }
     SortItems();
     // Fokus: gelöschtes Element -> Nachfolger an gleicher Position
-    bool recursive = view_ == PaneView::Recursive && !IsVirtual();
+    bool recursive = view_ == PaneView::Recursive && !IsVirtual() && !IsFavorites();
     if (recursive) {
         // Dateien der Unterverzeichnisse kommen nach und nach; Fokus/Markierung dann wiederherstellen
         walkFocus_ = FindItem(focus) < 0 ? focus : L"";
@@ -1157,7 +1272,7 @@ void FilePane::Reload() {
 // Belegter und freier Speicher des Laufwerks bzw. der Freigabe
 void FilePane::UpdateFreeSpace() {
     ULARGE_INTEGER freeAvail{}, total{}, totalFree{};
-    freeKnown_ = !IsVirtualLocation(dir_) &&
+    freeKnown_ = !IsVirtualLocation(dir_) && !IsFavorites() &&
                  GetDiskFreeSpaceExW(dir_.c_str(), &freeAvail, &total, &totalFree) != 0;
     freeBytes_ = freeKnown_ ? freeAvail.QuadPart : 0;
     usedBytes_ = freeKnown_ && total.QuadPart >= totalFree.QuadPart ? total.QuadPart - totalFree.QuadPart : 0;
@@ -1190,6 +1305,20 @@ void FilePane::GoRoot() {
 bool FilePane::IsRemote() const { return IsRemoteUrl(dir_); }
 bool FilePane::IsNetworkLevel() const { return IsNetworkVirtual(dir_); }
 bool FilePane::IsVirtual() const { return IsVirtualLocation(dir_); }
+bool FilePane::IsFavorites() const { return IsFavoritesLocation(dir_); }
+
+std::wstring FilePane::WorkingDir() const {
+    if (IsFavorites()) {
+        std::wstring f = FocusedPath();
+        return f.empty() ? L"" : PathParent(f);
+    }
+    return IsVirtual() ? L"" : dir_;
+}
+
+PaneView FilePane::ViewFor(const std::wstring& dir) const {
+    if (IsFavoritesLocation(dir)) return PaneView::Recursive;
+    return IsFavorites() ? viewBeforeFav_ : view_;
+}
 std::wstring FilePane::Combine(const std::wstring& name) const { return LocationCombine(dir_, name); }
 
 void FilePane::CancelScan() {
@@ -1284,7 +1413,7 @@ void FilePane::GoForward() {
 }
 
 // Aufklappliste für Zurück bzw. Vor: zuletzt aufgerufene Verzeichnisse oben, ältere unten
-// (nur Verzeichnisse dieser Sitzung; die Zurück/Vor-Liste wird nicht gespeichert)
+// (die Zurück/Vor-Liste wird gespeichert, im privaten Modus der beim Einschalten festgehaltene Stand)
 void FilePane::ShowHistoryMenu(bool back, POINT screenPt) {
     if (host_) host_->OnPaneActivated(this);
     std::vector<int> idx;
@@ -1466,7 +1595,7 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
         // Gestreift: in der aktiven Liste jede zweite Zeile in der Farbe nicht aktiver Listen (Option)
         if (App::Opt().striped && activeLook_ && (i % 2) == 1 && !changed &&
             (view_ == PaneView::Details || view_ == PaneView::Recursive || view_ == PaneView::List)) {
-            cd->clrTextBk = GetSysColor(COLOR_BTNFACE);
+            cd->clrTextBk = IsFavorites() ? Blend(kFavoritesBack, RGB(120, 100, 0), 28) : GetSysColor(COLOR_BTNFACE);
             changed = true;
         }
         if (IsCutItem(it)) {
@@ -1510,7 +1639,9 @@ void FilePane::UpdateStatus() {
         }
     }
     std::wstring s = IntToStr((long long)dirs) + L" Verz., " + IntToStr((long long)files) + L" Dateien (" + FormatSize(total) + L")";
-    if (view_ == PaneView::Recursive && !IsVirtual()) {
+    if (IsFavorites()) {
+        s = IntToStr((long long)files) + (files == 1 ? L" Favorit (" : L" Favoriten (") + FormatSize(total) + L")";
+    } else if (view_ == PaneView::Recursive && !IsVirtual()) {
         s = IntToStr((long long)files) + L" Dateien in " + IntToStr((long long)walkDirs_ + 1) + L" Verzeichnissen (" +
             FormatSize(total) + L")";
         if (selFiles + selDirs)
@@ -1701,6 +1832,12 @@ void FilePane::ToggleSelectFocused(bool moveDown) {
 // ===================== Darstellung =====================
 
 void FilePane::SetView(PaneView v) {
+    if (IsFavorites()) {
+        // Favoriten bleiben „Mit Unterverzeichnissen“; die gewählte Ansicht gilt nach dem Verlassen
+        viewBeforeFav_ = v;
+        if (host_) host_->OnPaneLayoutChanged(this);
+        return;
+    }
     bool recursiveChanged = (v == PaneView::Recursive) != (view_ == PaneView::Recursive);
     view_ = v;
     if (v != PaneView::Thumbnails) StopThumbWorker();
@@ -1791,7 +1928,7 @@ void FilePane::OpenFocused() {
 DropTargetInfo FilePane::DropTargetAt(POINT screenPt) {
     DropTargetInfo info;
     bool remote = IsRemote();
-    if (dir_.empty() || (IsVirtual() && !remote)) {
+    if (dir_.empty() || (IsVirtual() && !remote) || IsFavorites()) {   // Favoriten: keine Ablage
         ClearDropHighlight();
         return info;
     }
@@ -2070,7 +2207,7 @@ void FilePane::OnThumbReady(WPARAM, LPARAM lp) {
 
 void FilePane::StartWatch() {
     StopWatch();
-    if (!App::Opt().autoRefresh || dir_.empty() || IsVirtual()) return;
+    if (!App::Opt().autoRefresh || dir_.empty() || IsVirtual() || IsFavorites()) return;
     watchStop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE stop = watchStop_;
     HWND hwnd = hwnd_;
@@ -2117,13 +2254,17 @@ void FilePane::LoadState(const Config& c, const std::wstring& s) {
     filter_.exclude = c.Get(s, L"FilterAus", L"");
     filter_.applyToDirs = c.GetBool(s, L"FilterVerzeichnisse", false);
     recent_ = c.GetList(s, L"Verlauf");
+    hist_ = c.GetList(s, L"Zurueck");
+    if (hist_.size() > 100) hist_.erase(hist_.begin(), hist_.end() - 100);
+    histPos_ = hist_.empty() ? -1 : std::clamp(c.GetInt(s, L"ZurueckPos", (int)hist_.size() - 1), 0, (int)hist_.size() - 1);
     SetupColumns(false);
     ApplyViewStyle();
 }
 
 void FilePane::SaveState(Config& c, const std::wstring& s) const {
-    c.Set(s, L"Verzeichnis", dir_);
-    c.SetInt(s, L"Ansicht", (int)view_);
+    // Privater Modus: Verzeichnis und Verlauf wie beim Einschalten
+    c.Set(s, L"Verzeichnis", privActive_ ? privSnap_.dir : dir_);
+    c.SetInt(s, L"Ansicht", (int)(IsFavorites() ? viewBeforeFav_ : view_));
     c.SetInt(s, L"Sortierung", (int)sortKey_);
     c.SetBool(s, L"Absteigend", sortDesc_);
     // Aktuelle Spaltenbreiten (in 96-DPI-Pixeln)
@@ -2134,7 +2275,58 @@ void FilePane::SaveState(Config& c, const std::wstring& s) const {
     c.Set(s, L"FilterEin", filter_.include);
     c.Set(s, L"FilterAus", filter_.exclude);
     c.SetBool(s, L"FilterVerzeichnisse", filter_.applyToDirs);
-    c.SetList(s, L"Verlauf", recent_);
+    c.SetList(s, L"Verlauf", privActive_ ? privSnap_.recent : recent_);
+    c.SetList(s, L"Zurueck", privActive_ ? privSnap_.hist : hist_);
+    c.SetInt(s, L"ZurueckPos", privActive_ ? privSnap_.histPos : histPos_);
+}
+
+void FilePane::BeginPrivate() {
+    if (privActive_) return;
+    privSnap_ = {dir_, hist_, histPos_, recent_, lastDirPerDrive_};
+    privActive_ = true;
+}
+
+void FilePane::EndPrivate() {
+    if (!privActive_) return;
+    privActive_ = false;
+    hist_ = privSnap_.hist;
+    histPos_ = hist_.empty() ? -1 : std::clamp(privSnap_.histPos, 0, (int)hist_.size() - 1);
+    recent_ = privSnap_.recent;
+    lastDirPerDrive_ = privSnap_.lastDirPerDrive;
+    privSnap_ = {};
+    UpdatePathCombo();
+    InvalidateRect(hwnd_, &rcPath_, FALSE);
+}
+
+void FilePane::ClearHistory() {
+    hist_.clear();
+    histPos_ = -1;
+    if (!dir_.empty()) {
+        hist_.push_back(dir_);
+        histPos_ = 0;
+    }
+    recent_.clear();
+    lastDirPerDrive_.clear();
+    if (privActive_) {
+        privSnap_.hist.clear();
+        privSnap_.histPos = -1;
+        if (!privSnap_.dir.empty()) {
+            privSnap_.hist.push_back(privSnap_.dir);
+            privSnap_.histPos = 0;
+        }
+        privSnap_.recent.clear();
+        privSnap_.lastDirPerDrive.clear();
+    }
+    UpdatePathCombo();
+    InvalidateRect(hwnd_, &rcPath_, FALSE);
+}
+
+void FilePane::OnPrivateModeChanged() {
+    UpdateTooltips();
+    InvalidateRect(hwnd_, &rcHeader_, FALSE);
+    if (list_) {
+        if (HWND header = ListView_GetHeader(list_)) InvalidateRect(header, nullptr, TRUE);
+    }
 }
 
 // ===================== Nachrichten =====================
@@ -2154,7 +2346,7 @@ LRESULT CALLBACK FilePane::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 
 // Spaltenköpfe in der Farbe der Laufwerksleiste (aktive Liste hellblau, sonst wie Kopf- und Fußleiste)
 COLORREF FilePane::HeaderBarColor() const {
-    return activeLook_ ? Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 150) : GetSysColor(COLOR_BTNFACE);
+    return activeLook_ ? ActiveBarColor() : GetSysColor(COLOR_BTNFACE);
 }
 
 LRESULT FilePane::OnHeaderCustomDraw(NMCUSTOMDRAW* cd) {
@@ -2247,7 +2439,7 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
                 // Umschalt+Eingabe: mit Standardprogramm öffnen
                 std::wstring p = self->FocusedPath();
                 if (self->IsVirtual()) self->OpenFocused();
-                else if (!p.empty()) ShellOpen(GetAncestor(h, GA_ROOT), p, L"", self->dir_);
+                else if (!p.empty()) ShellOpen(GetAncestor(h, GA_ROOT), p, L"", self->WorkingDir());
             } else {
                 self->OpenFocused();
             }
@@ -2391,6 +2583,10 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         bool renamed = IsRemoteUrl(dir_) ? RemoteRename(GetAncestor(hwnd_, GA_ROOT), Combine(old), newName)
                                          : RenameItem(GetAncestor(hwnd_, GA_ROOT), PathCombine(dir_, old), newName);
         if (renamed) {
+            if (!IsRemoteUrl(dir_)) {
+                std::wstring oldFull = PathCombine(dir_, old);
+                RenameFavorite(oldFull, PathCombine(PathParent(oldFull), newName));
+            }
             items_[i].e.name = newName;
             items_[i].icon = -1;
             SortItems();

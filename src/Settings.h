@@ -103,6 +103,9 @@ struct Options {
     // Sonstiges
     int historySize = 30;
     bool saveOnExit = true;
+    // Privater Modus: Der Verlauf (Zurück/Vor, Verzeichnisverlauf, Befehlszeile, Such- und Umbenennungsmuster) wird
+    // beim Einschalten festgehalten und bis zum Ausschalten nicht mehr gespeichert
+    bool privateMode = false;
 
     void Load(const Config& c);
     void Save(Config& c) const;

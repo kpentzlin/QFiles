@@ -34,10 +34,17 @@ public:
     void Resize();
     // Schrift aus den Optionen (Lesezeichen-Schrift; leer = Oberflächenschrift), auch nach DPI-Wechsel
     void ApplyFont();
+    // Eintrag „Favoriten“ ganz oben (dunkelroter Asterisk, hellgelb), nur wenn count > 0
+    void SetFavoritesCount(size_t count);
 
 private:
     void Rebuild(int select);
-    int Selected() const;
+    int Selected() const;          // Index in items_ (-1: nichts oder „Favoriten“)
+    int SelectedRow() const;       // Zeile der ListView
+    int Offset() const { return favRow_ ? 1 : 0; }
+    int ItemOfRow(int row) const { return row - Offset(); }   // < 0: „Favoriten“
+    bool IsFavRow(int row) const { return favRow_ && row == 0; }
+    void DrawFavoritesRow(NMLVCUSTOMDRAW* cd);
     int IconColumnWidth() const;
     int IconColumnItemAt(POINT screenPt) const;
     void ContextMenu(POINT pt);
@@ -49,6 +56,8 @@ private:
     std::vector<Bookmark> items_;
     std::vector<int> icons_;   // Symbol je Eintrag (für die Symbolspalte)
     std::vector<int> kinds_;   // Art je Eintrag (lokal, Netzwerk, FTP/SFTP, Standardverzeichnis, WebDAV, Cloud) – Farbe/Sortierung
+    bool favRow_ = false;      // Eintrag „Favoriten“ sichtbar
+    size_t favCount_ = 0;      // Anzahl der Favoriten (Tooltip)
 };
 
 } // namespace qf

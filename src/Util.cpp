@@ -184,9 +184,15 @@ bool MatchAnyPattern(const std::wstring& patterns, const std::wstring& name) {
 
 // ===================== Pfade =====================
 
+bool IsAbsolutePath(const std::wstring& p) {
+    if (p.size() >= 2 && p[1] == L':' && iswalpha(p[0]) && (p.size() == 2 || p[2] == L'\\' || p[2] == L'/')) return true;
+    return p.size() >= 2 && p[0] == L'\\' && p[1] == L'\\';
+}
+
 std::wstring PathCombine(const std::wstring& dir, const std::wstring& name) {
     if (dir.empty()) return name;
     if (name.empty()) return dir;
+    if (IsAbsolutePath(name)) return name;
     if (dir.back() == L'\\' || dir.back() == L'/') return dir + name;
     return dir + L'\\' + name;
 }

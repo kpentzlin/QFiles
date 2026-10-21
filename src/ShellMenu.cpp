@@ -747,7 +747,22 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dirIn, const std::vecto
     // Elemente aus verschiedenen Ordnern -> nur die eigenen Einträge
     std::wstring dir = dirIn;
     std::vector<std::wstring> names = namesIn;
-    if (!names.empty() && names[0].find(L'\\') != std::wstring::npos) {
+    if (!names.empty() && IsAbsolutePath(names[0])) {
+        // Favoriten: vollständige Pfade
+        std::wstring parent = PathParent(names[0]);
+        bool same = true;
+        std::vector<std::wstring> base;
+        for (auto& n : names) {
+            if (!EqualsI(PathParent(n), parent)) same = false;
+            base.push_back(PathFileName(n));
+        }
+        if (same && !parent.empty()) {
+            dir = parent;
+            names = base;
+        } else {
+            dir.clear();
+        }
+    } else if (!names.empty() && names[0].find(L'\\') != std::wstring::npos) {
         std::wstring sub = PathParent(PathCombine(L"X:\\", names[0]));
         bool same = true;
         std::vector<std::wstring> base;

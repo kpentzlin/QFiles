@@ -4,6 +4,7 @@
 #include "Cloud.h"
 #include "Commands.h"
 #include "Dialog.h"
+#include "Favorites.h"
 #include "FileOps.h"
 #include "Glyphs.h"
 #include "HexView.h"
@@ -180,10 +181,13 @@ bool RenameGroupKeepSelection(HWND owner, FilePane& a) {
     for (auto& [sub, group] : GroupBySubdir(names)) {
         std::vector<std::wstring> renamed;
         if (BatchRename(owner, PathCombine(a.Dir(), sub), group, &renamed)) any = true;
+        std::wstring dir = PathCombine(a.Dir(), sub);
         for (size_t k = 0; k < group.size() && k < renamed.size(); ++k)
-            if (group[k] != renamed[k])
+            if (group[k] != renamed[k]) {
                 map.push_back({sub.empty() ? group[k] : sub + L"\\" + group[k],
                                sub.empty() ? renamed[k] : sub + L"\\" + renamed[k]});
+                if (!a.IsVirtual()) RenameFavorite(PathCombine(dir, group[k]), PathCombine(dir, renamed[k]));
+            }
     }
     if (!any) return false;
     auto mapName = [&](const std::wstring& n) {
@@ -374,6 +378,8 @@ bool MainWindow::Create(int nCmdShow) {
     cb.currentDir = [this]() { return Active().Dir(); };
     bookmarks_.Create(hwnd_, cmd::IdBookmarks, cb);
     bookmarks_.Set(LoadBookmarks(App::Cfg()));
+    LoadFavorites(App::Cfg());
+    bookmarks_.SetFavoritesCount(Favorites().size());
 
     // Befehlszeile
     cmdLabel_ = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT | SS_PATHELLIPSIS | SS_CENTERIMAGE, 0, 0,
@@ -423,6 +429,13 @@ bool MainWindow::Create(int nCmdShow) {
         if (d.empty() || !panes_[i]->Navigate(d, L"", true, false)) {
             if (!panes_[i]->Navigate(defaults[i], L"", true, false)) panes_[i]->Navigate(L"C:\\", L"", true, false);
         }
+    }
+
+    // Privater Modus beim Start: der gespeicherte Verlauf bleibt bis zum Ausschalten unverändert
+    if (App::Opt().privateMode) {
+        for (auto& p : panes_) p->BeginPrivate();
+        cmdHistorySnap_ = cmdHistory_;
+        privActive_ = true;
     }
 
     ApplyPaneVisibility();
@@ -487,7 +500,61 @@ void MainWindow::SaveState() {
     c.SetInt(S, L"AktiveListe", active_);
     for (int i = 0; i < 4; ++i) panes_[i]->SaveState(c, L"Liste" + std::to_wstring(i + 1));
     SaveBookmarks(c, bookmarks_.Get());
-    c.SetList(L"Befehlszeile", L"Befehl", cmdHistory_);
+    SaveFavorites(c);
+    c.SetList(L"Befehlszeile", L"Befehl", privActive_ ? cmdHistorySnap_ : cmdHistory_);
+}
+
+// Privater Modus ein/aus (Schaltfläche „P“, Werkzeuge, Optionen): Beim Einschalten wird der Verlauf festgehalten und
+// bis zum Ausschalten so gespeichert; beim Ausschalten gilt wieder der festgehaltene Verlauf.
+void MainWindow::SetPrivateMode(bool on) {
+    App::Opt().privateMode = on;
+    if (on != privActive_) {
+        privActive_ = on;
+        if (on) {
+            for (auto& p : panes_) p->BeginPrivate();
+            cmdHistorySnap_ = cmdHistory_;
+        } else {
+            for (auto& p : panes_) p->EndPrivate();
+            cmdHistory_ = cmdHistorySnap_;
+            cmdHistorySnap_.clear();
+            std::wstring cur = GetWindowTextStr(cmdCombo_);
+            SendMessageW(cmdCombo_, CB_RESETCONTENT, 0, 0);
+            for (auto& h : cmdHistory_) SendMessageW(cmdCombo_, CB_ADDSTRING, 0, (LPARAM)h.c_str());
+            SetWindowTextW(cmdCombo_, cur.c_str());
+        }
+    }
+    for (auto& p : panes_) p->OnPrivateModeChanged();
+    App::SaveSettings();
+}
+
+// Werkzeuge → Verlauf löschen: Zurück/Vor-Listen, Verzeichnisverlauf, letzte Verzeichnisse je Laufwerk,
+// Befehlszeile, Such- und Umbenennungsmuster (auch der im privaten Modus festgehaltene Stand)
+void MainWindow::ClearAllHistory() {
+    if (!MsgConfirm(hwnd_, L"Verlauf löschen?\n\nGelöscht werden die Zurück/Vor-Listen und der Verzeichnisverlauf der "
+                           L"Listen, der Verlauf der Befehlszeile sowie die zuletzt verwendeten Suchmuster und "
+                           L"Umbenennungsmasken."))
+        return;
+    for (auto& p : panes_) p->ClearHistory();
+    cmdHistory_.clear();
+    cmdHistorySnap_.clear();
+    std::wstring cur = GetWindowTextStr(cmdCombo_);
+    SendMessageW(cmdCombo_, CB_RESETCONTENT, 0, 0);
+    SetWindowTextW(cmdCombo_, cur.c_str());
+    Config& c = App::Cfg();
+    c.SetList(L"Suchen", L"Muster", {});
+    c.SetList(L"Suchen", L"Text", {});
+    c.SetList(L"Umbenennen", L"Name", {});
+    c.SetList(L"Umbenennen", L"Erw", {});
+    App::SaveSettings();
+    LogOperation(L"Verlauf gelöscht");
+}
+
+// Favoriten geändert: Lesezeichen „Favoriten“ ein-/ausblenden, Listen mit den Favoriten neu einlesen
+void MainWindow::OnFavoritesChanged(bool reloadPanes) {
+    bookmarks_.SetFavoritesCount(Favorites().size());
+    if (!reloadPanes) return;
+    for (int i = 0; i < 4; ++i)
+        if (panes_[i]->IsFavorites() && !(quickView_ && i == quickViewPane_)) panes_[i]->Reload();
 }
 
 // ===================== Menü, Werkzeugleiste, Tastenkürzel =====================
@@ -517,6 +584,8 @@ void MainWindow::BuildMenu() {
     AddSep(m);
     AddItem(m, cmd::Attributes, L"Attribute und &Datum ändern…\tStrg+Umschalt+A");
     AddItem(m, cmd::Properties, L"&Eigenschaften…\tAlt+Eingabe");
+    AddItem(m, cmd::FavoriteAdd, L"Als &Favorit kennzeichnen");
+    AddItem(m, cmd::FavoriteRemove, L"Aus Fa&voriten entfernen");
     AddSep(m);
     AddItem(m, cmd::SplitFile, L"Datei &teilen…");
     AddItem(m, cmd::JoinFiles, L"Dateien &zusammenfügen…");
@@ -620,6 +689,9 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::OpLog, L"Dateisystem&monitor (Protokoll)…");
     AddItem(m, cmd::CommandPrompt, L"&Eingabeaufforderung hier öffnen");
     AddSep(m);
+    AddItem(m, cmd::PrivateMode, L"&Privater Modus (Verlauf nicht speichern)");
+    AddItem(m, cmd::ClearHistory, L"&Verlauf löschen…");
+    AddSep(m);
     AddItem(m, cmd::FunctionKeys, L"&Funktionstasten belegen…");
     AppendMenuW(menu_, MF_POPUP, (UINT_PTR)m, L"&Werkzeuge");
     // „Optionen“ direkt in der Menüleiste
@@ -643,7 +715,8 @@ void MainWindow::BuildBookmarkMenu(HMENU m) {
     AddItem(m, cmd::BookmarkSort, L"&Sortieren…");
     AddItem(m, cmd::FocusBookmarks, L"Lesezeichenliste &bearbeiten\tAlt+F2");
     const auto& b = bookmarks_.Get();
-    if (!b.empty()) AddSep(m);
+    if (!b.empty() || !Favorites().empty()) AddSep(m);
+    if (!Favorites().empty()) AddItem(m, cmd::BookmarkFavorites, L"&*  Favoriten");
     for (size_t i = 0; i < b.size() && i <= (size_t)(cmd::BookmarkLast - cmd::BookmarkFirst); ++i) {
         std::wstring t = (i < 9 ? (L"&" + std::to_wstring(i + 1) + L"  ") : L"    ") + ReplaceAll(b[i].name, L"&", L"&&") +
                          L"\t" + ReplaceAll(LocationDisplay(b[i].path), L"&", L"&&");
@@ -669,6 +742,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     check(cmd::SortDescending, a.SortDescending());
     check(cmd::ShowHidden, App::Opt().showHidden);
     check(cmd::ShowDirSizes, App::Opt().showDirSizes);
+    check(cmd::PrivateMode, App::Opt().privateMode);
     check(cmd::Filter, a.Filter().IsActive());
     check(cmd::ToggleToolbar, showToolbar_);
     check(cmd::ToggleCommandLine, showCmdLine_);
@@ -689,6 +763,25 @@ void MainWindow::UpdateMenu(HMENU m) {
     enable(cmd::GoBack, a.CanGoBack());
     enable(cmd::GoForward, a.CanGoForward());
     enable(cmd::GoUp, LocationHasParent(a.Dir()));
+    {
+        // Favoriten: nur Dateien (keine Verzeichnisse, nicht auf FTP/SFTP/WebDAV)
+        bool canAdd = false, allFav = false;
+        if (!a.IsVirtual() && !a.IsFavorites()) {
+            auto paths = a.SelectedOrFocusedPaths();
+            canAdd = !paths.empty();
+            allFav = !paths.empty();
+            for (auto& p : paths) {
+                if (!CanBeFavorite(p)) canAdd = false;
+                if (!IsFavorite(p)) allFav = false;
+            }
+        }
+        enable(cmd::FavoriteAdd, canAdd && !allFav);
+        enable(cmd::FavoriteRemove, (a.IsFavorites() && hasSel) || allFav);
+        if (a.IsFavorites())
+            for (int id : {cmd::NewFolder, cmd::NewFile, cmd::NewTextFile, cmd::ClipPaste, cmd::FindFiles, cmd::FindDuplicates,
+                           cmd::DirSizes, cmd::CreateZip, cmd::PrintList, cmd::GoRoot})
+                enable(id, false);
+    }
     if (a.IsVirtual()) {
         // Netzwerkebenen und FTP/SFTP: nicht unterstützte Befehle sperren
         std::vector<int> off = {cmd::Wipe, cmd::Duplicate, cmd::ClipCut, cmd::ClipCopy, cmd::ClipPaste, cmd::Attributes,
@@ -708,8 +801,9 @@ void MainWindow::UpdateMenu(HMENU m) {
     }
     enable(cmd::GoOtherSame, Other() != nullptr);
     enable(cmd::SwapPanes, Other() != nullptr);
-    enable(cmd::CompareDirs, Other() != nullptr);
-    enable(cmd::SyncDirs, Other() != nullptr);
+    bool favSide = a.IsFavorites() || (Other() && Other()->IsFavorites());
+    enable(cmd::CompareDirs, Other() != nullptr && !favSide);
+    enable(cmd::SyncDirs, Other() != nullptr && !favSide);
     enable(cmd::ClearCompareMarks, a.HasMarks() || (Other() && Other()->HasMarks()));
     enable(cmd::FocusPane2, PaneVisible(1));
     enable(cmd::FocusPane3, PaneVisible(2));
@@ -1262,7 +1356,7 @@ FilePane* MainWindow::Other() {
 std::wstring MainWindow::OtherDir() {
     // Nur gewöhnliche Verzeichnisse (Ziel für Entpacken, Teilen usw.); FTP/Netzwerkebenen -> ""
     FilePane* o = Other();
-    return o && !o->IsVirtual() ? o->Dir() : L"";
+    return o && !o->IsVirtual() && !o->IsFavorites() ? o->Dir() : L"";
 }
 
 void MainWindow::SetActive(int index, bool focus) {
@@ -1473,20 +1567,29 @@ void MainWindow::OpenFileItem(FilePane& p) {
     std::wstring name = PathFileName(path);
     if (IsArchive(name)) {
         std::wstring target = OtherDir();
-        ShowArchive(hwnd_, path, target.empty() ? p.Dir() : target);
+        ShowArchive(hwnd_, path, target.empty() ? PathParent(path) : target);
         return;
     }
     if (o.enterOpensEditorForText && MatchAnyPattern(o.textExtensions, name)) {
         OpenTextEditor(path);
         return;
     }
-    ShellOpen(hwnd_, path, L"", p.Dir());
+    ShellOpen(hwnd_, path, L"", p.WorkingDir());
 }
 
 void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
     SetActive(p->Index(), false);
     if (p->IsVirtual()) {
         ShowVirtualContextMenu(*p, pt, onItems);
+        return;
+    }
+    if (p->IsFavorites() && !onItems) {
+        // Favoriten: kein Verzeichnis – nur Aktualisieren
+        HMENU m = CreatePopupMenu();
+        AddItem(m, cmd::Refresh, L"&Aktualisieren\tF5");
+        UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, hwnd_, nullptr);
+        DestroyMenu(m);
+        if (id) OnCommand((int)id);
         return;
     }
     HMENU extra = CreatePopupMenu();
@@ -1500,11 +1603,27 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
         }
         AddItem(extra, cmd::Copy, L"&Kopieren in andere Liste\tUmschalt+F5");
         AddItem(extra, cmd::Move, L"&Verschieben in andere Liste\tUmschalt+F6");
-        AddItem(extra, cmd::Duplicate, L"D&uplizieren…\tF10");
+        if (!p->IsFavorites()) AddItem(extra, cmd::Duplicate, L"D&uplizieren…\tF10");
         AddItem(extra, cmd::Rename, L"&Umbenennen…\tF2");
         AddItem(extra, cmd::Attributes, L"Attribute/&Datum ändern…");
         if (file && IsArchive(p->FocusedName())) AddItem(extra, cmd::OpenArchive, L"Archiv anzeigen/en&tpacken…");
-        AddItem(extra, cmd::CreateZip, L"&ZIP-Archiv erstellen…");
+        if (!p->IsFavorites()) AddItem(extra, cmd::CreateZip, L"&ZIP-Archiv erstellen…");
+        // Favoriten: nur Dateien; in der Favoritenliste stattdessen „Aus Favoriten entfernen“
+        if (p->IsFavorites()) {
+            AddItem(extra, cmd::FavoriteRemove, L"Aus &Favoriten entfernen");
+            AddItem(extra, cmd::FavoriteGotoDir, L"Zum &Verzeichnis der Datei wechseln");
+        } else {
+            bool allFiles = !names.empty(), allFav = !names.empty();
+            for (auto& n : names) {
+                std::wstring full = PathCombine(p->Dir(), n);
+                if (!CanBeFavorite(full)) allFiles = false;
+                if (!IsFavorite(full)) allFav = false;
+            }
+            if (allFiles) {
+                if (allFav) AppendMenuW(extra, MF_STRING | MF_CHECKED | MF_GRAYED, cmd::FavoriteAdd, L"Als &Favorit gekennzeichnet");
+                else AddItem(extra, cmd::FavoriteAdd, L"Als &Favorit kennzeichnen");
+            }
+        }
     } else {
         AddItem(extra, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
         AddItem(extra, cmd::NewFile, L"&Neue Datei…\tF9");
@@ -1524,6 +1643,11 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
 void MainWindow::OnPaneFilesDropped(FilePane* p) { ReloadVisible(); }
 
 void MainWindow::OnPaneLayoutChanged(FilePane*) { ScheduleStateSave(); }
+
+void MainWindow::OnPanePrivateButton(FilePane* p) {
+    SetActive(p->Index(), false);
+    SetPrivateMode(!App::Opt().privateMode);
+}
 
 // Zwischenablage geändert: ausgeschnittene Dateien neu bestimmen und die Listen neu zeichnen
 void MainWindow::OnClipboardChanged() {
@@ -1629,8 +1753,17 @@ void MainWindow::CopyOrMove(bool move) {
             return;
         }
     }
-    if (move) MoveItems(hwnd_, paths, target);
-    else CopyItems(hwnd_, paths, target);
+    if (move) {
+        MoveItems(hwnd_, paths, target);
+        // Verschobene Favoriten nachführen
+        for (auto& p : paths)
+            if (IsFavorite(p) && !PathExists(p)) {
+                std::wstring moved = PathCombine(target, PathFileName(p));
+                if (FileExists(moved)) RenameFavorite(p, moved);
+            }
+    } else {
+        CopyItems(hwnd_, paths, target);
+    }
     a.SelectNone();
     ReloadVisible();
 }
@@ -1699,7 +1832,7 @@ void MainWindow::RunCommandLine() {
     STARTUPINFOW si{sizeof(si)};
     PROCESS_INFORMATION pi{};
     if (CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
-                       nullptr, a.IsVirtual() ? nullptr : a.Dir().c_str(), &si, &pi)) {
+                       nullptr, a.WorkingDir().empty() ? nullptr : a.WorkingDir().c_str(), &si, &pi)) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         LogOperation(L"Befehl in " + a.Dir() + L": " + cmdText);
@@ -2103,6 +2236,20 @@ bool MainWindow::HandleVirtualCommand(int id) {
         RemoteCopyOrMove(id == cmd::Move);
         return true;
     }
+    // Favoriten: kein gewöhnliches Verzeichnis
+    if ((id == cmd::CompareDirs || id == cmd::SyncDirs) && (a.IsFavorites() || (o && o->IsFavorites()))) {
+        MsgInfo(hwnd_, L"Die Favoriten lassen sich nicht vergleichen oder synchronisieren.");
+        return true;
+    }
+    if (a.IsFavorites() && paneFocus) {
+        switch (id) {
+        case cmd::NewFolder: case cmd::NewFile: case cmd::NewTextFile: case cmd::ClipPaste: case cmd::FindFiles:
+        case cmd::FindDuplicates: case cmd::DirSizes: case cmd::CreateZip: case cmd::PrintList: case cmd::Duplicate:
+            MsgInfo(hwnd_, L"Diese Funktion ist in den Favoriten nicht verfügbar.");
+            return true;
+        default: break;
+        }
+    }
     if (!a.IsVirtual()) {
         if ((id == cmd::Copy || id == cmd::Move) && o && o->IsNetworkLevel()) {
             MsgInfo(hwnd_, L"Die andere Liste zeigt die Netzwerkübersicht. Bitte dort zuerst eine Freigabe öffnen.");
@@ -2127,7 +2274,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
     case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
-    case cmd::BookmarkAddCloud:
+    case cmd::BookmarkAddCloud: case cmd::BookmarkFavorites: case cmd::PrivateMode: case cmd::ClearHistory:
     case cmd::FunctionKeys:
     case cmd::Options: case cmd::Shortcuts: case cmd::About: case cmd::Exit: case cmd::ClearCompareMarks: case cmd::OpLog:
     case cmd::DriveOverview: case cmd::CommandPrompt:
@@ -2283,7 +2430,7 @@ void MainWindow::OnCommand(int id) {
             std::wstring p = a.FocusedPath();
             if (p.empty()) break;
             if (!App::Opt().externalViewer.empty())
-                RunProcess(Quote(App::Opt().externalViewer) + L" \"" + p + L"\"", a.Dir());
+                RunProcess(Quote(App::Opt().externalViewer) + L" \"" + p + L"\"", a.WorkingDir());
             else
                 OpenViewerWindow(p);
         }
@@ -2303,7 +2450,7 @@ void MainWindow::OnCommand(int id) {
         std::wstring p = a.FocusedPath();
         if (p.empty() || a.FocusedIsDir()) break;
         if (!App::Opt().externalEditor.empty())
-            RunProcess(L"\"" + App::Opt().externalEditor + L"\" \"" + p + L"\"", a.Dir());
+            RunProcess(L"\"" + App::Opt().externalEditor + L"\" \"" + p + L"\"", a.WorkingDir());
         else
             OpenTextEditor(p);
         break;
@@ -2770,8 +2917,9 @@ void MainWindow::OnCommand(int id) {
         std::wstring line = std::wstring(L"\"") + comspec + L"\"";
         STARTUPINFOW si{sizeof(si)};
         PROCESS_INFORMATION pi{};
+        std::wstring wd = a.WorkingDir();
         if (CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE, nullptr,
-                           a.IsVirtual() ? nullptr : a.Dir().c_str(), &si, &pi)) {
+                           wd.empty() ? nullptr : wd.c_str(), &si, &pi)) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
         }
@@ -2784,13 +2932,63 @@ void MainWindow::OnCommand(int id) {
             BuildFKeyCells();
         }
         break;
-    case cmd::Options:
+    case cmd::Options: {
+        bool wasPrivate = privActive_;
         if (ShowOptionsDialog(hwnd_)) {
             bookmarks_.Set(LoadBookmarks(App::Cfg()));   // ggf. importierte Lesezeichen
+            if (App::Opt().privateMode != wasPrivate) SetPrivateMode(App::Opt().privateMode);
             ApplyOptionsAll();
             Layout();
         }
         break;
+    }
+    case cmd::PrivateMode: SetPrivateMode(!App::Opt().privateMode); break;
+    case cmd::ClearHistory: ClearAllHistory(); break;
+
+    // ---- Favoriten ----
+    case cmd::BookmarkFavorites:
+        if (Favorites().empty()) break;
+        a.Navigate(kFavoritesLocation);
+        a.FocusList();
+        break;
+    case cmd::FavoriteAdd: {
+        if (a.IsVirtual() || a.IsFavorites()) break;
+        auto paths = a.SelectedOrFocusedPaths();
+        std::vector<std::wstring> files;
+        for (auto& p : paths)
+            if (CanBeFavorite(p)) files.push_back(p);
+        if (files.empty()) {
+            MsgInfo(hwnd_, L"Als Favorit lassen sich nur Dateien kennzeichnen (keine Verzeichnisse, keine FTP/SFTP/WebDAV-Dateien).");
+            break;
+        }
+        int n = AddFavorites(files);
+        if (n == 0) MessageBeep(MB_ICONASTERISK);
+        break;
+    }
+    case cmd::FavoriteRemove: {
+        auto paths = a.SelectedOrFocusedPaths();
+        if (paths.empty()) break;
+        if (a.IsFavorites()) {
+            // Nachfolger fokussieren
+            RemoveFavorites(paths, false);
+            a.Reload();
+            OnFavoritesChanged(false);
+            for (int i = 0; i < 4; ++i)
+                if (i != active_ && panes_[i]->IsFavorites()) panes_[i]->Reload();
+        } else {
+            RemoveFavorites(paths);
+        }
+        break;
+    }
+    case cmd::FavoriteGotoDir: {
+        std::wstring p = a.FocusedPath();
+        if (p.empty()) break;
+        if (a.Navigate(PathParent(p), PathFileName(p))) {
+            a.FocusName(PathFileName(p));
+            a.FocusList();
+        }
+        break;
+    }
 
     // ---- Hilfe ----
     case cmd::Shortcuts: ShowShortcuts(); break;
@@ -3071,6 +3269,9 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         break;
     case WM_APP + 2:
         UpdateViewButtons();
+        return 0;
+    case WM_QF_FAVORITES_CHANGED:
+        OnFavoritesChanged(wp != 0);
         return 0;
     case WM_QF_SENDKEY:
         SendKeyStroke((UINT)wp, (lp & 1) != 0, (lp & 2) != 0, (lp & 4) != 0);

@@ -36,7 +36,9 @@ bool WildcardMatch(std::wstring_view pattern, std::wstring_view name);
 bool MatchAnyPattern(const std::wstring& patterns, const std::wstring& name);
 
 // ---------- Pfade ----------
+// Ist name absolut („C:\…“, „C:“ oder UNC „\\Server\…“), wird name unverändert geliefert (Favoriten: vollständige Pfade)
 std::wstring PathCombine(const std::wstring& dir, const std::wstring& name);
+bool IsAbsolutePath(const std::wstring& p);   // „X:\…“, „X:“ oder „\\…“
 std::wstring PathParent(const std::wstring& path);        // "" wenn kein Elternverzeichnis
 std::wstring PathFileName(const std::wstring& path);       // letztes Glied
 std::wstring PathExtension(const std::wstring& path);      // inkl. Punkt, "" wenn keine

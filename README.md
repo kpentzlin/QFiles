@@ -146,6 +146,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   - **Lesezeichen → Cloud-Speicher hinzufügen…** findet die Ordner der Desktop-Programme von Dropbox, Google Drive und
     Microsoft OneDrive (auch mehrere Konten, z. B. „OneDrive – Firma“) und legt sie als Lesezeichen an.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
+  - Ganz oben steht **Favoriten** (dunkelroter Asterisk, hellgelb), sobald mindestens eine Datei als Favorit
+    gekennzeichnet ist (siehe „Favoriten“).
   - Umbenennen mit F2, Entfernen mit Entf, Verschieben mit Alt+↑/↓, Pfad über das Kontextmenü ändern.
   - Dateien lassen sich auf ein Lesezeichen ziehen.
 - Eine oder zwei Dateilisten (Strg+Umschalt+L), jede teilbar (Split). Die aktive Liste ist farbig markiert. Zwischen
@@ -159,10 +161,11 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     Bezeichnung; der Verzeichnisbaum zeigt bei subst-Laufwerken das Ziel.
   - Verzeichnis-Textfeld mit Verlauf und Autovervollständigung; Umgebungsvariablen wie `%USERPROFILE%` sind erlaubt.
   - Zurück/Vor, Übergeordnet, **„\“** (oberste Verzeichnisebene des Laufwerks bzw. der Freigabe, Strg+Rücktaste),
-    Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
-    Verzeichnisse dieser Sitzung (zuletzt aufgerufene oben); die Zurück/Vor-Liste wird nicht gespeichert.
+    Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der zuletzt aufgerufenen Verzeichnisse
+    (neueste oben); die Zurück/Vor-Liste wird gespeichert und gilt auch nach einem Neustart (nicht im privaten Modus).
     Die Maustasten **„Zurück“ und „Vor“** einer 5-Tasten-Maus (sowie die Browser-Tasten der Tastatur) wirken wie
     „<“ bzw. „>“ der aktiven Liste.
+  - Kopfzeile rechts: **P** (privater Modus, siehe unten), Lesezeichen hinzufügen, Split.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
   - Die Zeile mit den Spaltenköpfen hat die Farbe der Laufwerksleiste (aktive Liste hellblau).
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar) und
@@ -191,6 +194,38 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Funktionstastenleiste. Bei gedrückter Strg- bzw. Strg+Umschalt-Taste zeigt sie die Belegung der programmierbaren
   Tasten.
 - Statusleiste.
+
+### Favoriten
+
+- Eine Datei (kein Verzeichnis, keine FTP/SFTP/WebDAV-Datei) wird über das Kontextmenü **Als Favorit kennzeichnen**
+  (auch *Datei → Als Favorit kennzeichnen*, mehrere markierte Dateien auf einmal) in die Favoritenliste aufgenommen.
+  Die Liste ist dauerhaft (Abschnitt `[Favoriten]` der Einstellungsdatei).
+- Das Lesezeichen **Favoriten** (ganz oben, nur bei nicht leerer Liste; auch im Menü *Lesezeichen* und als Eingabe
+  `Favoriten` im Verzeichnisfeld) zeigt die Favoriten in der Liste: hellgelb hinterlegt (nicht aktiv und mit der
+  Option „Nicht aktive Listen grau hinterlegen“ grau), immer wie „Mit Unterverzeichnissen“, aber mit der Spalte
+  **Verzeichnis** und dem vollständigen Pfad (Laufwerksbuchstabe bzw. UNC-Pfad bei Netzwerkdateien). Beim Verlassen
+  gilt wieder die vorherige Ansicht.
+- Dateien, die beim Aufbau der Liste nicht mehr vorhanden sind, entfallen stillschweigend aus der Favoritenliste.
+  Dateien auf einem gerade nicht erreichbaren Server (oder ohne Zugriffsrecht) bleiben gespeichert und erscheinen
+  wieder, sobald der Server erreichbar ist.
+- In der Favoritenliste steht im Kontextmenü statt „Als Favorit kennzeichnen“ **Aus Favoriten entfernen**, dazu „Zum
+  Verzeichnis der Datei wechseln“. Anzeigen, Bearbeiten, Öffnen, Kopieren/Verschieben in die andere Liste,
+  Umbenennen, Löschen, Attribute und Eigenschaften wirken auf die Dateien an ihrem Ort. Umbenennen und Verschieben
+  mit QFiles führen die Favoriten nach. Neue Dateien/Verzeichnisse, Einfügen, Suchen, Vergleichen und
+  Synchronisieren gibt es in den Favoriten nicht.
+
+### Privater Modus und Verlauf
+
+- **Privater Modus**: Schaltfläche **P** in der Kopfzeile jeder Liste (abgerundetes Viereck; grün gefüllt =
+  eingeschaltet), *Werkzeuge → Privater Modus* oder *Optionen → Bedienung*. Im privaten Modus sind die Kopfzeilen
+  der aktiven Liste und ihre Spaltenköpfe **grün** statt blau.
+- Beim Einschalten wird der aktuelle Verlauf festgehalten (Zurück/Vor-Listen, Verzeichnisverlauf und letztes
+  Verzeichnis der Listen, Befehlszeile; Suchmuster und Umbenennungsmasken werden nicht mehr gespeichert). Bis zum
+  Ausschalten wird nur dieser Stand gespeichert, auch beim Beenden. Beim Ausschalten gilt wieder der festgehaltene
+  Verlauf.
+- **Werkzeuge → Verlauf löschen…** löscht nach Rückfrage die Zurück/Vor-Listen, den Verzeichnisverlauf, die letzten
+  Verzeichnisse je Laufwerk, den Befehlszeilenverlauf sowie die zuletzt verwendeten Suchmuster und
+  Umbenennungsmasken (auch den im privaten Modus festgehaltenen Stand).
 
 ### Dateioperationen
 
@@ -406,8 +441,8 @@ Gespeichert werden:
 - Breiten von Baum und Lesezeichenliste,
 - Teilungsverhältnisse und Split-Zustand,
 - die zuletzt in den **vier Listenfenstern** angezeigten Verzeichnisse mit Ansicht, Sortierung, Spaltenbreiten,
-  Filter und Verlauf,
-- die Lesezeichen,
+  Filter, Verzeichnisverlauf und Zurück/Vor-Liste (im privaten Modus der Stand beim Einschalten),
+- die Lesezeichen und die Favoriten,
 - die Funktionstasten,
 - der Befehlszeilen-Verlauf,
 - Größe, Position und Spaltenbreiten des Suchfensters.

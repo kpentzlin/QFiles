@@ -1,6 +1,8 @@
 #include "BookmarkList.h"
 #include "App.h"
 #include "Cloud.h"
+#include "Favorites.h"
+#include "Glyphs.h"
 #include "Location.h"
 #include "Remote.h"
 #include "ShellMenu.h"
@@ -107,7 +109,7 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
             LVHITTESTINFO ht{};
             ht.pt = pt;
             ScreenToClient(list_, &ht.pt);
-            int i = ListView_HitTest(list_, &ht);
+            int i = ItemOfRow(ListView_HitTest(list_, &ht));
             if (i >= 0 && i < (int)items_.size() && !IsVirtualLocation(items_[i].path)) return items_[i].path;
             return L"";
         },
@@ -147,8 +149,8 @@ int BookmarkList::IconColumnItemAt(POINT screenPt) const {
     LVHITTESTINFO ht{};
     ht.pt = screenPt;
     ScreenToClient(list_, &ht.pt);
-    int i = ListView_SubItemHitTest(list_, &ht);
-    return (i >= 0 && i < (int)items_.size() && ht.iSubItem == 1) ? i : -1;
+    int i = ListView_SubItemHitTest(list_, &ht);   // Zeile
+    return (i >= 0 && i < ListView_GetItemCount(list_) && ht.iSubItem == 1) ? i : -1;
 }
 
 void BookmarkList::Set(const std::vector<Bookmark>& b) {
@@ -156,10 +158,34 @@ void BookmarkList::Set(const std::vector<Bookmark>& b) {
     Rebuild(-1);
 }
 
+void BookmarkList::SetFavoritesCount(size_t count) {
+    favCount_ = count;
+    bool show = count > 0;
+    if (show == favRow_) {
+        InvalidateRect(list_, nullptr, FALSE);
+        return;
+    }
+    bool favSel = IsFavRow(SelectedRow());
+    int sel = Selected();
+    favRow_ = show;
+    Rebuild(sel);
+    if (favSel && favRow_) ListView_SetItemState(list_, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+}
+
 void BookmarkList::Rebuild(int select) {
     SendMessageW(list_, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(list_);
     int folder = StockIndex(SIID_FOLDER), drive = StockIndex(SIID_DRIVEFIXED);
+    if (favRow_) {
+        // „Favoriten“: Symbol und Hintergrund zeichnet NM_CUSTOMDRAW (Ordnersymbol nur für die Zeilengeometrie)
+        LVITEMW it{};
+        it.mask = LVIF_TEXT | LVIF_IMAGE;
+        it.iItem = 0;
+        it.pszText = const_cast<wchar_t*>(kFavoritesLocation);
+        it.iImage = folder;
+        ListView_InsertItem(list_, &it);
+    }
+    const int off = Offset();
     kinds_.assign(items_.size(), 0);
     for (size_t i = 0; i < items_.size(); ++i) {
         const std::wstring& p = items_[i].path;
@@ -177,7 +203,7 @@ void BookmarkList::Rebuild(int select) {
         }
         LVITEMW it{};
         it.mask = LVIF_TEXT | LVIF_IMAGE;
-        it.iItem = (int)i;
+        it.iItem = (int)i + off;
         it.pszText = const_cast<wchar_t*>(items_[i].name.c_str());
         it.iImage = icon;
         ListView_InsertItem(list_, &it);
@@ -186,19 +212,26 @@ void BookmarkList::Rebuild(int select) {
     for (size_t i = 0; i < items_.size(); ++i) {
         LVITEMW it{};
         it.mask = LVIF_IMAGE;
-        it.iItem = (int)i;
+        it.iItem = (int)i + off;
         ListView_GetItem(list_, &it);
         icons_.push_back(it.iImage);
     }
     if (select >= 0 && select < (int)items_.size()) {
-        ListView_SetItemState(list_, select, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-        ListView_EnsureVisible(list_, select, FALSE);
+        ListView_SetItemState(list_, select + off, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(list_, select + off, FALSE);
     }
     SendMessageW(list_, WM_SETREDRAW, TRUE, 0);
     Resize();
 }
 
-int BookmarkList::Selected() const { return ListView_GetNextItem(list_, -1, LVNI_SELECTED); }
+int BookmarkList::SelectedRow() const { return ListView_GetNextItem(list_, -1, LVNI_SELECTED); }
+
+int BookmarkList::Selected() const {
+    int row = SelectedRow();
+    if (row < 0 || IsFavRow(row)) return -1;
+    int i = ItemOfRow(row);
+    return i < (int)items_.size() ? i : -1;
+}
 
 int BookmarkList::FindPath(const std::wstring& path) const {
     auto norm = [](const std::wstring& p) {
@@ -260,7 +293,7 @@ void BookmarkList::RenameSelected() {
     int i = Selected();
     if (i < 0) return;
     SetFocus(list_);
-    ListView_EditLabel(list_, i);
+    ListView_EditLabel(list_, i + Offset());
 }
 
 void BookmarkList::MoveSelected(int delta) {
@@ -274,10 +307,12 @@ void BookmarkList::MoveSelected(int delta) {
 
 void BookmarkList::ContextMenu(POINT pt) {
     int i = Selected();
+    bool fav = IsFavRow(SelectedRow());
     HMENU m = CreatePopupMenu();
     UINT has = i >= 0 ? MF_STRING : (MF_STRING | MF_GRAYED);
-    AppendMenuW(m, has, MenuOpen, L"In aktiver Liste &öffnen\tEingabe");
-    AppendMenuW(m, has, MenuOpenOther, L"In &anderer Liste öffnen\tUmschalt+Eingabe");
+    UINT canOpen = (i >= 0 || fav) ? MF_STRING : (MF_STRING | MF_GRAYED);
+    AppendMenuW(m, canOpen, MenuOpen, L"In aktiver Liste &öffnen\tEingabe");
+    AppendMenuW(m, canOpen, MenuOpenOther, L"In &anderer Liste öffnen\tUmschalt+Eingabe");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, has, MenuRename, L"&Umbenennen\tF2");
     AppendMenuW(m, has, MenuChangePath, L"&Pfad ändern…");
@@ -292,10 +327,8 @@ void BookmarkList::ContextMenu(POINT pt) {
     DestroyMenu(m);
     switch (id) {
     case MenuOpen:
-        if (i >= 0 && cb_.navigate) cb_.navigate(items_[i].path, false);
-        break;
     case MenuOpenOther:
-        if (i >= 0 && cb_.navigate) cb_.navigate(items_[i].path, true);
+        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? std::wstring(kFavoritesLocation) : items_[i].path, id == MenuOpenOther);
         break;
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
@@ -330,19 +363,63 @@ void BookmarkList::ContextMenu(POINT pt) {
     }
 }
 
+// Zeile „Favoriten“: Symbolspalte grau mit dunkelrotem Asterisk, Name hellgelb mit Asterisk als Symbol
+void BookmarkList::DrawFavoritesRow(NMLVCUSTOMDRAW* cd) {
+    HDC dc = cd->nmcd.hdc;
+    const COLORREF star = RGB(150, 0, 0);
+    RECT row{}, icon{}, label{}, col{};
+    ListView_GetItemRect(list_, 0, &row, LVIR_BOUNDS);
+    ListView_GetItemRect(list_, 0, &icon, LVIR_ICON);
+    ListView_GetItemRect(list_, 0, &label, LVIR_LABEL);
+    ListView_GetSubItemRect(list_, 0, 1, LVIR_BOUNDS, &col);
+    FillRect(dc, &col, GetSysColorBrush(COLOR_BTNFACE));
+    DrawAsterisk(dc, col, star, GetSysColor(COLOR_BTNFACE));
+    RECT name{std::max(col.right, row.left), row.top, row.right, row.bottom};
+    if (col.left > row.left && col.right >= row.right) name = {row.left, row.top, col.left, row.bottom};
+    bool selected = (ListView_GetItemState(list_, 0, LVIS_SELECTED) & LVIS_SELECTED) != 0;
+    bool focus = GetFocus() == list_;
+    COLORREF back = kFavoritesBack;
+    if (selected) back = focus ? RGB(204, 232, 255) : RGB(217, 217, 217);
+    // wie die übrigen farbigen Lesezeichen: Hintergrundfarbe hinter dem Namen, Symbol auf Fensterhintergrund
+    RECT fill = name;
+    if (!selected) {
+        RECT iconArea{name.left, name.top, std::max(name.left, label.left), name.bottom};
+        FillRect(dc, &iconArea, GetSysColorBrush(COLOR_WINDOW));
+        fill.left = std::max(name.left, label.left);
+    }
+    HBRUSH b = CreateSolidBrush(back);
+    FillRect(dc, &fill, b);
+    DeleteObject(b);
+    if (selected && focus) {
+        HBRUSH fr = CreateSolidBrush(RGB(153, 209, 255));
+        FrameRect(dc, &name, fr);
+        DeleteObject(fr);
+    }
+    if (icon.right > icon.left) DrawAsterisk(dc, icon, star, selected ? back : GetSysColor(COLOR_WINDOW));
+    HGDIOBJ of = SelectObject(dc, (HFONT)SendMessageW(list_, WM_GETFONT, 0, 0));
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(0, 0, 0));
+    RECT tr = label;
+    tr.left += DpiScale(list_, 2);
+    DrawTextW(dc, kFavoritesLocation, -1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_END_ELLIPSIS);
+    SelectObject(dc, of);
+}
+
 LRESULT BookmarkList::OnNotify(NMHDR* nm) {
     switch (nm->code) {
     case LVN_ITEMACTIVATE: {
         auto* ia = (NMITEMACTIVATE*)nm;
-        int i = ia->iItem >= 0 ? ia->iItem : Selected();
-        if (i >= 0 && i < (int)items_.size() && cb_.navigate) {
+        int row = ia->iItem >= 0 ? ia->iItem : SelectedRow();
+        int i = ItemOfRow(row);
+        bool fav = IsFavRow(row);
+        if ((fav || (i >= 0 && i < (int)items_.size())) && cb_.navigate) {
             bool other = (ia->uKeyFlags & LVKF_SHIFT) != 0;
             // Klick auf das Symbol in der linken Spalte: in der anderen Liste öffnen (nicht bei der Eingabetaste)
             if (GetKeyState(VK_RETURN) >= 0) {
                 DWORD mp = GetMessagePos();
-                if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == i) other = true;
+                if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == row) other = true;
             }
-            cb_.navigate(items_[i].path, other);
+            cb_.navigate(fav ? std::wstring(kFavoritesLocation) : items_[i].path, other);
         }
         return 0;
     }
@@ -354,28 +431,34 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
     }
     case LVN_GETINFOTIPW: {
         auto* ti = (NMLVGETINFOTIPW*)nm;
-        if (ti->iItem >= 0 && ti->iItem < (int)items_.size()) {
-            std::wstring s = LocationDisplay(items_[ti->iItem].path);
+        int k = ItemOfRow(ti->iItem);
+        if (IsFavRow(ti->iItem)) {
+            std::wstring s = L"Favoriten: " + std::to_wstring(favCount_) + (favCount_ == 1 ? L" Datei" : L" Dateien") +
+                             L"\n(Kontextmenü einer Datei: „Als Favorit kennzeichnen“)";
+            wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
+        } else if (k >= 0 && k < (int)items_.size()) {
+            std::wstring s = LocationDisplay(items_[k].path);
             // Netzwerk und FTP nicht prüfen (nicht erreichbare Server würden die Oberfläche blockieren)
-            if (kinds_.size() > (size_t)ti->iItem && (kinds_[ti->iItem] == KindRemote || kinds_[ti->iItem] == KindWebDav))
+            if (kinds_.size() > (size_t)k && (kinds_[k] == KindRemote || kinds_[k] == KindWebDav))
             {
                 RemoteUrl u;
                 if (ParseRemoteUrl(s, u)) s += L"\nZugang: " + std::wstring(RemoteProtoName(u.proto));
             }
-            else if (!(kinds_.size() > (size_t)ti->iItem && kinds_[ti->iItem] == KindNetwork) && !DirExists(s))
+            else if (!(kinds_.size() > (size_t)k && kinds_[k] == KindNetwork) && !DirExists(s))
                 s += L"\n(nicht erreichbar)";
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         }
         return 0;
     }
     case LVN_BEGINLABELEDITW:
-        return FALSE;
+        return IsFavRow(((NMLVDISPINFOW*)nm)->item.iItem) ? TRUE : FALSE;   // „Favoriten“ nicht umbenennen
     case LVN_ENDLABELEDITW: {
         auto* di = (NMLVDISPINFOW*)nm;
-        if (di->item.pszText && di->item.iItem >= 0 && di->item.iItem < (int)items_.size()) {
+        int k = ItemOfRow(di->item.iItem);
+        if (di->item.pszText && k >= 0 && k < (int)items_.size()) {
             std::wstring n = Trim(di->item.pszText);
             if (!n.empty()) {
-                items_[di->item.iItem].name = n;
+                items_[k].name = n;
                 if (cb_.changed) cb_.changed();
                 return TRUE;
             }
@@ -395,13 +478,19 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         auto* cd = (NMLVCUSTOMDRAW*)nm;
         switch (cd->nmcd.dwDrawStage) {
         case CDDS_PREPAINT: return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
-        case CDDS_ITEMPREPAINT: return CDRF_NOTIFYSUBITEMDRAW;
+        case CDDS_ITEMPREPAINT:
+            if (IsFavRow((int)cd->nmcd.dwItemSpec)) {
+                DrawFavoritesRow(cd);
+                return CDRF_SKIPDEFAULT;
+            }
+            return CDRF_NOTIFYSUBITEMDRAW;
         case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
-            size_t i = (size_t)cd->nmcd.dwItemSpec;
+            int row = (int)cd->nmcd.dwItemSpec;
+            size_t i = (size_t)ItemOfRow(row);
             if (cd->iSubItem == 1) {
                 // Symbolspalte: hellgrau wie Kopf- und Fußleisten, Symbol des Lesezeichens mittig
                 RECT rc{};
-                ListView_GetSubItemRect(list_, (int)i, 1, LVIR_BOUNDS, &rc);
+                ListView_GetSubItemRect(list_, row, 1, LVIR_BOUNDS, &rc);
                 FillRect(cd->nmcd.hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
                 HIMAGELIST il = ListView_GetImageList(list_, LVSIL_SMALL);
                 int sz = DpiScale(list_, 16);
@@ -454,7 +543,9 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
     case WM_KEYDOWN:
         if (wp == VK_RETURN) {
             int i = self->Selected();
-            if (i >= 0 && self->cb_.navigate) self->cb_.navigate(self->items_[i].path, GetKeyState(VK_SHIFT) < 0);
+            bool fav = self->IsFavRow(self->SelectedRow());
+            if ((i >= 0 || fav) && self->cb_.navigate)
+                self->cb_.navigate(fav ? std::wstring(kFavoritesLocation) : self->items_[i].path, GetKeyState(VK_SHIFT) < 0);
             return 0;
         }
         break;

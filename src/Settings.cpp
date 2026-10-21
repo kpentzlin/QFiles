@@ -247,6 +247,7 @@ void Options::Load(const Config& c) {
     shellExtExclude = c.Get(S, L"KontextmenueAusschluss", d.shellExtExclude);
     historySize = c.GetInt(S, L"Verlaufslaenge", d.historySize);
     saveOnExit = c.GetBool(S, L"BeimBeendenSpeichern", d.saveOnExit);
+    privateMode = c.GetBool(S, L"PrivaterModus", d.privateMode);
     if (thumbnailSize < 32) thumbnailSize = 32;
     if (thumbnailSize > 256) thumbnailSize = 256;
     if (editorTabWidth < 1 || editorTabWidth > 16) editorTabWidth = 4;
@@ -304,6 +305,7 @@ void Options::Save(Config& c) const {
     c.Set(S, L"KontextmenueAusschluss", shellExtExclude);
     c.SetInt(S, L"Verlaufslaenge", historySize);
     c.SetBool(S, L"BeimBeendenSpeichern", saveOnExit);
+    c.SetBool(S, L"PrivaterModus", privateMode);
 }
 
 std::vector<Bookmark> LoadBookmarks(const Config& c) {

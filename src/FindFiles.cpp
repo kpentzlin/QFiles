@@ -433,8 +433,10 @@ void FindFilesDialog::LoadSettings() {
 
 void FindFilesDialog::SaveSettings() {
     Config& c = App::Cfg();
-    c.SetList(kSection, L"Muster", histPattern_);
-    c.SetList(kSection, L"Text", histText_);
+    if (!App::Opt().privateMode) {   // privater Modus: Verlauf nicht speichern
+        c.SetList(kSection, L"Muster", histPattern_);
+        c.SetList(kSection, L"Text", histText_);
+    }
     c.SetBool(kSection, L"Unterverzeichnisse", IsChecked(CID_SUBDIRS));
     c.SetBool(kSection, L"GrossKlein", IsChecked(CID_MATCHCASE));
     c.SetBool(kSection, L"Versteckte", IsChecked(CID_HIDDEN));

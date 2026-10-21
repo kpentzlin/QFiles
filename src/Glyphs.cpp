@@ -1,6 +1,7 @@
 #include "Glyphs.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace qf {
 
@@ -188,6 +189,39 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
         break;
     }
     }
+}
+
+void DrawAsterisk(HDC dc, const RECT& rc, COLORREF color, COLORREF back) {
+    int w = rc.right - rc.left, h = rc.bottom - rc.top;
+    int s = std::min(w, h) * 4 / 5;
+    if (s < 6) return;
+    // Viermal größer zeichnen und verkleinert ausgeben (geglättete Kanten ohne GDI+)
+    const int k = 4;
+    int S = s * k;
+    HDC mem = CreateCompatibleDC(dc);
+    HBITMAP bmp = CreateCompatibleBitmap(dc, S, S);
+    HGDIOBJ old = SelectObject(mem, bmp);
+    RECT all{0, 0, S, S};
+    HBRUSH bb = CreateSolidBrush(back);
+    FillRect(mem, &all, bb);
+    DeleteObject(bb);
+    double c = S / 2.0, r = S / 2.0 - k;
+    int width = std::max(k, S / 12);  // schlank
+    for (int i = 0; i < 3; ++i) {
+        double a = 3.14159265358979 / 2 + i * 3.14159265358979 / 3;
+        POINT p[2] = {{(int)(c + r * cos(a)), (int)(c - r * sin(a))}, {(int)(c - r * cos(a)), (int)(c + r * sin(a))}};
+        Lines(mem, p, 2, color, width);
+    }
+    int x = (rc.left + rc.right - s) / 2, y = (rc.top + rc.bottom - s) / 2;
+    int oldMode = SetStretchBltMode(dc, HALFTONE);
+    POINT org;
+    SetBrushOrgEx(dc, 0, 0, &org);
+    StretchBlt(dc, x, y, s, s, mem, 0, 0, S, S, SRCCOPY);
+    SetBrushOrgEx(dc, org.x, org.y, nullptr);
+    SetStretchBltMode(dc, oldMode);
+    SelectObject(mem, old);
+    DeleteObject(bmp);
+    DeleteDC(mem);
 }
 
 } // namespace qf

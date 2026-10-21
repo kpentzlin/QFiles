@@ -41,6 +41,7 @@ public:
     virtual void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) = 0;
     virtual void OnPaneFilesDropped(FilePane* p) = 0;                    // nach Drag & Drop: andere Listen aktualisieren
     virtual void OnPaneLayoutChanged(FilePane*) {}                       // Ansicht/Spaltenbreiten geändert (speichern)
+    virtual void OnPanePrivateButton(FilePane*) {}                       // Schaltfläche „P“ (privater Modus)
     virtual bool IsPaneActive(const FilePane* p) const = 0;
 };
 
@@ -79,6 +80,9 @@ public:
     bool IsRemote() const;              // FTP/SFTP-Verzeichnis
     bool IsNetworkLevel() const;        // Netzwerk bzw. Rechner (Liste der Rechner/Freigaben)
     bool IsVirtual() const;             // eines von beiden (keine gewöhnlichen Dateioperationen)
+    bool IsFavorites() const;           // Favoritenliste (Dateien aus verschiedenen Verzeichnissen, vollständige Pfade)
+    // Arbeitsverzeichnis für Programme: Verzeichnis der Liste; Favoriten: Verzeichnis der Fokusdatei; sonst ""
+    std::wstring WorkingDir() const;
     bool ScanRunning() const { return netScanning_ || walkRunning_; }
     void CancelScan();                  // Netzwerksuche abbrechen (Esc)
 
@@ -139,6 +143,13 @@ public:
     void LoadState(const Config& c, const std::wstring& section);
     void SaveState(Config& c, const std::wstring& section) const;
 
+    // Privater Modus: Verlauf (Zurück/Vor, Verzeichnisverlauf, letztes Verzeichnis) festhalten; gespeichert wird bis
+    // zum Ausschalten der festgehaltene Stand, beim Ausschalten wird er wiederhergestellt
+    void BeginPrivate();
+    void EndPrivate();
+    void ClearHistory();             // Verlauf löschen (auch den festgehaltenen)
+    void OnPrivateModeChanged();     // Kopfzeile/Spaltenköpfe neu zeichnen (grün statt blau)
+
     // Für DragDrop: Zielverzeichnis an einem Bildschirmpunkt (Ordner unter dem Mauszeiger oder aktuelles Verzeichnis)
     DropTargetInfo DropTargetAt(POINT screenPt);   // Ablageziel (mit Hervorhebung des Unterverzeichnisses)
     void ClearDropHighlight();
@@ -163,7 +174,7 @@ private:
     void OnTreeBatch(WPARAM gen);
     void OnTreeDone(WPARAM gen);
     bool AcceptEntry(const DirEntry& e) const;
-    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Root, Browse, Active };
+    enum class HitArea { None, Drive, Split, Bookmark, Private, Back, Forward, Up, Root, Browse, Active };
     struct HitRect {
         HitArea area;
         int drive;          // Laufwerksindex bei Drive
@@ -185,6 +196,8 @@ private:
     void PaintNavButtons(HDC dc);
     void PaintStatus(HDC dc, const RECT& rc);
     void DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot);
+    void PaintPrivateButton(HDC dc, const RECT& rc, bool hot);
+    COLORREF ActiveBarColor() const;   // Kopfzeile/Spaltenköpfe der aktiven Liste: hellblau, im privaten Modus hellgrün
     void BuildHitRects();
     const HitRect* HitTest(POINT pt) const;
     void OnClickArea(const HitRect& h);
@@ -248,6 +261,19 @@ private:
 
     std::vector<std::wstring> hist_;     // Zurück/Vor-Liste
     int histPos_ = -1;
+    // Favoriten: Ansicht ist immer „Mit Unterverzeichnissen“; die vorherige Ansicht gilt wieder beim Verlassen
+    PaneView viewBeforeFav_ = PaneView::Details;
+    PaneView ViewFor(const std::wstring& dir) const;   // Ansicht, die für dir gilt
+    // Privater Modus: festgehaltener Verlauf
+    struct HistorySnapshot {
+        std::wstring dir;
+        std::vector<std::wstring> hist;
+        int histPos = -1;
+        std::vector<std::wstring> recent;
+        std::vector<std::pair<std::wstring, std::wstring>> lastDirPerDrive;
+    };
+    bool privActive_ = false;
+    HistorySnapshot privSnap_;
     std::vector<std::wstring> recent_;   // Verlauf für die Combobox (zuletzt besucht zuerst)
     std::vector<std::pair<std::wstring, std::wstring>> lastDirPerDrive_;
 

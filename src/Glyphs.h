@@ -10,6 +10,9 @@ enum class Glyph { Back, Forward, Up, Browse, Refresh, Split, Unsplit, Bookmark,
 // Zeichnet das Symbol zentriert in rc. color = Linienfarbe.
 void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color);
 
+// Schlanker sechsstrahliger Stern (Asterisk) mittig in rc, geglättet auf dem Hintergrund back (Favoriten)
+void DrawAsterisk(HDC dc, const RECT& rc, COLORREF color, COLORREF back);
+
 // Hellt eine Farbe auf (amount 0..255 Richtung Weiß)
 COLORREF Lighten(COLORREF c, int amount);
 COLORREF Blend(COLORREF a, COLORREF b, int alphaB); // alphaB 0..255

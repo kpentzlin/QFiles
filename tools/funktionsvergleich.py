@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.7"
+QF_VERSION = "0.1.8"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -86,7 +86,7 @@ DATA = [
     ]),
     ("Navigation", [
         ("Zurück/Vor je Liste", "ja", "ja", "ja", "SC: je Registerkarte", False),
-        ("Verlaufsliste per Rechtsklick auf Zurück/Vor", "ja", "?", "?", "", False),
+        ("Verlaufsliste per Rechtsklick auf Zurück/Vor, auch nach Neustart", "ja", "?", "?", "neu in QFiles 0.1.8: gespeichert", False),
         ("Maustasten „Zurück“/„Vor“ (5-Tasten-Maus)", "ja", "?", "?", "neu in QFiles 0.1.7", False),
         ("Verlauf der Verzeichnisse bleibt nach Neustart erhalten", "ja", "ja", "ja", "QFiles: Verlauf des Verzeichnisfelds", False),
         ("Übergeordnetes Verzeichnis, Stammverzeichnis („\\“)", "ja", "ja", "ja", "", False),
@@ -99,7 +99,9 @@ DATA = [
         ("Zum Ziel einer Verknüpfung wechseln (.lnk, Junction, Symlink)", "–", "–", "ja", "", False),
         ("Schnellsuche durch Tippen in der Liste", "ja", "?", "ja", "", False),
         ("Verzeichnis eingeben bzw. auswählen (Dialog)", "ja", "ja", "ja", "", False),
-        ("Privater Modus (kein Verlauf)", "–", "–", "ja", "", False),
+        ("Privater Modus (kein Verlauf)", "ja", "–", "ja",
+         "neu in QFiles 0.1.8: Schaltfläche „P“, Kopfzeilen grün; beim Ausschalten gilt wieder der Verlauf vom Einschalten", False),
+        ("Verlauf löschen", "ja", "?", "?", "neu in QFiles 0.1.8", False),
         ("Als Explorer-Ersatz einrichten (Win+E), AutoPlay", "–", "–", "ja", "", False),
     ]),
     ("Dateilisten und Ansichten", [
@@ -167,7 +169,9 @@ DATA = [
         ("Erweiterte Kopieroptionen (Hardlinks, Sparse, Datenströme, SMB-Kompression)", "–", "–", "ja", "", False),
         ("Dateien per E-Mail senden", "teilw.", "ja (Pro)", "?", "QFiles: über „Senden an“ im Explorer-Kontextmenü", A),
         ("Explorer-Kontextmenü, „Öffnen mit“, Eigenschaften", "ja", "ja", "ja", "", False),
-        ("Dateiablage (Sammelbehälter für Verweise)", "–", "–", "ja", "", False),
+        ("Favoriten: Dateien kennzeichnen, eigene Liste mit vollständigem Pfad", "ja", "–", "teilw.",
+         "neu in QFiles 0.1.8; SC: Dateiablage bzw. Tags (Pro)", False),
+        ("Dateiablage (Sammelbehälter für Verweise)", "–", "–", "ja", "QFiles: Favoriten (dauerhaft, nur Dateien)", False),
         ("Verwaltung der Dateitypen-Zuordnungen", "–", "ja", "ja", "", False),
     ]),
     ("Dateigruppe umbenennen", [

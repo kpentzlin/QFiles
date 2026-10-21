@@ -43,6 +43,7 @@ public:
     void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) override;
     void OnPaneFilesDropped(FilePane* p) override;
     void OnPaneLayoutChanged(FilePane* p) override;
+    void OnPanePrivateButton(FilePane* p) override;
     void ScheduleStateSave();
     void OnClipboardChanged();   // Fenster-/Listenzustand kurz nach einer Änderung speichern
     bool IsPaneActive(const FilePane* p) const override;
@@ -141,6 +142,11 @@ private:
     int fkeyPressed_ = -1;
     bool fkeyShort_ = false;   // Kurzbeschriftungen in der Fußzeile
     std::vector<std::wstring> cmdHistory_;
+    std::vector<std::wstring> cmdHistorySnap_;   // privater Modus: festgehaltener Befehlszeilen-Verlauf
+    bool privActive_ = false;
+    void SetPrivateMode(bool on);
+    void ClearAllHistory();
+    void OnFavoritesChanged(bool reloadPanes);
     std::vector<FunctionKey> fkeyDefs_;
     std::vector<std::pair<int, std::wstring>> toolTips_;  // Befehl -> Tooltip der Werkzeugleiste
 };
