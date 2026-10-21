@@ -87,6 +87,7 @@ public:
     std::vector<std::wstring> SelectedPaths() const;
     std::wstring FocusedName() const;                       // "" bei ".." oder nichts
     bool FocusedEntry(DirEntry& out) const;                 // Daten des Fokuselements (ohne "..")
+    std::vector<DirEntry> EntriesByNames(const std::vector<std::wstring>& names) const;
     std::wstring FocusedPath() const;
     bool FocusedIsDir() const;
     bool FocusedIsParent() const;
@@ -95,6 +96,7 @@ public:
     std::vector<std::wstring> SelectedOrFocusedPaths() const;
     void SelectNames(const std::vector<std::wstring>& names, bool focusFirst = true);
     void FocusName(const std::wstring& name);
+    void SetFocusName(const std::wstring& name);          // nur Fokus setzen, Markierung unverändert
     void SelectAll();
     void SelectNone();
     void InvertSelection();

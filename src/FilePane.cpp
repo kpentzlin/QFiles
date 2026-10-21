@@ -1569,6 +1569,15 @@ bool FilePane::FocusedEntry(DirEntry& out) const {
     return true;
 }
 
+std::vector<DirEntry> FilePane::EntriesByNames(const std::vector<std::wstring>& names) const {
+    std::vector<DirEntry> r;
+    for (auto& n : names) {
+        int i = FindItem(n);
+        if (i >= 0 && !items_[i].isParent) r.push_back(items_[i].e);
+    }
+    return r;
+}
+
 bool FilePane::FocusedIsDir() const {
     int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
     return i >= 0 && i < (int)items_.size() && items_[i].e.IsDir();
@@ -1609,6 +1618,14 @@ void FilePane::SelectNames(const std::vector<std::wstring>& names, bool focusFir
         ListView_EnsureVisible(list_, first, FALSE);
     }
     UpdateStatus();
+}
+
+void FilePane::SetFocusName(const std::wstring& name) {
+    int i = FindItem(name);
+    if (i < 0) return;
+    ListView_SetItemState(list_, i, LVIS_FOCUSED, LVIS_FOCUSED);
+    ListView_SetSelectionMark(list_, i);
+    ListView_EnsureVisible(list_, i, FALSE);
 }
 
 void FilePane::FocusName(const std::wstring& name) {

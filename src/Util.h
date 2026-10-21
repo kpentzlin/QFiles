@@ -73,6 +73,10 @@ struct DirEntry {
     DWORD attributes = 0;
     uint64_t size = 0;
     FILETIME created{}, modified{}, accessed{};
+    // nur FTP/SFTP: Unix-Rechte (z. B. 0644; kNoUnixMode = unbekannt), Besitzer und Gruppe
+    static constexpr uint32_t kNoUnixMode = 0xFFFFFFFFu;
+    uint32_t unixMode = kNoUnixMode;
+    std::wstring owner, group;
     bool IsDir() const { return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0; }
 };
 // Liest ein Verzeichnis (ohne "." und ".."). Rückgabe false bei Fehler (z. B. Zugriff verweigert).

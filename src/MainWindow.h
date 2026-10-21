@@ -87,6 +87,7 @@ private:
     std::wstring OtherDir();
     bool PaneVisible(int i) const;
     void ReloadVisible();
+    void ReloadOthers();
     void AddBookmarkFor(FilePane& p);
     void RunCommandLine();
     void CopyOrMove(bool move);

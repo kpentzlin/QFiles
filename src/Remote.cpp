@@ -1090,4 +1090,186 @@ DWORD RemoteDropTransfer(HWND owner, const std::vector<std::wstring>& sources, c
     return move ? DROPEFFECT_MOVE : DROPEFFECT_COPY;
 }
 
+
+// ===================== Eigenschaften (FTP/SFTP/WebDAV) mit Unix-Zugriffsrechten =====================
+
+namespace {
+
+constexpr int kPropInfo = 101;
+constexpr int kPropGroup = 102;
+constexpr int kPropOctLabel = 103;
+constexpr int kPropOct = 104;
+constexpr int kPropSym = 105;
+constexpr int kPropHint = 106;
+constexpr int kPropHdr = 110;    // +0..2 Spaltenüberschriften
+constexpr int kPropRow = 120;    // +0..2 Zeilenbeschriftungen
+constexpr int kPropBit = 130;    // +0..8 Kontrollkästchen (Besitzer rwx, Gruppe rwx, Andere rwx)
+
+std::wstring ModeSymbolic(uint32_t m) {
+    const wchar_t* s = L"rwxrwxrwx";
+    std::wstring r;
+    for (int i = 0; i < 9; ++i) r += (m & (1u << (8 - i))) ? s[i] : L'-';
+    return r;
+}
+
+class RemotePropsDlg : public DialogBase {
+public:
+    std::wstring info;
+    uint32_t mode = 0644;
+    bool supported = true, known = true, mixed = false;
+    bool changed = false;
+
+    BOOL OnInit() override {
+        SetText(kPropInfo, info);
+        const wchar_t* hdr[3] = {L"Lesen", L"Schreiben", L"Ausführen"};
+        for (int i = 0; i < 3; ++i) SetText(kPropHdr + i, hdr[i]);
+        updating_ = true;
+        SetMode(mode);
+        updating_ = false;
+        for (int i = 0; i < 9; ++i) Enable(kPropBit + i, supported);
+        Enable(kPropOct, supported);
+        std::wstring hint =
+            L"Die drei Ziffern gelten für Besitzer, Gruppe und alle anderen: 4 = lesen, 2 = schreiben, 1 = ausführen "
+            L"(Summe). 644 = Besitzer liest und schreibt, alle anderen lesen nur – üblich für Dateien auf Webservern, "
+            L"damit der Webserver sie ausliefern kann. 600 = nur der Besitzer, 640 = zusätzlich die Gruppe lesend, "
+            L"755 = für Verzeichnisse und Skripte.";
+        if (!supported) hint = L"WebDAV kennt keine Unix-Zugriffsrechte; sie lassen sich hier nicht anzeigen oder ändern.";
+        else if (!known) hint = L"Der Server hat keine Rechte gemeldet; angezeigt ist 644. OK setzt den eingestellten Wert.\n\n" + hint;
+        else if (mixed) hint = L"Die gewählten Elemente haben unterschiedliche Rechte; OK setzt den eingestellten Wert für alle.\n\n" + hint;
+        SetText(kPropHint, hint);
+        return TRUE;
+    }
+
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        if (id >= kPropBit && id < kPropBit + 9 && code == BN_CLICKED && !updating_) {
+            uint32_t m = mode & ~0777u;
+            for (int i = 0; i < 9; ++i)
+                if (IsChecked(kPropBit + i)) m |= 1u << (8 - i);
+            updating_ = true;
+            SetMode(m);
+            updating_ = false;
+            return TRUE;
+        }
+        if (id == kPropOct && code == EN_CHANGE && !updating_) {
+            std::wstring t = Trim(GetText(kPropOct));
+            bool ok = !t.empty() && t.size() <= 4 && t.find_first_not_of(L"01234567") == std::wstring::npos;
+            if (ok) {
+                uint32_t v = (uint32_t)wcstoul(t.c_str(), nullptr, 8);
+                uint32_t m = t.size() == 4 ? v : ((mode & ~0777u) | (v & 0777u));
+                updating_ = true;
+                SetMode(m, false);
+                updating_ = false;
+            }
+            return TRUE;
+        }
+        if (id == IDOK) {
+            changed = supported && (mode != original_ || mixed || !known);
+            End(IDOK);
+            return TRUE;
+        }
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+
+private:
+    void SetMode(uint32_t m, bool setOctal = true) {
+        if (original_ == 0xFFFFFFFFu) original_ = m;
+        mode = m;
+        for (int i = 0; i < 9; ++i) SetCheck(kPropBit + i, (m & (1u << (8 - i))) != 0);
+        if (setOctal) {
+            wchar_t buf[8];
+            swprintf(buf, 8, (m & 07000) ? L"%04o" : L"%03o", (unsigned)(m & 07777));
+            SetText(kPropOct, buf);
+        }
+        SetText(kPropSym, ModeSymbolic(m));
+    }
+    bool updating_ = false;
+    uint32_t original_ = 0xFFFFFFFFu;
+};
+
+} // namespace
+
+bool RemoteProperties(HWND owner, const std::wstring& dirUrl, const std::vector<DirEntry>& entries) {
+    if (entries.empty()) return false;
+    RemoteUrl u;
+    if (!ParseRemoteUrl(dirUrl, u)) return false;
+    bool dav = u.proto == RemoteProto::WebDav || u.proto == RemoteProto::WebDavs;
+    RemotePropsDlg dlg;
+    dlg.supported = !dav;
+    // Angaben
+    const DirEntry& e = entries[0];
+    std::wstring info;
+    if (entries.size() == 1) {
+        info = L"Name:  " + e.name + L"\nOrt:  " + LocationDisplay(dirUrl) + L"\nTyp:  " +
+               (e.IsDir() ? L"Verzeichnis" : L"Datei");
+        if (!e.IsDir()) info += L"\nGröße:  " + FormatSizeBytes(e.size) + L" Bytes";
+        info += L"\nGeändert:  " + FormatFileTime(e.modified, true);
+    } else {
+        uint64_t total = 0;
+        size_t dirs = 0;
+        for (auto& x : entries) {
+            if (x.IsDir()) ++dirs;
+            else total += x.size;
+        }
+        info = std::to_wstring(entries.size()) + L" Elemente (" + std::to_wstring(dirs) + L" Verzeichnisse)\nOrt:  " +
+               LocationDisplay(dirUrl) + L"\nGröße:  " + FormatSizeBytes(total) + L" Bytes (ohne Verzeichnisinhalte)";
+    }
+    if (!e.owner.empty() || !e.group.empty())
+        info += L"\nBesitzer:  " + (e.owner.empty() ? L"?" : e.owner) + L"   Gruppe: " + (e.group.empty() ? L"?" : e.group);
+    dlg.info = info;
+    dlg.known = e.unixMode != DirEntry::kNoUnixMode;
+    dlg.mode = dlg.known ? e.unixMode : (e.IsDir() ? 0755u : 0644u);
+    for (auto& x : entries)
+        if (x.unixMode != e.unixMode) dlg.mixed = true;
+
+    DialogTemplate t(entries.size() == 1 ? L"Eigenschaften – " + e.name : L"Eigenschaften", 280, 238);
+    t.Label(kPropInfo, L"", 7, 7, 266, 52);
+    t.Group(kPropGroup, L"Zugriffsrechte (Unix)", 7, 62, 266, 82);
+    for (int i = 0; i < 3; ++i) t.Label(kPropHdr + i, L"", 70 + i * 50, 74, 48, 9);
+    const wchar_t* rows[3] = {L"Besitzer", L"Gruppe", L"Andere"};
+    for (int r = 0; r < 3; ++r) {
+        t.Label(kPropRow + r, rows[r], 14, 86 + r * 13, 52, 9);
+        for (int c = 0; c < 3; ++c) t.Check(kPropBit + r * 3 + c, L"", 80 + c * 50, 85 + r * 13, 12, 10);
+    }
+    t.Label(kPropOctLabel, L"&Oktal:", 14, 127, 30, 9);
+    t.Edit(kPropOct, 46, 125, 34, 12);
+    t.Label(kPropSym, L"", 90, 127, 80, 9);
+    t.Label(kPropHint, L"", 7, 148, 266, 64);
+    t.DefButton(IDOK, L"OK", 166, 217, 50, 14);
+    t.Button(IDCANCEL, L"Abbrechen", 223, 217, 50, 14);
+    if (dlg.DoModal(owner, t) != IDOK || !dlg.changed) return false;
+
+    Loc l;
+    std::wstring err;
+    if (!MakeLoc(owner, dirUrl, l, err)) {
+        MsgError(owner, err);
+        return false;
+    }
+    std::wstring failures;
+    int done = 0;
+    wchar_t oct[8];
+    swprintf(oct, 8, L"%03o", (unsigned)(dlg.mode & 07777));
+    for (auto& x : entries) {
+        std::wstring path = NormalizeRemotePath(l.url.path + L"/" + x.name);
+        std::wstring e2;
+        if (WithRetry(*l.fs, e2, [&](std::wstring& er) { return l.fs->SetPermissions(path, dlg.mode, er); })) {
+            ++done;
+            LogOperation(L"Rechte " + std::wstring(oct) + L": " + LocationCombine(dirUrl, x.name));
+        } else {
+            failures += L"\n" + x.name + L": " + e2;
+        }
+    }
+    if (!failures.empty())
+        MsgError(owner, L"Die Rechte konnten nicht (überall) gesetzt werden:" + failures);
+    return done > 0;
+}
+
+std::wstring RemoteModeText(const DirEntry& e) {
+    if (e.unixMode == DirEntry::kNoUnixMode) return L"";
+    wchar_t oct[8];
+    swprintf(oct, 8, L"%03o", (unsigned)(e.unixMode & 0777));
+    std::wstring r = ModeSymbolic(e.unixMode) + L" (" + oct + L")";
+    if (!e.owner.empty() || !e.group.empty()) r += L"   " + e.owner + (e.group.empty() ? L"" : L":" + e.group);
+    return r;
+}
+
 } // namespace qf

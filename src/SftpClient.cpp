@@ -135,6 +135,7 @@ public:
             DirEntry d;
             d.name = Utf8ToWide(nm);
             Fill(d, a);
+            ParseLongEntry(std::string(longentry.data()), d);
             if ((a.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && LIBSSH2_SFTP_S_ISLNK(a.permissions)) {
                 // Verknüpfung: Ziel bestimmt Datei oder Verzeichnis
                 LIBSSH2_SFTP_ATTRIBUTES t{};
@@ -269,6 +270,18 @@ public:
         return rc == 0 || SftpFail(err);
     }
 
+    bool SetPermissions(const std::wstring& path, uint32_t mode, std::wstring& err) override {
+        if (!Ready(err)) return false;
+        std::string p = WideToUtf8(path);
+        LIBSSH2_SFTP_ATTRIBUTES a{};
+        if (libssh2_sftp_stat(sftp_, p.c_str(), &a) != 0) return SftpFail(err);
+        LIBSSH2_SFTP_ATTRIBUTES n{};
+        n.flags = LIBSSH2_SFTP_ATTR_PERMISSIONS;
+        n.permissions = (a.permissions & ~(unsigned long)07777) | (mode & 07777);
+        if (libssh2_sftp_setstat(sftp_, p.c_str(), &n) != 0) return SftpFail(err);
+        return true;
+    }
+
 private:
     bool Ready(std::wstring& err) {
         if (sftp_) return true;
@@ -303,7 +316,28 @@ private:
         return false;
     }
 
+    // Besitzer und Gruppe aus der „ls -l“-Zeile des Servers (z. B. "-rw-r--r--  1 karl www 123 Jan 1 12:00 a.txt")
+    static void ParseLongEntry(const std::string& line, DirEntry& d) {
+        std::vector<std::string> t;
+        size_t i = 0;
+        while (i < line.size() && t.size() < 4) {
+            while (i < line.size() && line[i] == ' ') ++i;
+            size_t s = i;
+            while (i < line.size() && line[i] != ' ') ++i;
+            if (i > s) t.push_back(line.substr(s, i - s));
+        }
+        if (t.size() == 4 && t[0].size() >= 10) {
+            d.owner = Utf8ToWide(t[2]);
+            d.group = Utf8ToWide(t[3]);
+        }
+    }
+
     static void Fill(DirEntry& d, const LIBSSH2_SFTP_ATTRIBUTES& a) {
+        if (a.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) d.unixMode = (uint32_t)(a.permissions & 07777);
+        if ((a.flags & LIBSSH2_SFTP_ATTR_UIDGID) && d.owner.empty()) {
+            d.owner = std::to_wstring(a.uid);
+            d.group = std::to_wstring(a.gid);
+        }
         bool dir = (a.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && LIBSSH2_SFTP_S_ISDIR(a.permissions);
         d.attributes = dir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
         if ((a.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && !(a.permissions & LIBSSH2_SFTP_S_IWUSR))

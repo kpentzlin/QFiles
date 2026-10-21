@@ -462,6 +462,15 @@ class BatchRenameDialog : public DialogBase {
 public:
     BatchRenameDialog(const std::wstring& dir, const std::vector<std::wstring>& names) : dir_(dir), names_(names) {}
     bool Changed() const { return changed_; }
+    // Neuer Name eines Elements der obersten Ebene (über mehrere Ausführungen hinweg)
+    std::wstring FinalName(std::wstring n) const {
+        for (int guard = 0; guard < 64; ++guard) {
+            auto f = renamed_.find(ToUpper(n));
+            if (f == renamed_.end()) break;
+            n = f->second;
+        }
+        return n;
+    }
 
 protected:
     BOOL OnInit() override;
@@ -494,6 +503,7 @@ private:
     int renameCount_ = 0;
     int conflictCount_ = 0;
     bool changed_ = false;
+    std::unordered_map<std::wstring, std::wstring> renamed_;   // alter Name (groß) -> neuer Name, oberste Ebene
     bool collectedRecursive_ = false;
     bool collectedDirs_ = true;
     // Zuletzt bearbeitete Maske und deren Auswahl (für die Platzhalter-Knöpfe)
@@ -1050,6 +1060,8 @@ bool BatchRenameDialog::Execute() {
     SetCursor(oldCursor);
 
     if (done > 0) changed_ = true;
+    for (auto& o : ops)
+        if (EqualsI(o.dir, dir_) && o.cur == o.target && o.original != o.target) renamed_[ToUpper(o.original)] = o.target;
     if (!ok) {
         // Zustand neu einlesen, damit die Vorschau wieder stimmt
         if (done > 0) {
@@ -1068,7 +1080,9 @@ bool BatchRenameDialog::Execute() {
 
 } // namespace
 
-bool BatchRename(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names) {
+bool BatchRename(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names,
+                 std::vector<std::wstring>* renamed) {
+    if (renamed) *renamed = names;
     if (names.empty()) return false;
     INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_UPDOWN_CLASS | ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&icc);
@@ -1142,6 +1156,8 @@ bool BatchRename(HWND owner, const std::wstring& dir, const std::vector<std::wst
 
     BatchRenameDialog dlg(NormalizeDir(dir), names);
     dlg.DoModal(owner, t);
+    if (renamed)
+        for (auto& n : *renamed) n = dlg.FinalName(n);
     return dlg.Changed();
 }
 

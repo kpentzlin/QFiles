@@ -99,6 +99,34 @@ public:
             utf8_ = f.find("UTF8") != std::string::npos;
             mlsd_ = f.find("MLSD") != std::string::npos || f.find("MLST") != std::string::npos;
             mfmt_ = f.find("MFMT") != std::string::npos;
+            // MLST-Fakten: Unix-Rechte und Besitzer zusätzlich einschalten, falls angeboten, aber nicht aktiv
+            // (RFC 3659: „MLST type*;size*;modify*;unix.mode;…“, * = aktiv)
+            size_t m = f.find("MLST ");
+            if (m != std::string::npos) {
+                size_t e = f.find_first_of("\r\n", m);
+                std::string facts = r.text.substr(m + 5, e == std::string::npos ? std::string::npos : e - m - 5);
+                std::string want, lower;
+                bool missing = false;
+                size_t pos = 0;
+                while (pos < facts.size()) {
+                    size_t sc = facts.find(';', pos);
+                    std::string fact = facts.substr(pos, sc == std::string::npos ? std::string::npos : sc - pos);
+                    pos = sc == std::string::npos ? facts.size() : sc + 1;
+                    while (!fact.empty() && (fact.back() == ' ' || fact.back() == '\r')) fact.pop_back();
+                    while (!fact.empty() && fact.front() == ' ') fact.erase(0, 1);
+                    if (fact.empty()) continue;
+                    bool active = fact.back() == '*';
+                    if (active) fact.pop_back();
+                    lower = fact;
+                    for (auto& c : lower) c = (char)tolower((unsigned char)c);
+                    bool unixFact = lower == "unix.mode" || lower == "unix.owner" || lower == "unix.group" ||
+                                    lower == "unix.uid" || lower == "unix.gid" || lower == "unix.ownername" ||
+                                    lower == "unix.groupname";
+                    if (active || unixFact) want += fact + ";";
+                    if (!active && unixFact) missing = true;
+                }
+                if (missing) Command("OPTS MLST " + want, r, err);   // Fehler unerheblich
+            }
         }
         if (Command("OPTS UTF8 ON", r, err) && r.Ok()) utf8_ = true;
         if (!Command("TYPE I", r, err) || !r.Ok()) return Fail(err = L"Binärmodus nicht verfügbar: " + Text(r));
@@ -211,6 +239,18 @@ public:
             return false;
         }
         return Simple("RNTO " + Encode(to), err);
+    }
+
+    bool SetPermissions(const std::wstring& path, uint32_t mode, std::wstring& err) override {
+        char oct[8];
+        snprintf(oct, sizeof(oct), "%03o", (unsigned)(mode & 07777));
+        Reply r;
+        if (!Command(std::string("SITE CHMOD ") + oct + " " + Encode(path), r, err)) return false;
+        if (!r.Ok()) {
+            err = L"Der Server hat die Änderung abgelehnt: " + Text(r);
+            return false;
+        }
+        return true;
     }
 
 private:
@@ -483,6 +523,7 @@ private:
         std::string name = line.substr(sp + 1);
         if (name.empty() || name == "." || name == "..") return false;
         bool isDir = false;
+        std::wstring uid, gid;   // Ersatz, falls der Server keine Namen liefert
         for (auto& f : Split(Utf8ToWide(facts), L';')) {
             size_t eq = f.find(L'=');
             if (eq == std::wstring::npos) continue;
@@ -493,18 +534,51 @@ private:
                 isDir = t == L"dir";
             } else if (k == L"size" || k == L"sizd") {
                 d.size = (uint64_t)_wcstoui64(v.c_str(), nullptr, 10);
+            } else if (k == L"unix.mode") {
+                // „0644“ oder „644“; manche Server (pyftpdlib) schreiben „0o644“
+                std::wstring m = v;
+                if (m.size() > 2 && m[0] == L'0' && (m[1] == L'o' || m[1] == L'O')) m = m.substr(2);
+                wchar_t* end = nullptr;
+                unsigned long mode = wcstoul(m.c_str(), &end, 8);
+                if (end && end != m.c_str() && *end == 0) d.unixMode = (uint32_t)mode & 07777;
+            } else if (k == L"unix.owner" || k == L"unix.ownername") {
+                if (d.owner.empty() || k == L"unix.ownername") d.owner = v;
+            } else if (k == L"unix.group" || k == L"unix.groupname") {
+                if (d.group.empty() || k == L"unix.groupname") d.group = v;
+            } else if (k == L"unix.uid") {
+                uid = v;
+            } else if (k == L"unix.gid") {
+                gid = v;
             } else if (k == L"modify" && v.size() >= 14) {
                 int y = _wtoi(v.substr(0, 4).c_str()), mo = _wtoi(v.substr(4, 2).c_str()), da = _wtoi(v.substr(6, 2).c_str());
                 int h = _wtoi(v.substr(8, 2).c_str()), mi = _wtoi(v.substr(10, 2).c_str()), s = _wtoi(v.substr(12, 2).c_str());
                 d.modified = MakeFileTime(y, mo, da, h, mi, s);
             }
         }
+        if (d.owner.empty()) d.owner = uid;
+        if (d.group.empty()) d.group = gid;
         d.name = Decode(name);
         d.attributes = isDir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
         if (isDir) d.size = 0;
         if (!d.name.empty() && d.name[0] == L'.') d.attributes |= FILE_ATTRIBUTE_HIDDEN;
         d.created = d.modified;
         return true;
+    }
+
+    // "-rwxr-x--- …" -> 0750 (mit s/S, t/T); unbekannt -> kNoUnixMode
+    static uint32_t ParseModeString(const std::string& line) {
+        if (line.size() < 10) return DirEntry::kNoUnixMode;
+        static const char kSyms[] = "rwxrwxrwx";
+        uint32_t m = 0;
+        for (int i = 0; i < 9; ++i) {
+            char c = line[1 + i];
+            bool special = (i == 2 && (c == 's' || c == 'S')) || (i == 5 && (c == 's' || c == 'S')) ||
+                           (i == 8 && (c == 't' || c == 'T'));
+            if (c == kSyms[i] || (special && c >= 'a')) m |= 1u << (8 - i);
+            else if (c != '-' && !special) return DirEntry::kNoUnixMode;
+            if (special) m |= i == 2 ? 04000u : i == 5 ? 02000u : 01000u;
+        }
+        return m;
     }
 
     bool ParseList(const std::string& line, DirEntry& d) const {
@@ -571,6 +645,13 @@ private:
             d.name = Decode(name);
             d.attributes = type == 'd' ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
             if (type == 'd') d.size = 0;
+            d.unixMode = ParseModeString(line);
+            if (mIdx >= 4) {   // Rechte, Links, Besitzer, Gruppe, Größe
+                d.owner = Decode(t2[2]);
+                d.group = Decode(t2[3]);
+            } else if (mIdx == 3) {
+                d.owner = Decode(t2[2]);
+            }
         }
         if (d.name.empty()) return false;
         if (d.name[0] == L'.') d.attributes |= FILE_ATTRIBUTE_HIDDEN;

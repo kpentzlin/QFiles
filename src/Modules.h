@@ -72,7 +72,9 @@ bool SyncDirectories(HWND owner, const std::wstring& left, const std::wstring& r
 
 // ===================== BatchRename.cpp / FindFiles.cpp / Duplicates.cpp / SplitJoin.cpp (Modul D) =====================
 // Dateigruppe umbenennen (modal, Vorschau). names = Namen im Verzeichnis dir. Rückgabe true bei Änderungen.
-bool BatchRename(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names);
+// renamed (optional): je Eintrag von names der Name nach dem Umbenennen (unverändert, falls nicht umbenannt)
+bool BatchRename(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names,
+                 std::vector<std::wstring>* renamed = nullptr);
 // Dateien suchen (nicht modal). Ergebnis-Doppelklick -> App::NavigateToFile.
 void FindFiles(HWND owner, const std::wstring& startDir);
 // Doppelte Dateien (gleicher Inhalt) suchen (nicht modal).

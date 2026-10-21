@@ -168,6 +168,41 @@ std::vector<std::pair<std::wstring, std::vector<std::wstring>>> GroupBySubdir(co
     return r;
 }
 
+// Dateigruppe umbenennen (je Unterverzeichnis ein Dialog). Markierung und Fokus werden auf die neuen Namen
+// übertragen, damit die umbenannten Dateien markiert bleiben.
+bool RenameGroupKeepSelection(HWND owner, FilePane& a) {
+    auto names = a.SelectedOrFocusedNames();
+    if (names.empty()) return false;
+    auto selected = a.SelectedNames();
+    std::wstring focused = a.FocusedName();
+    std::vector<std::pair<std::wstring, std::wstring>> map;   // alter -> neuer relativer Name
+    bool any = false;
+    for (auto& [sub, group] : GroupBySubdir(names)) {
+        std::vector<std::wstring> renamed;
+        if (BatchRename(owner, PathCombine(a.Dir(), sub), group, &renamed)) any = true;
+        for (size_t k = 0; k < group.size() && k < renamed.size(); ++k)
+            if (group[k] != renamed[k])
+                map.push_back({sub.empty() ? group[k] : sub + L"\\" + group[k],
+                               sub.empty() ? renamed[k] : sub + L"\\" + renamed[k]});
+    }
+    if (!any) return false;
+    auto mapName = [&](const std::wstring& n) {
+        for (auto& [o, nn] : map)
+            if (EqualsI(o, n)) return nn;
+        return n;
+    };
+    a.Reload();
+    std::wstring newFocus = focused.empty() ? L"" : mapName(focused);
+    if (!selected.empty()) {
+        for (auto& n : selected) n = mapName(n);
+        a.SelectNames(selected, false);
+        if (!newFocus.empty()) a.SetFocusName(newFocus);
+    } else if (!newFocus.empty()) {
+        a.FocusName(newFocus);
+    }
+    return true;
+}
+
 int AskChoice(HWND owner, const std::wstring& title, const std::wstring& prompt, const std::vector<std::wstring>& options) {
     int h = 48 + (int)options.size() * 14;
     DialogTemplate t(title, 300, h);
@@ -665,6 +700,11 @@ void MainWindow::UpdateMenu(HMENU m) {
                            cmd::HexEdit, cmd::ViewWindow, cmd::OpenWith, cmd::NewFolder, cmd::NewFile, cmd::NewTextFile})
                 off.push_back(id);
         for (int id : off) enable(id, false);
+        if (a.IsRemote()) {
+            // FTP/SFTP: Eigenschaften und Attribute zeigen die Unix-Zugriffsrechte (chmod)
+            enable(cmd::Properties, true);
+            enable(cmd::Attributes, true);
+        }
     }
     enable(cmd::GoOtherSame, Other() != nullptr);
     enable(cmd::SwapPanes, Other() != nullptr);
@@ -1346,6 +1386,8 @@ void MainWindow::UpdateStatusBar() {
         if (!a.IsNetworkLevel()) {
             if (!fe.IsDir()) left += L"   " + FormatSizeBytes(fe.size) + L" Bytes";
             left += L"   " + FormatFileTime(fe.modified, true);
+            std::wstring mode = RemoteModeText(fe);   // FTP/SFTP: Unix-Rechte
+            if (!mode.empty()) left += L"   " + mode;
         }
     } else if (!p.empty()) {
         WIN32_FILE_ATTRIBUTE_DATA d{};
@@ -1523,6 +1565,12 @@ void MainWindow::NavigateToFile(const std::wstring& path) {
 
 void MainWindow::RefreshAll() {
     ReloadVisible();
+}
+
+// Alle sichtbaren Listen außer der aktiven neu einlesen (die aktive wurde bereits gezielt aktualisiert)
+void MainWindow::ReloadOthers() {
+    for (int i = 0; i < 4; ++i)
+        if (i != active_ && PaneVisible(i) && !(quickView_ && i == quickViewPane_)) panes_[i]->Reload();
 }
 
 void MainWindow::ReloadVisible() {
@@ -2029,6 +2077,10 @@ void MainWindow::ShowVirtualContextMenu(FilePane& p, POINT pt, bool onItems) {
             AddSep(m);
             AddItem(m, cmd::CopyPaths, L"&Pfad kopieren");
             AddItem(m, cmd::CopyNames, L"&Name kopieren");
+            if (p.IsRemote()) {
+                AddSep(m);
+                AddItem(m, cmd::Properties, L"&Eigenschaften…\tAlt+Eingabe");
+            }
         } else {
             AddItem(m, cmd::NewFolder, L"Neues &Verzeichnis…\tF8");
             AddItem(m, cmd::NewFile, L"&Neue Datei…\tF9");
@@ -2162,6 +2214,18 @@ bool MainWindow::HandleVirtualCommand(int id) {
         ReloadVisible();
         return true;
     }
+    case cmd::Properties:
+    case cmd::Attributes: {
+        // Eigenschaften mit Unix-Zugriffsrechten (chmod)
+        auto entries = a.EntriesByNames(a.SelectedOrFocusedNames());
+        if (entries.empty()) return true;
+        auto sel = a.SelectedNames();
+        if (RemoteProperties(hwnd_, a.Dir(), entries)) {
+            a.Reload();
+            if (!sel.empty()) a.SelectNames(sel, false);
+        }
+        return true;
+    }
     }
     MsgInfo(hwnd_, L"Diese Funktion ist für FTP/SFTP/WebDAV-Verzeichnisse nicht verfügbar.");
     return true;
@@ -2281,14 +2345,9 @@ void MainWindow::OnCommand(int id) {
             bookmarks_.RenameSelected();
             break;
         }
-        auto names = a.SelectedOrFocusedNames();
-        if (names.empty()) break;
         // Ansicht „Mit Unterverzeichnissen“: je Unterverzeichnis ein Umbenennungsdialog
-        bool any = false;
-        for (auto& [sub, group] : GroupBySubdir(names))
-            if (BatchRename(hwnd_, PathCombine(a.Dir(), sub), group)) any = true;
-        if (any) {
-            ReloadVisible();
+        if (RenameGroupKeepSelection(hwnd_, a)) {
+            ReloadOthers();
             tree_.RefreshPath(a.Dir());
         }
         break;
@@ -2350,12 +2409,10 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::BatchRename: {
-        auto names = a.SelectedOrFocusedNames();
-        if (names.empty()) break;
-        bool any = false;
-        for (auto& [sub, group] : GroupBySubdir(names))
-            if (BatchRename(hwnd_, PathCombine(a.Dir(), sub), group)) any = true;
-        if (any) ReloadVisible();
+        if (RenameGroupKeepSelection(hwnd_, a)) {
+            ReloadOthers();
+            tree_.RefreshPath(a.Dir());
+        }
         break;
     }
     case cmd::Delete: DeleteSelection(false); break;
@@ -2801,6 +2858,16 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     LRESULT shellResult = 0;
     if (HandleShellMenuMessage(msg, wp, lp, &shellResult)) return shellResult;
     switch (msg) {
+    case WM_APPCOMMAND: {
+        // Maustasten „Zurück“/„Vor“ (5-Tasten-Maus, XButton1/2) und Browser-Tasten der Tastatur: wie die
+        // Schaltflächen „<“ und „>“ in der Kopfleiste der aktiven Liste. Kommt von DefWindowProc der Kindfenster.
+        int c = GET_APPCOMMAND_LPARAM(lp);
+        if (c == APPCOMMAND_BROWSER_BACKWARD || c == APPCOMMAND_BROWSER_FORWARD) {
+            SendMessageW(hwnd_, WM_COMMAND, MAKEWPARAM(c == APPCOMMAND_BROWSER_BACKWARD ? cmd::GoBack : cmd::GoForward, 0), 0);
+            return TRUE;
+        }
+        break;
+    }
     case WM_SIZE:
         Layout();
         if (wp == SIZE_MAXIMIZED || (wp == SIZE_RESTORED && wasMaximized_)) ScheduleStateSave();

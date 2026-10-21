@@ -60,6 +60,13 @@ public:
     virtual bool RemoveDir(const std::wstring& path, std::wstring& err) = 0;
     virtual bool MakeDir(const std::wstring& path, std::wstring& err) = 0;
     virtual bool Rename(const std::wstring& from, const std::wstring& to, std::wstring& err) = 0;
+    // Unix-Zugriffsrechte setzen (z. B. 0644). SFTP: SETSTAT, FTP: SITE CHMOD, WebDAV: nicht möglich.
+    virtual bool SetPermissions(const std::wstring& path, uint32_t mode, std::wstring& err) {
+        (void)path;
+        (void)mode;
+        err = L"Dieses Protokoll kennt keine Unix-Zugriffsrechte.";
+        return false;
+    }
 
     std::recursive_mutex& mutex() { return mutex_; }
     // Die gewählten Einstellungen (für erneutes Verbinden ohne Rückfragen)

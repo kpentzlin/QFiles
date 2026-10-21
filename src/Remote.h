@@ -35,6 +35,10 @@ bool HasSavedRemoteLogin(const std::wstring& url);
 
 bool RemoteListDirectory(HWND owner, const std::wstring& url, std::vector<DirEntry>& out, std::wstring& err);
 bool RemoteRename(HWND owner, const std::wstring& url, const std::wstring& newName);
+// Eigenschaften der Elemente eines FTP/SFTP/WebDAV-Verzeichnisses mit Unix-Zugriffsrechten (chmod). true = geändert.
+bool RemoteProperties(HWND owner, const std::wstring& dirUrl, const std::vector<DirEntry>& entries);
+// Unix-Rechte als Text für die Statuszeile: „rw-r--r-- (644)  besitzer:gruppe“ ("" wenn unbekannt)
+std::wstring RemoteModeText(const DirEntry& e);
 bool RemoteMakeDir(HWND owner, const std::wstring& dirUrl, const std::wstring& name);
 bool RemoteCreateFile(HWND owner, const std::wstring& dirUrl, const std::wstring& name);
 bool RemoteExists(HWND owner, const std::wstring& url);

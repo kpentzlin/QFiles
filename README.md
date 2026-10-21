@@ -158,6 +158,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   - Zurück/Vor, Übergeordnet, **„\“** (oberste Verzeichnisebene des Laufwerks bzw. der Freigabe, Strg+Rücktaste),
     Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der
     Verzeichnisse dieser Sitzung (zuletzt aufgerufene oben); die Zurück/Vor-Liste wird nicht gespeichert.
+    Die Maustasten **„Zurück“ und „Vor“** einer 5-Tasten-Maus (sowie die Browser-Tasten der Tastatur) wirken wie
+    „<“ bzw. „>“ der aktiven Liste.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
   - Die Zeile mit den Spaltenköpfen hat die Farbe der Laufwerksleiste (aktive Liste hellblau).
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar) und
@@ -250,6 +252,15 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   Verzeichnis (F8), neue Datei (F9), Anzeigen (F11, auch in der Dateianzeige im anderen Fenster), Bearbeiten (F4) und
   Öffnen: Die Datei wird in ein temporäres Verzeichnis geladen; nach dem Speichern lädt QFiles sie automatisch wieder
   hoch.
+- **Eigenschaften** (Kontextmenü, Alt+Eingabe; auch Attribute): Name, Ort, Größe, Datum, Besitzer/Gruppe und die
+  **Unix-Zugriffsrechte** als Kästchen (Lesen/Schreiben/Ausführen für Besitzer, Gruppe, Andere) und als Oktalzahl
+  (z. B. 644); bei mehreren Elementen werden unterschiedliche Rechte gemeldet, OK setzt den Wert für alle. SFTP setzt
+  die Rechte über SFTP-setstat, FTP über `SITE CHMOD` (vom Server abhängig; WebDAV kennt keine Unix-Rechte). Die
+  Statuszeile zeigt die Rechte des Fokuselements (z. B. `rw-r--r-- (644)  besitzer:gruppe`).
+  Bedeutung: jede Ziffer ist die Summe aus 4 = lesen, 2 = schreiben, 1 = ausführen, für Besitzer, Gruppe und alle
+  anderen. 600 = nur der Besitzer, 640 = zusätzlich die Gruppe lesend, **644 = alle dürfen lesen** – nötig z. B. für
+  Dateien einer Website, damit der Webserver (der unter einem anderen Benutzer läuft) sie ausliefern kann;
+  755 für Verzeichnisse und Skripte.
 - Ist ein FTP/SFTP-Verzeichnis gewählt, entfällt in der Kopfzeile der Liste das Lesezeichensymbol (Zugänge entstehen
   über den Menüpunkt; Strg+D öffnet den Zugangsdialog mit dem aktuellen Verzeichnis).
 - Kennwörter werden nur gespeichert, wenn gewünscht – verschlüsselt mit der Windows-Datenschutz-API (DPAPI), nur für
@@ -271,7 +282,7 @@ Browser-Anmeldung erfordern und ist nicht eingebaut.
 
 | Werkzeug | Funktion |
 |---|---|
-| Dateigruppe umbenennen (Strg+M) | Masken mit Platzhaltern (siehe unten), Zähler, Suchen/Ersetzen (auch regulärer Ausdruck), Groß-/Kleinschreibung, Unterverzeichnisse, Live-Vorschau mit Konfliktprüfung; ein Rückgängig-Schritt |
+| Dateigruppe umbenennen (Strg+M) | Masken mit Platzhaltern (siehe unten), Zähler, Suchen/Ersetzen (auch regulärer Ausdruck), Groß-/Kleinschreibung, Unterverzeichnisse, Live-Vorschau mit Konfliktprüfung; ein Rückgängig-Schritt; die umbenannten Dateien bleiben in der Liste markiert |
 | Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI sowie in Office-Dokumenten (.docx, .xlsx, .pptx, OpenDocument .odt/.ods/.odp, EPUB), Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“; Fenstergröße, -position und Spaltenbreiten bleiben erhalten |
 | Doppelte Dateien | Gleicher Inhalt: Größe, dann Hash, dann byteweiser Vergleich |
 | Dateien vergleichen (Strg+K) | Text zeilenweise nebeneinander mit Farbmarkierung und zeichengenauer Hervorhebung; Binärvergleich |
