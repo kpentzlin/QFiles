@@ -16,6 +16,9 @@ ebenfalls unterstützt.
 
 ## Abweichungen von Idoswin Pro
 
+Eine nummerierte Gegenüberstellung der Funktionen von QFiles, Idoswin Pro und SpeedCommander steht in
+[`Funktionsvergleich.pdf`](Funktionsvergleich.pdf) (erzeugt mit `tools/funktionsvergleich.py`).
+
 | Bereich | Umsetzung in QFiles |
 |---|---|
 | Name, Symbol | „QFiles“ mit eigenem Programmsymbol (`res/QFiles.ico`) |
@@ -508,7 +511,7 @@ ausgeblendet. Ein leeres Feld schaltet den Ausschluss ab.
 - FTP: nur passiver Modus, kein verschlüsseltes FTPS (dafür SFTP verwenden). SFTP-Server, die ausschließlich
   Ed25519-Hostschlüssel anbieten, werden nicht unterstützt (RSA- und ECDSA-Schlüssel, wie bei OpenSSH üblich, schon).
 - Für FTP/SFTP/WebDAV-Verzeichnisse stehen nicht alle Werkzeuge zur Verfügung (z. B. Vergleichen, Synchronisieren,
-  Suchen, Attribute, Ziehen aus der Liste heraus, Rückgängig); QFiles meldet das. Dateien lassen sich aber auf eine
+  Suchen, Ziehen aus der Liste heraus, Rückgängig); QFiles meldet das. Dateien lassen sich aber auf eine
   FTP/SFTP/WebDAV-Liste ziehen (hochladen).
 - WebDAV: Umbenennen und Verschieben auf dem Server über MOVE; Server, die Ordner nicht per PROPFIND auflisten
   (reine HTTP-Downloadseiten), werden nicht unterstützt.
