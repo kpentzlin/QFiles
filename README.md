@@ -165,7 +165,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     (neueste oben); die Zurück/Vor-Liste wird gespeichert und gilt auch nach einem Neustart (nicht im privaten Modus).
     Die Maustasten **„Zurück“ und „Vor“** einer 5-Tasten-Maus (sowie die Browser-Tasten der Tastatur) wirken wie
     „<“ bzw. „>“ der aktiven Liste.
-  - Kopfzeile rechts: **P** (privater Modus, siehe unten), Lesezeichen hinzufügen, Split.
+  - Kopfzeile rechts: Lesezeichen hinzufügen, Split.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
   - Die Zeile mit den Spaltenköpfen hat die Farbe der Laufwerksleiste (aktive Liste hellblau).
 - Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar) und
@@ -183,12 +183,15 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
 - Spalte „Typ“: Endung der Datei; bei Verzeichnissen bleibt sie leer.
 - Optional (*Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
-  Listen mit hellgrauem Hintergrund wie Kopf- und Fußleiste.
+  Listen mit hellgrauem Hintergrund, etwas heller als Kopf- und Fußleiste und je Liste ganz leicht abgestuft (von hell
+  nach dunkel: rechts oben, links oben, rechts unten, links unten).
 - Optional (*Optionen → Anzeige → „Listenanzeige gestreift“*) ist in der aktiven Liste jede zweite Zeile
   in diesem Hellgrau hinterlegt (Ansichten Details, Liste und Mit Unterverzeichnissen; in der Archivliste im
   abgetönten Gelb).
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
-- Werkzeugleiste, u. a. mit je einem Symbol für die fünf Ansichten (die Ansicht der aktiven Liste ist eingedrückt).
+- Werkzeugleiste, u. a. mit Symbolen für „Neue Datei“ (Blatt mit N) und „Neue Textdatei“ (Blatt mit T), je einem
+  Symbol für die fünf Ansichten (die Ansicht der aktiven Liste ist eingedrückt) und ganz rechts **P** für den
+  privaten Modus.
 - Befehlszeile: führt Befehle im aktuellen Verzeichnis in einem Konsolenfenster aus. `cd` und `X:` wechseln das
   Verzeichnis der Liste. Mit Verlauf; Dateien lassen sich hineinziehen.
 - Funktionstastenleiste. Bei gedrückter Strg- bzw. Strg+Umschalt-Taste zeigt sie die Belegung der programmierbaren
@@ -216,7 +219,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 
 ### Privater Modus und Verlauf
 
-- **Privater Modus**: Schaltfläche **P** in der Kopfzeile jeder Liste (abgerundetes Viereck; grün gefüllt =
+- **Privater Modus**: Schaltfläche **P** am Ende der Werkzeugleiste (abgerundetes Viereck; grün gefüllt =
   eingeschaltet), *Werkzeuge → Privater Modus* oder *Optionen → Bedienung*. Im privaten Modus sind die Kopfzeilen
   der aktiven Liste und ihre Spaltenköpfe **grün** statt blau.
 - Beim Einschalten wird der aktuelle Verlauf festgehalten (Zurück/Vor-Listen, Verzeichnisverlauf und letztes
@@ -237,10 +240,14 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   zählt hoch, wenn es den Namen schon gibt oder er bereits auf „(n)“ endet.
 - Löschen in den Papierkorb (Entf) oder endgültig (Umschalt+Entf). In der Werkzeugleiste stehen dafür drei Symbole:
   Papierkorb (Löschen in den Papierkorb), Kreuz (endgültig löschen), Radiergummi (Radieren).
-- **Radieren** (Alt+Entf): Der Inhalt wird mit kryptografisch zufälligen Daten überschrieben, die Datei auf Länge 0
+- **Radieren** (Alt+Entf): Der Inhalt wird mit kryptografisch zufälligen Daten überschrieben – „Ja (1×)“ einmal,
+  „2ד bis „5ד in der Rückfrage entsprechend oft, jeweils mit neuen Zufallsdaten –, die Datei auf Länge 0
   gekürzt, in einen Zufallsnamen umbenannt und gelöscht; Verzeichnisse rekursiv. Nicht rückgängig zu machen.
   Hinweis: Auf SSDs und bei Schattenkopien/Cloud-Synchronisierung kann der alte Inhalt physisch erhalten bleiben.
 - Ausführung über die Windows-Shell (`IFileOperation`): Fortschrittsanzeige, Konfliktdialoge, Rechteerhöhung.
+- Wird eine **einzelne Datei** in ein anderes Verzeichnis kopiert oder verschoben, in dem es den Namen schon gibt,
+  bietet QFiles **Mit neuem Namen ablegen** an (vorbelegt „Name (1).ext“, bei Bedarf hochgezählt), außerdem
+  „Ersetzen“ und „Abbrechen“.
 - **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen und Anlegen.
 - Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Ziehen in ein Listenfenster **verschiebt**;
   mit gedrückter **Umschalt- oder Strg-Taste** wird kopiert. Ist das Ziel ein FTP/SFTP/WebDAV-Verzeichnis, wird erst

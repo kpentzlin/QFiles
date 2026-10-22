@@ -54,6 +54,8 @@ bool FileExists(const std::wstring& path);
 bool PathExists(const std::wstring& path);
 std::wstring LastPathElement(const std::wstring& dir);     // für Lesezeichennamen: "C:\" -> "C:"
 std::wstring MakeUniqueName(const std::wstring& dir, const std::wstring& name); // "Name (2).txt"
+// "Name (1).ext" (endet der Name auf " (n)" oder ist das Ziel vorhanden: hochgezählt)
+std::wstring NumberedName(const std::wstring& dir, const std::wstring& name, bool isDir);
 std::wstring GetExeDir();
 std::wstring GetKnownFolder(const GUID& id);
 std::wstring GetTempDir();

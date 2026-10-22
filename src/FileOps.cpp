@@ -1,5 +1,6 @@
 #include "FileOps.h"
 #include "App.h"
+#include "Dialog.h"
 #include "Util.h"
 
 #include <shlobj.h>
@@ -229,6 +230,92 @@ bool RunTransfer(HWND owner, const std::vector<CopyJob>& jobs, bool move, unsign
     return SUCCEEDED(hr) && !anyAborted;
 }
 
+// Einzelne Datei, deren Name im (anderen) Zielverzeichnis schon vorhanden ist: „Mit neuem Namen ablegen“
+// (vorbelegt „Name (1).ext“), „Ersetzen“ oder „Abbrechen“
+enum : int { kConflictLabel = 100, kConflictName = 101, kConflictInfo = 102, kConflictNewName = 110, kConflictReplace = 111 };
+
+class ConflictDlg : public DialogBase {
+public:
+    std::wstring destDir, prompt, info, name;
+    int choice = IDCANCEL;
+
+protected:
+    BOOL OnInit() override {
+        SetText(kConflictLabel, prompt);
+        SetText(kConflictInfo, info);
+        SetText(kConflictName, name);
+        SetFocus(Item(kConflictName));
+        // Nur den Namen ohne Erweiterung markieren
+        size_t dot = name.find_last_of(L'.');
+        SendMessageW(Item(kConflictName), EM_SETSEL, 0, dot == std::wstring::npos || dot == 0 ? -1 : (LPARAM)dot);
+        return FALSE;
+    }
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        if (id == kConflictNewName || id == IDOK) {
+            std::wstring n = Trim(GetText(kConflictName));
+            if (n.empty() || n.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos) {
+                MsgError(hwnd_, L"Bitte einen gültigen Dateinamen eingeben.");
+                return TRUE;
+            }
+            if (PathExists(PathCombine(destDir, n))) {
+                MsgError(hwnd_, L"„" + n + L"“ ist im Zielverzeichnis ebenfalls schon vorhanden.");
+                return TRUE;
+            }
+            name = n;
+            choice = kConflictNewName;
+            End(kConflictNewName);
+            return TRUE;
+        }
+        if (id == kConflictReplace) {
+            choice = kConflictReplace;
+            End(kConflictReplace);
+            return TRUE;
+        }
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+};
+
+std::wstring FileInfoLine(const wchar_t* label, const std::wstring& path) {
+    WIN32_FILE_ATTRIBUTE_DATA d{};
+    if (!GetFileAttributesExW(LongPath(path).c_str(), GetFileExInfoStandard, &d)) return label;
+    uint64_t size = ((uint64_t)d.nFileSizeHigh << 32) | d.nFileSizeLow;
+    return std::wstring(label) + FormatSizeBytes(size) + L" Bytes, geändert " + FormatFileTime(d.ftLastWriteTime, true);
+}
+
+// Rückgabe: false = abbrechen; sonst job/flags ggf. angepasst
+bool ResolveSingleConflict(HWND owner, CopyJob& job, unsigned& flags, bool move) {
+    if (g_nonInteractive || (flags & (OpNoConfirmOverwrite | OpRenameOnCollision))) return true;
+    DWORD a = GetFileAttributesW(LongPath(job.source).c_str());
+    if (a == INVALID_FILE_ATTRIBUTES || (a & FILE_ATTRIBUTE_DIRECTORY)) return true;
+    std::wstring name = PathFileName(job.source);
+    std::wstring target = PathCombine(job.destDir, name);
+    if (!PathExists(target)) return true;
+    DWORD ta = GetFileAttributesW(LongPath(target).c_str());
+    ConflictDlg dlg;
+    dlg.destDir = job.destDir;
+    dlg.prompt = L"Im Zielverzeichnis „" + job.destDir + L"“ ist „" + name + L"“ bereits vorhanden.";
+    dlg.info = FileInfoLine(L"Vorhanden:  ", target) + L"\n" + FileInfoLine(move ? L"Verschoben:  " : L"Kopiert:  ", job.source);
+    dlg.name = NumberedName(job.destDir, name, false);
+    DialogTemplate t(move ? L"Verschieben – Name vorhanden" : L"Kopieren – Name vorhanden", 300, 96);
+    t.Label(kConflictLabel, L"", 7, 7, 286, 18);
+    t.Label(kConflictInfo, L"", 7, 28, 286, 18);
+    t.Label(-1, L"&Neuer Name:", 7, 53, 50, 10);
+    t.Edit(kConflictName, 60, 51, 233, 13);
+    t.DefButton(kConflictNewName, L"&Mit neuem Namen ablegen", 7, 75, 110, 14);
+    t.Button(kConflictReplace, (ta & FILE_ATTRIBUTE_DIRECTORY) ? L"&Zusammenführen…" : L"&Ersetzen", 123, 75, 80, 14);
+    t.Button(IDCANCEL, L"Abbrechen", 213, 75, 80, 14);
+    dlg.DoModal(owner, t);
+    if (dlg.choice == kConflictNewName) {
+        job.newName = dlg.name;
+        return true;
+    }
+    if (dlg.choice == kConflictReplace) {
+        if (!(ta & FILE_ATTRIBUTE_DIRECTORY)) flags |= OpNoConfirmOverwrite;   // bereits bestätigt
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 bool CopyItems(HWND owner, const std::vector<std::wstring>& sources, const std::wstring& destDir, unsigned flags) {
@@ -240,6 +327,8 @@ bool CopyItems(HWND owner, const std::vector<std::wstring>& sources, const std::
         else
             jobs.push_back({s, destDir, L""});
     }
+    // Einzelne Datei, Name im anderen Verzeichnis schon vorhanden: neuen Namen anbieten
+    if (jobs.size() == 1 && jobs[0].newName.empty() && !ResolveSingleConflict(owner, jobs[0], flags, false)) return false;
     return RunTransfer(owner, jobs, false, flags);
 }
 
@@ -249,6 +338,7 @@ bool MoveItems(HWND owner, const std::vector<std::wstring>& sources, const std::
         if (EqualsI(PathParent(s), destDir)) continue; // nichts zu tun
         jobs.push_back({s, destDir, L""});
     }
+    if (jobs.size() == 1 && !ResolveSingleConflict(owner, jobs[0], flags, true)) return false;
     return RunTransfer(owner, jobs, true, flags);
 }
 

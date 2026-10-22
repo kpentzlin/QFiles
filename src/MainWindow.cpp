@@ -222,33 +222,6 @@ int AskChoice(HWND owner, const std::wstring& title, const std::wstring& prompt,
     return dlg.choice;
 }
 
-// Nummerierter Name: "Name (1).ext"; endet der Name schon auf " (n)" oder existiert das Ziel, wird hochgezählt.
-std::wstring NumberedName(const std::wstring& dir, const std::wstring& name, bool isDir) {
-    std::wstring stem = name, ext;
-    size_t dot = name.find_last_of(L'.');
-    if (!isDir && dot != std::wstring::npos && dot > 0) {
-        stem = name.substr(0, dot);
-        ext = name.substr(dot);
-    }
-    int n = 1;
-    if (stem.size() >= 4 && stem.back() == L')') {
-        size_t open = stem.find_last_of(L'(');
-        if (open != std::wstring::npos && open >= 1 && stem[open - 1] == L' ') {
-            std::wstring num = stem.substr(open + 1, stem.size() - open - 2);
-            bool digits = !num.empty() && num.size() < 9;
-            for (wchar_t c : num)
-                if (!iswdigit(c)) digits = false;
-            if (digits) {
-                n = _wtoi(num.c_str()) + 1;
-                stem = stem.substr(0, open - 1);
-            }
-        }
-    }
-    for (;; ++n) {
-        std::wstring cand = stem + L" (" + std::to_wstring(n) + L")" + ext;
-        if (!PathExists(PathCombine(dir, cand))) return cand;
-    }
-}
 
 const wchar_t* PanePositionName(int i, bool twoPanes, bool splitCol) {
     static const wchar_t* withSplit[4] = {L"links oben", L"rechts oben", L"links unten", L"rechts unten"};
@@ -524,6 +497,7 @@ void MainWindow::SetPrivateMode(bool on) {
         }
     }
     for (auto& p : panes_) p->OnPrivateModeChanged();
+    UpdatePrivateButton();
     App::SaveSettings();
 }
 
@@ -810,6 +784,109 @@ void MainWindow::UpdateMenu(HMENU m) {
     enable(cmd::FocusPane4, PaneVisible(3));
 }
 
+namespace {
+
+// Zeichnet ein Symbol auf Schwarz und auf Weiß und berechnet daraus Farbe und Deckkraft je Bildpunkt (geglättete
+// Kanten und Schrift ohne Farbsaum). px: 32-Bit-Streifen (oben beginnend), stride in Bildpunkten, x0 = Spalte der Zelle.
+void RenderAlphaCell(uint32_t* px, int stride, int x0, int sz, const std::function<void(HDC, const RECT&)>& draw) {
+    BITMAPINFO bi{};
+    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz, -sz, 1, 32, BI_RGB};
+    void* bits[2] = {};
+    HBITMAP bmp[2] = {CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits[0], nullptr, 0),
+                      CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits[1], nullptr, 0)};
+    if (!bmp[0] || !bmp[1] || !bits[0] || !bits[1]) {
+        for (auto b : bmp)
+            if (b) DeleteObject(b);
+        return;
+    }
+    HDC dc = CreateCompatibleDC(nullptr);
+    RECT rc{0, 0, sz, sz};
+    for (int k = 0; k < 2; ++k) {
+        HGDIOBJ old = SelectObject(dc, bmp[k]);
+        FillRect(dc, &rc, (HBRUSH)GetStockObject(k == 0 ? BLACK_BRUSH : WHITE_BRUSH));
+        draw(dc, rc);
+        GdiFlush();
+        SelectObject(dc, old);
+    }
+    DeleteDC(dc);
+    auto* b = (const uint32_t*)bits[0];
+    auto* w = (const uint32_t*)bits[1];
+    for (int y = 0; y < sz; ++y)
+        for (int x = 0; x < sz; ++x) {
+            uint32_t cb = b[y * sz + x], cw = w[y * sz + x];
+            int diff = 0, ch[3];
+            for (int c = 0; c < 3; ++c) {
+                int vb = (cb >> (8 * c)) & 0xFF, vw = (cw >> (8 * c)) & 0xFF;
+                diff += vw - vb;
+                ch[c] = vb;
+            }
+            int alpha = std::clamp(255 - diff / 3, 0, 255);
+            uint32_t out = 0;
+            if (alpha > 0) {
+                for (int c = 0; c < 3; ++c) out |= (uint32_t)std::min(255, ch[c] * 255 / alpha) << (8 * c);
+                out |= (uint32_t)alpha << 24;
+            }
+            px[y * stride + x0 + x] = out;
+        }
+    DeleteObject(bmp[0]);
+    DeleteObject(bmp[1]);
+}
+
+// Papierblatt mit umgeknickter Ecke und deutlichem Buchstaben (Times New Roman, fett)
+void DrawPageLetter(HDC dc, const RECT& rc, const wchar_t* letter, COLORREF letterColor) {
+    int sz = rc.right - rc.left;
+    int l = sz * 3 / 16, r = sz - sz * 3 / 16 - 1, t = 0, bt = sz - 1, f = std::max(3, sz * 5 / 16);
+    POINT page[5] = {{l, t}, {r - f, t}, {r, t + f}, {r, bt}, {l, bt}};
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(110, 110, 110));
+    HBRUSH white = CreateSolidBrush(RGB(255, 255, 255));
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, white);
+    Polygon(dc, page, 5);
+    HBRUSH fold = CreateSolidBrush(RGB(215, 215, 215));
+    SelectObject(dc, fold);
+    POINT corner[3] = {{r - f, t}, {r - f, t + f}, {r, t + f}};
+    Polygon(dc, corner, 3);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(pen);
+    DeleteObject(white);
+    DeleteObject(fold);
+    HFONT font = CreateFontW(-(sz * 13 / 16), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, VARIABLE_PITCH | FF_ROMAN, L"Times New Roman");
+    HGDIOBJ of = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, letterColor);
+    RECT tr{l, t + sz / 8, r + 1, bt + 1};
+    DrawTextW(dc, letter, 1, &tr, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_NOPREFIX);
+    SelectObject(dc, of);
+    DeleteObject(font);
+}
+
+// „P“ in einem abgerundeten Viereck: grün gefüllt = privater Modus eingeschaltet, sonst leer
+void DrawPrivateP(HDC dc, const RECT& rc, bool on) {
+    int sz = rc.right - rc.left;
+    int in = std::max(1, sz / 16);
+    int pw = std::max(1, sz / 12);
+    HPEN pen = CreatePen(PS_SOLID, pw, on ? RGB(20, 120, 40) : RGB(90, 90, 90));
+    HBRUSH br = on ? CreateSolidBrush(RGB(40, 175, 70)) : (HBRUSH)GetStockObject(NULL_BRUSH);
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, br);
+    RoundRect(dc, in, in, sz - in, sz - in, sz / 3, sz / 3);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(pen);
+    if (on) DeleteObject(br);
+    HFONT font = CreateFontW(-(sz * 11 / 16), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS,
+                             CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, VARIABLE_PITCH | FF_SWISS, L"Segoe UI");
+    HGDIOBJ of = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, on ? RGB(255, 255, 255) : RGB(60, 60, 60));
+    RECT tr = rc;
+    DrawTextW(dc, L"P", 1, &tr, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_NOPREFIX);
+    SelectObject(dc, of);
+    DeleteObject(font);
+}
+
+} // namespace
+
 void MainWindow::BuildToolbar() {
     toolbar_ = CreateWindowExW(0, TOOLBARCLASSNAMEW, nullptr,
                                WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | TBSTYLE_LIST | CCS_NODIVIDER |
@@ -833,7 +910,7 @@ void MainWindow::BuildToolbar() {
     {
         int sz = large ? 24 : 16;
         BITMAPINFO bi{};
-        const int cells = 3;   // Papierkorb, Radiergummi, Mit Unterverzeichnissen
+        const int cells = 7;   // Papierkorb, Radiergummi, Mit Unterverzeichnissen, Neue Datei, Neue Textdatei, P aus/ein
         bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz * cells, -sz, 1, 32, BI_RGB};
         void* bits = nullptr;
         HBITMAP strip = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
@@ -852,7 +929,7 @@ void MainWindow::BuildToolbar() {
             // Zellen 1 und 2: Radiergummi und „Mit Unterverzeichnissen“ auf Schlüsselfarbe zeichnen, danach in Alpha
             // umwandeln
             for (int y = 0; y < sz; ++y)
-                for (int x = sz; x < cells * sz; ++x) px[y * sz * cells + x] = 0x00FF00FF;
+                for (int x = sz; x < 3 * sz; ++x) px[y * sz * cells + x] = 0x00FF00FF;
             GdiFlush();
             RECT cell{sz, 0, 2 * sz, sz};
             DrawGlyph(dc, Glyph::Eraser, cell, RGB(0, 0, 0));
@@ -860,11 +937,16 @@ void MainWindow::BuildToolbar() {
             DrawGlyph(dc, Glyph::TreeList, cell2, RGB(0, 0, 0));
             GdiFlush();
             for (int y = 0; y < sz; ++y)
-                for (int x = sz; x < cells * sz; ++x) {
+                for (int x = sz; x < 3 * sz; ++x) {
                     uint32_t& c = px[y * sz * cells + x];
                     c = ((c & 0x00FFFFFF) == 0x00FF00FF) ? 0 : (c | 0xFF000000u);
                 }
             SelectObject(dc, old);
+            // Zellen 3–6: geglättet gezeichnet (Papierblatt mit N bzw. T, „P“ aus/ein)
+            RenderAlphaCell(px, sz * cells, 3 * sz, sz, [](HDC d, const RECT& r) { DrawPageLetter(d, r, L"N", RGB(20, 55, 150)); });
+            RenderAlphaCell(px, sz * cells, 4 * sz, sz, [](HDC d, const RECT& r) { DrawPageLetter(d, r, L"T", RGB(150, 35, 20)); });
+            RenderAlphaCell(px, sz * cells, 5 * sz, sz, [](HDC d, const RECT& r) { DrawPrivateP(d, r, false); });
+            RenderAlphaCell(px, sz * cells, 6 * sz, sz, [](HDC d, const RECT& r) { DrawPrivateP(d, r, true); });
             DeleteDC(dc);
             TBADDBITMAP ac{nullptr, (UINT_PTR)strip};
             custom = (int)SendMessageW(toolbar_, TB_ADDBITMAP, cells, (LPARAM)&ac);
@@ -873,6 +955,10 @@ void MainWindow::BuildToolbar() {
     int imgRecycle = custom >= 0 ? custom : offStd + STD_DELETE;
     int imgEraser = custom >= 0 ? custom + 1 : offStd + STD_DELETE;
     int imgRecursive = custom >= 0 ? custom + 2 : offView + VIEW_DETAILS;
+    int imgNewFile = custom >= 0 ? custom + 3 : offStd + STD_FILENEW;
+    int imgNewText = custom >= 0 ? custom + 4 : offStd + STD_FILENEW;
+    imgPrivateOff_ = custom >= 0 ? custom + 5 : offStd + STD_PROPERTIES;
+    imgPrivateOn_ = custom >= 0 ? custom + 6 : offStd + STD_PROPERTIES;
 
     struct B {
         int image;
@@ -888,6 +974,8 @@ void MainWindow::BuildToolbar() {
         {offStd + STD_COPY, cmd::Copy, L"Kopieren in die andere Liste (Umschalt+F5)", false},
         {offStd + STD_CUT, cmd::Move, L"Verschieben in die andere Liste (Umschalt+F6)", false},
         {offView + VIEW_NEWFOLDER, cmd::NewFolder, L"Neues Verzeichnis (F8)", false},
+        {imgNewFile, cmd::NewFile, L"Neue Datei (F9)", false},
+        {imgNewText, cmd::NewTextFile, L"Neue Textdatei (Umschalt+F9)", false},
         {imgRecycle, cmd::Delete, L"Löschen – in den Papierkorb (Entf)", false},
         {offStd + STD_DELETE, cmd::DeletePermanent, L"Endgültig löschen (Umschalt+Entf)", false},
         {imgEraser, cmd::Wipe, L"Radieren – mit Zufallsdaten überschreiben und löschen (Alt+Entf)", false},
@@ -912,6 +1000,9 @@ void MainWindow::BuildToolbar() {
         {-1, 0, nullptr, false},
         {offHist + HIST_ADDTOFAVORITES, cmd::BookmarkAdd, L"Lesezeichen hinzufügen (Strg+D)", false},
         {offStd + STD_PROPERTIES, cmd::Options, L"Optionen", false},
+        {-1, 0, nullptr, false},
+        {App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_, cmd::PrivateMode,
+         L"Privater Modus: Verlauf nicht speichern (grün = eingeschaltet)", false},
     };
     std::vector<TBBUTTON> tb;
     for (auto& b : buttons) {
@@ -932,6 +1023,13 @@ void MainWindow::BuildToolbar() {
     SendMessageW(toolbar_, TB_ADDBUTTONSW, tb.size(), (LPARAM)tb.data());
     SendMessageW(toolbar_, WM_SETFONT, (WPARAM)App::UIFont(), TRUE);
     SendMessageW(toolbar_, TB_AUTOSIZE, 0, 0);
+}
+
+// Symbol „P“: grün gefüllt, solange der private Modus eingeschaltet ist
+void MainWindow::UpdatePrivateButton() {
+    if (!toolbar_ || imgPrivateOff_ < 0) return;
+    SendMessageW(toolbar_, TB_CHANGEBITMAP, cmd::PrivateMode,
+                 MAKELPARAM(App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_, 0));
 }
 
 void MainWindow::BuildAccelerators() {
@@ -1644,10 +1742,6 @@ void MainWindow::OnPaneFilesDropped(FilePane* p) { ReloadVisible(); }
 
 void MainWindow::OnPaneLayoutChanged(FilePane*) { ScheduleStateSave(); }
 
-void MainWindow::OnPanePrivateButton(FilePane* p) {
-    SetActive(p->Index(), false);
-    SetPrivateMode(!App::Opt().privateMode);
-}
 
 // Zwischenablage geändert: ausgeschnittene Dateien neu bestimmen und die Listen neu zeichnen
 void MainWindow::OnClipboardChanged() {

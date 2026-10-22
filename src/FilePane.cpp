@@ -463,9 +463,6 @@ void FilePane::BuildHitRects() {
         hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
         x -= bs + pad;
     }
-    // „P“: privater Modus
-    hits_.push_back({HitArea::Private, -1, {x - bs, pad, x, pad + bs}});
-    x -= bs + pad;
     int rightLimit = x - ToPx(6);
     // Laufwerke von links
     HDC dc = GetDC(hwnd_);
@@ -515,10 +512,6 @@ void FilePane::UpdateTooltips() {
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
             break;
         case HitArea::Bookmark: text = L"Gewähltes Verzeichnis den Lesezeichen hinzufügen (Strg+D)"; break;
-        case HitArea::Private:
-            text = App::Opt().privateMode ? L"Privater Modus ist eingeschaltet (Verlauf wird nicht gespeichert) – Klick schaltet aus"
-                                          : L"Privater Modus: Verlauf nicht speichern – Klick schaltet ein";
-            break;
         case HitArea::Back: text = L"Zurück (Alt+←) – Rechtsklick: Liste"; break;
         case HitArea::Forward: text = L"Vor (Alt+→) – Rechtsklick: Liste"; break;
         case HitArea::Up: text = L"Übergeordnetes Verzeichnis (Rücktaste)"; break;
@@ -592,41 +585,6 @@ COLORREF FilePane::ActiveBarColor() const {
     return App::Opt().privateMode ? RGB(170, 222, 178) : Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 150);
 }
 
-// Schaltfläche „P“ (privater Modus): Buchstabe P in einem abgerundeten Viereck, grün gefüllt = eingeschaltet
-void FilePane::PaintPrivateButton(HDC dc, const RECT& rc, bool hot) {
-    bool on = App::Opt().privateMode;
-    if (hot) {
-        HBRUSH hb = CreateSolidBrush(Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 190));
-        FillRect(dc, &rc, hb);
-        DeleteObject(hb);
-    }
-    int w = rc.right - rc.left, h = rc.bottom - rc.top;
-    int d = std::max(10, std::min(w, h) * 72 / 100);
-    int l = (rc.left + rc.right - d) / 2, t = (rc.top + rc.bottom - d) / 2;
-    COLORREF line = on ? RGB(20, 120, 40) : RGB(90, 90, 90);
-    HPEN pen = CreatePen(PS_SOLID, std::max(1, ToPx(1) + (on ? 0 : 0)), line);
-    HBRUSH br = on ? CreateSolidBrush(RGB(40, 180, 70)) : (HBRUSH)GetStockObject(NULL_BRUSH);
-    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, br);
-    int rr = std::max(3, d / 3);
-    RoundRect(dc, l, t, l + d + 1, t + d + 1, rr, rr);
-    SelectObject(dc, op);
-    SelectObject(dc, ob);
-    DeleteObject(pen);
-    if (on) DeleteObject(br);
-    LOGFONTW lf{};
-    GetObjectW(App::UIFont(), sizeof(lf), &lf);
-    lf.lfHeight = -std::max(8, d * 70 / 100);
-    lf.lfWeight = FW_BOLD;
-    HFONT f = CreateFontIndirectW(&lf);
-    HGDIOBJ of = SelectObject(dc, f);
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, on ? RGB(255, 255, 255) : RGB(70, 70, 70));
-    RECT tr{l, t, l + d + 1, t + d + 1};
-    DrawTextW(dc, L"P", 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOPREFIX);
-    SelectObject(dc, of);
-    DeleteObject(f);
-}
-
 void FilePane::PaintHeader(HDC dc, const RECT& rc) {
     COLORREF face = GetSysColor(COLOR_BTNFACE);
     COLORREF bg = activeLook_ ? ActiveBarColor() : face;
@@ -662,8 +620,6 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             SelectObject(dc, prev);
         } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark) {
             DrawGlyph(dc, h.area, h.rc, hot_ == &h);
-        } else if (h.area == HitArea::Private) {
-            PaintPrivateButton(dc, h.rc, hot_ == &h);
         }
     }
     // Trennlinie unten
@@ -752,10 +708,17 @@ bool FilePane::IsCutItem(const Item& it) const {
     return !it.isParent && !IsVirtual() && ClipboardHasCut() && ClipboardIsCut(ItemFullPath(it));
 }
 
+// Hintergrund nicht aktiver Listen: etwas heller als Kopf- und Fußleiste, leicht abgestuft von hell nach dunkel:
+// rechts oben (Liste 2), links oben (Liste 1), rechts unten (Liste 4), links unten (Liste 3)
+COLORREF FilePane::InactiveBack() const {
+    static const int lighten[4] = {80, 105, 30, 55};   // Liste 1, 2, 3, 4
+    return Blend(GetSysColor(COLOR_BTNFACE), RGB(255, 255, 255), lighten[index_ & 3]);
+}
+
 void FilePane::UpdateListColors() {
     if (!list_) return;
     // Favoriten hellgelb (außer nicht aktiv mit der Option „Nicht aktive Listen grau hinterlegen“)
-    COLORREF bg = (!activeLook_ && App::Opt().grayInactive) ? GetSysColor(COLOR_BTNFACE)
+    COLORREF bg = (!activeLook_ && App::Opt().grayInactive) ? InactiveBack()
                   : IsFavorites()                          ? kFavoritesBack
                                                            : GetSysColor(COLOR_WINDOW);
     if (ListView_GetBkColor(list_) == bg) return;
@@ -800,9 +763,6 @@ void FilePane::OnClickArea(const HitRect& h) {
         return;
     case HitArea::Bookmark:
         if (host_) host_->OnPaneBookmarkButton(this);
-        break;
-    case HitArea::Private:
-        if (host_) host_->OnPanePrivateButton(this);
         break;
     case HitArea::Back: GoBack(); break;
     case HitArea::Forward: GoForward(); break;
@@ -1595,7 +1555,7 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
         // Gestreift: in der aktiven Liste jede zweite Zeile in der Farbe nicht aktiver Listen (Option)
         if (App::Opt().striped && activeLook_ && (i % 2) == 1 && !changed &&
             (view_ == PaneView::Details || view_ == PaneView::Recursive || view_ == PaneView::List)) {
-            cd->clrTextBk = IsFavorites() ? Blend(kFavoritesBack, RGB(120, 100, 0), 28) : GetSysColor(COLOR_BTNFACE);
+            cd->clrTextBk = IsFavorites() ? Blend(kFavoritesBack, RGB(120, 100, 0), 22) : InactiveBack();
             changed = true;
         }
         if (IsCutItem(it)) {

@@ -41,7 +41,6 @@ public:
     virtual void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) = 0;
     virtual void OnPaneFilesDropped(FilePane* p) = 0;                    // nach Drag & Drop: andere Listen aktualisieren
     virtual void OnPaneLayoutChanged(FilePane*) {}                       // Ansicht/Spaltenbreiten geändert (speichern)
-    virtual void OnPanePrivateButton(FilePane*) {}                       // Schaltfläche „P“ (privater Modus)
     virtual bool IsPaneActive(const FilePane* p) const = 0;
 };
 
@@ -174,7 +173,7 @@ private:
     void OnTreeBatch(WPARAM gen);
     void OnTreeDone(WPARAM gen);
     bool AcceptEntry(const DirEntry& e) const;
-    enum class HitArea { None, Drive, Split, Bookmark, Private, Back, Forward, Up, Root, Browse, Active };
+    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Root, Browse, Active };
     struct HitRect {
         HitArea area;
         int drive;          // Laufwerksindex bei Drive
@@ -196,7 +195,7 @@ private:
     void PaintNavButtons(HDC dc);
     void PaintStatus(HDC dc, const RECT& rc);
     void DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot);
-    void PaintPrivateButton(HDC dc, const RECT& rc, bool hot);
+    COLORREF InactiveBack() const;     // Hintergrund nicht aktiver Listen (je Liste leicht abgestuft)
     COLORREF ActiveBarColor() const;   // Kopfzeile/Spaltenköpfe der aktiven Liste: hellblau, im privaten Modus hellgrün
     void BuildHitRects();
     const HitRect* HitTest(POINT pt) const;

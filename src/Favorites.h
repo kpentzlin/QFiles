@@ -15,7 +15,7 @@
 namespace qf {
 
 // Hintergrund der Favoritenliste und des Lesezeichens „Favoriten“ (hellgelb)
-constexpr COLORREF kFavoritesBack = RGB(255, 248, 196);
+constexpr COLORREF kFavoritesBack = RGB(255, 251, 216);
 // Nachricht an das Hauptfenster: Favoriten geändert (wParam 1 = Listen mit den Favoriten neu einlesen)
 constexpr UINT WM_QF_FAVORITES_CHANGED = WM_APP + 40;
 

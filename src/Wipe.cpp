@@ -8,6 +8,7 @@
 
 #include "FileOps.h"
 #include "App.h"
+#include "Dialog.h"
 #include "ToolsCommon.h"
 #include "Util.h"
 
@@ -57,8 +58,8 @@ void Collect(const std::wstring& path, WipeJob& job) {
     }
 }
 
-// Liefert "" bei Erfolg, sonst Fehlermeldung.
-std::wstring WipeFile(const std::wstring& path, std::vector<uint8_t>& buf, uint64_t& doneBytes, uint64_t total,
+// Liefert "" bei Erfolg, sonst Fehlermeldung. passes = Anzahl der Überschreibvorgänge (je mit neuen Zufallsdaten).
+std::wstring WipeFile(const std::wstring& path, int passes, std::vector<uint8_t>& buf, uint64_t& doneBytes, uint64_t total,
                       toolsdetail::ProgressSink& sink) {
     std::wstring lp = LongPath(path);
     SetFileAttributesW(lp.c_str(), FILE_ATTRIBUTE_NORMAL);
@@ -66,26 +67,31 @@ std::wstring WipeFile(const std::wstring& path, std::vector<uint8_t>& buf, uint6
     if (h == INVALID_HANDLE_VALUE) return LastErrorMessage();
     LARGE_INTEGER size{};
     GetFileSizeEx(h, &size);
-    uint64_t remaining = (uint64_t)size.QuadPart;
     std::wstring err;
-    while (remaining > 0) {
-        if (sink.Cancelled()) {
-            err = L"abgebrochen";
-            break;
+    for (int pass = 0; pass < passes && err.empty(); ++pass) {
+        LARGE_INTEGER zeroPos{};
+        SetFilePointerEx(h, zeroPos, nullptr, FILE_BEGIN);
+        uint64_t remaining = (uint64_t)size.QuadPart;
+        while (remaining > 0) {
+            if (sink.Cancelled()) {
+                err = L"abgebrochen";
+                break;
+            }
+            DWORD n = (DWORD)std::min<uint64_t>(remaining, buf.size());
+            if (!RandomBytes(buf.data(), n)) {
+                err = L"Zufallsdaten konnten nicht erzeugt werden";
+                break;
+            }
+            DWORD written = 0;
+            if (!WriteFile(h, buf.data(), n, &written, nullptr) || written != n) {
+                err = LastErrorMessage();
+                break;
+            }
+            remaining -= n;
+            doneBytes += n;
+            if (total) sink.SetPercent((int)(doneBytes * 100 / total));
         }
-        DWORD n = (DWORD)std::min<uint64_t>(remaining, buf.size());
-        if (!RandomBytes(buf.data(), n)) {
-            err = L"Zufallsdaten konnten nicht erzeugt werden";
-            break;
-        }
-        DWORD written = 0;
-        if (!WriteFile(h, buf.data(), n, &written, nullptr) || written != n) {
-            err = LastErrorMessage();
-            break;
-        }
-        remaining -= n;
-        doneBytes += n;
-        if (total) sink.SetPercent((int)(doneBytes * 100 / total));
+        if (err.empty()) FlushFileBuffers(h);   // jeder Durchgang auf den Datenträger
     }
     if (err.empty()) {
         FlushFileBuffers(h);
@@ -103,6 +109,49 @@ std::wstring WipeFile(const std::wstring& path, std::vector<uint8_t>& buf, uint6
     return L"";
 }
 
+// Rückfrage: „Ja (1×)“, darüber „2×“ … „5×“ für mehrfaches Überschreiben, „Nein“ (Standard)
+enum : int { kWipeIcon = 100, kWipeText = 101, kWipeMulti = 102, kWipePass1 = 111 };   // kWipePass1 + n-1 = n×
+
+class WipeAskDlg : public DialogBase {
+public:
+    std::wstring text;
+
+protected:
+    BOOL OnInit() override {
+        SetText(kWipeText, text);
+        SendMessageW(Item(kWipeIcon), STM_SETICON, (WPARAM)LoadIconW(nullptr, IDI_WARNING), 0);
+        SetFocus(Item(IDCANCEL));
+        return FALSE;
+    }
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        if (id >= kWipePass1 && id < kWipePass1 + 5) {
+            End(id - kWipePass1 + 1);
+            return TRUE;
+        }
+        if (id == IDCANCEL || id == IDOK) {
+            End(0);
+            return TRUE;
+        }
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+};
+
+// Liefert die Anzahl der Überschreibvorgänge (1–5) oder 0 = abgebrochen
+int AskWipe(HWND owner, const std::wstring& text) {
+    DialogTemplate t(L"Radieren", 262, 128);
+    t.Custom(kWipeIcon, L"STATIC", 7, 7, 21, 20, WS_CHILD | WS_VISIBLE | SS_ICON);
+    t.Label(kWipeText, L"", 36, 7, 219, 64);
+    t.Label(kWipeMulti, L"Mehrfach überschreiben:", 36, 79, 82, 10);
+    for (int n = 2; n <= 5; ++n)
+        t.Button(kWipePass1 + n - 1, std::to_wstring(n) + L"×", 120 + (n - 2) * 34, 77, 30, 14);
+    t.Button(kWipePass1, L"&Ja (1×)", 120, 104, 64, 14);
+    t.DefButton(IDCANCEL, L"&Nein", 191, 104, 64, 14);
+    WipeAskDlg dlg;
+    dlg.text = text;
+    INT_PTR r = dlg.DoModal(owner, t);
+    return r >= 1 && r <= 5 ? (int)r : 0;
+}
+
 } // namespace
 
 bool WipeItems(HWND owner, const std::vector<std::wstring>& paths) {
@@ -113,10 +162,12 @@ bool WipeItems(HWND owner, const std::vector<std::wstring>& paths) {
                      L" radieren?\n\nDer Inhalt aller betroffenen Dateien wird mit Zufallsdaten überschrieben und "
                      L"anschließend endgültig gelöscht (auch in Unterverzeichnissen).\n\n"
                      L"Dies kann NICHT rückgängig gemacht werden – auch nicht über den Papierkorb.";
-    if (MessageBoxW(owner, q.c_str(), L"Radieren", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
+    int passes = AskWipe(owner, q);
+    if (passes <= 0) return false;
 
     WipeJob job;
     for (auto& p : paths) Collect(p, job);
+    uint64_t total = job.totalBytes * (uint64_t)passes;
     std::vector<std::wstring> errors;
     size_t wipedFiles = 0;
     bool completed = toolsdetail::RunWithProgress(owner, L"Radieren", L"Überschreibe Dateien …",
@@ -126,7 +177,7 @@ bool WipeItems(HWND owner, const std::vector<std::wstring>& paths) {
         for (auto& f : job.files) {
             if (sink.Cancelled()) return;
             sink.SetText(PathFileName(f));
-            std::wstring e = WipeFile(f, buf, done, job.totalBytes, sink);
+            std::wstring e = WipeFile(f, passes, buf, done, total, sink);
             if (e.empty()) ++wipedFiles;
             else errors.push_back(f + L": " + e);
         }
@@ -137,7 +188,8 @@ bool WipeItems(HWND owner, const std::vector<std::wstring>& paths) {
             if (!RemoveDirectoryW(LongPath(finalPath).c_str())) errors.push_back(d + L": " + LastErrorMessage());
         }
     });
-    LogOperation(L"Radiert: " + std::to_wstring(wipedFiles) + L" Datei(en) – " + Join(paths, L"; "));
+    LogOperation(L"Radiert (" + std::to_wstring(passes) + L"× überschrieben): " + std::to_wstring(wipedFiles) +
+                 L" Datei(en) – " + Join(paths, L"; "));
     if (!completed)
         MsgInfo(owner, L"Das Radieren wurde abgebrochen. Bereits bearbeitete Dateien sind überschrieben und gelöscht.");
     if (!errors.empty()) {

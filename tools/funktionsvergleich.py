@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.8"
+QF_VERSION = "0.1.9"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -149,11 +149,13 @@ DATA = [
         ("Hintergrund-Warteschlange mit Pause und Priorität", "–", "–", "ja", "", False),
         ("Löschen in den Papierkorb oder endgültig", "ja", "ja", "ja", "", False),
         ("Sicheres Löschen (Radieren/Vernichten)", "ja", "ja (Pro)", "ja",
-         "QFiles: ein Durchgang mit Zufallsdaten, Anzahl nicht einstellbar", A),
+         "QFiles: 1 bis 5 Durchgänge mit Zufallsdaten (neu in 0.1.9)", False),
         ("Umbenennen direkt in der Liste", "ja", "ja", "ja", "QFiles: langsamer zweiter Klick; F2 öffnet den Dialog", False),
         ("Neues Verzeichnis (auch mehrstufig), neue Datei, neue Textdatei", "ja", "ja", "ja", "", False),
         ("Neu aus Dokumentvorlagen", "teilw.", "ja", "?", "QFiles: über das Explorer-Kontextmenü „Neu“", A),
         ("Duplizieren mit Namensvorschlag", "ja", "ja", "?", "", False),
+        ("Namenskonflikt beim Kopieren/Verschieben: mit neuem Namen ablegen", "ja", "?", "?",
+         "QFiles: einzelne Datei, vorbelegt „Name (1)“ (neu in 0.1.9)", False),
         ("Zwischenablage, kompatibel mit dem Explorer", "ja", "ja", "ja", "", False),
         ("Drag & Drop (Listen, Baum, Lesezeichen, andere Programme)", "ja", "ja", "ja", "", False),
         ("Ziehen in eine Liste: Ziel nach Spalte, Rückfrage im Leerraum", "ja", "–", "–", "", False),

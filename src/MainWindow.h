@@ -43,7 +43,6 @@ public:
     void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) override;
     void OnPaneFilesDropped(FilePane* p) override;
     void OnPaneLayoutChanged(FilePane* p) override;
-    void OnPanePrivateButton(FilePane* p) override;
     void ScheduleStateSave();
     void OnClipboardChanged();   // Fenster-/Listenzustand kurz nach einer Änderung speichern
     bool IsPaneActive(const FilePane* p) const override;
@@ -149,6 +148,8 @@ private:
     void OnFavoritesChanged(bool reloadPanes);
     std::vector<FunctionKey> fkeyDefs_;
     std::vector<std::pair<int, std::wstring>> toolTips_;  // Befehl -> Tooltip der Werkzeugleiste
+    int imgPrivateOff_ = -1, imgPrivateOn_ = -1;          // Symbol „P“ der Werkzeugleiste (privater Modus aus/ein)
+    void UpdatePrivateButton();
 };
 
 } // namespace qf

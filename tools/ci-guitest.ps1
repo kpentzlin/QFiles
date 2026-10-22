@@ -557,6 +557,54 @@ else {
   "Ablageziel beim Ziehen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
+# ---- Kopieren einer einzelnen Datei, deren Name im Ziel vorhanden ist: „Mit neuem Namen ablegen“ (vorbelegt „x (1).txt“) ----
+$cfBase = "C:\QFilesKonflikt"
+Remove-Item $cfBase -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path "$cfBase\Quelle", "$cfBase\Ziel" | Out-Null
+Set-Content -Path "$cfBase\Quelle\x.txt" -Value "neu" -Encoding UTF8
+Set-Content -Path "$cfBase\Ziel\x.txt" -Value "alt" -Encoding UTF8
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + "$cfBase\Quelle" + '"'), ('"' + "$cfBase\Ziel" + '"') -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Namenskonflikt)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+$panes = @()
+$h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($p.MainWindowHandle, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $panes += [pscustomobject]@{ H = $h; L = $r.L; T = $r.T }
+}
+$panes = @($panes | Sort-Object T, L)
+$cfList = [W]::FindWindowEx($panes[0].H, [IntPtr]::Zero, "SysListView32", $null)
+$cr = New-Object W+RECT; [W]::GetWindowRect($cfList, [ref]$cr) | Out-Null
+[W]::Click($cr.L + 40, $cr.T + 24 + 1 * 20 + 10, $false); Start-Sleep -Milliseconds 500   # x.txt (nach „..“)
+[System.Windows.Forms.SendKeys]::SendWait("+{F5}")
+$box = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $box -eq [IntPtr]::Zero; $t++) { $box = [W]::FindWindow("#32770", "Kopieren"); if ($box -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+if ($box -ne [IntPtr]::Zero) { [System.Windows.Forms.SendKeys]::SendWait("{ENTER}") }
+$cdlg = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $cdlg -eq [IntPtr]::Zero; $t++) { $cdlg = [W]::FindWindow("#32770", "Kopieren – Name vorhanden"); if ($cdlg -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+$cfSeen = $cdlg -ne [IntPtr]::Zero
+if ($cfSeen) {
+  Shot "screenshot25.png"
+  [W]::SendMessage([W]::GetDlgItem($cdlg, 110), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # „Mit neuem Namen ablegen“
+  Start-Sleep -Seconds 3
+}
+Check-Alive "Namenskonflikt"
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$cfNew = Test-Path "$cfBase\Ziel\x (1).txt"
+$cfOld = ((Get-Content "$cfBase\Ziel\x.txt" -Raw) -match 'alt')
+$cfInfo = "Dialog: $cfSeen; x (1).txt angelegt: $cfNew; vorhandene Datei unverändert: $cfOld"
+if ($cfSeen -and $cfNew -and $cfOld) { Write-Output "::notice title=Namenskonflikt::$cfInfo" }
+else {
+  Write-Output "::error title=Namenskonflikt::$cfInfo"
+  "Namenskonflikt beim Kopieren nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
 # ---- Favoriten und privater Modus: Liste 1 zeigt die Favoriten (hellgelb, Spalte „Verzeichnis“), eine nicht mehr
 #      vorhandene Datei entfällt stillschweigend; Kopfzeilen im privaten Modus grün ----
 $favLog = "$PWD\favoriten-log.txt"

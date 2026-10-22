@@ -333,6 +333,34 @@ std::wstring LastPathElement(const std::wstring& dir) {
     return PathFileName(dir);
 }
 
+// Nummerierter Name: "Name (1).ext"; endet der Name schon auf " (n)" oder existiert das Ziel, wird hochgezählt.
+std::wstring NumberedName(const std::wstring& dir, const std::wstring& name, bool isDir) {
+    std::wstring stem = name, ext;
+    size_t dot = name.find_last_of(L'.');
+    if (!isDir && dot != std::wstring::npos && dot > 0) {
+        stem = name.substr(0, dot);
+        ext = name.substr(dot);
+    }
+    int n = 1;
+    if (stem.size() >= 4 && stem.back() == L')') {
+        size_t open = stem.find_last_of(L'(');
+        if (open != std::wstring::npos && open >= 1 && stem[open - 1] == L' ') {
+            std::wstring num = stem.substr(open + 1, stem.size() - open - 2);
+            bool digits = !num.empty() && num.size() < 9;
+            for (wchar_t c : num)
+                if (!iswdigit(c)) digits = false;
+            if (digits) {
+                n = _wtoi(num.c_str()) + 1;
+                stem = stem.substr(0, open - 1);
+            }
+        }
+    }
+    for (;; ++n) {
+        std::wstring cand = stem + L" (" + std::to_wstring(n) + L")" + ext;
+        if (!PathExists(PathCombine(dir, cand))) return cand;
+    }
+}
+
 std::wstring MakeUniqueName(const std::wstring& dir, const std::wstring& name) {
     if (!PathExists(PathCombine(dir, name))) return name;
     std::wstring stem = name, ext;
