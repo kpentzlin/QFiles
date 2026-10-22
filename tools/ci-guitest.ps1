@@ -558,6 +558,13 @@ else {
 }
 
 # ---- Kopieren einer einzelnen Datei, deren Name im Ziel vorhanden ist: „Mit neuem Namen ablegen“ (vorbelegt „x (1).txt“) ----
+$cfLog = "$PWD\konflikt-log.txt"
+trap {
+  $m = "Ausnahme in Zeile $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+  $m | Out-File -FilePath $cfLog -Append -Encoding UTF8
+  Write-Output "::error title=GUI-Test (Ausnahme)::$m"
+  break
+}
 $cfBase = "C:\QFilesKonflikt"
 Remove-Item $cfBase -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path "$cfBase\Quelle", "$cfBase\Ziel" | Out-Null
@@ -587,6 +594,7 @@ if ($box -ne [IntPtr]::Zero) { [System.Windows.Forms.SendKeys]::SendWait("{ENTER
 $cdlg = [IntPtr]::Zero
 for ($t = 0; $t -lt 20 -and $cdlg -eq [IntPtr]::Zero; $t++) { $cdlg = [W]::FindWindow("#32770", "Kopieren – Name vorhanden"); if ($cdlg -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
 $cfSeen = $cdlg -ne [IntPtr]::Zero
+"Eingabefeld Kopieren: $($box -ne [IntPtr]::Zero); Konfliktdialog: $cfSeen; Listen: $($panes.Count)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
 if ($cfSeen) {
   Shot "screenshot25.png"
   [W]::SendMessage([W]::GetDlgItem($cdlg, 110), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # „Mit neuem Namen ablegen“
