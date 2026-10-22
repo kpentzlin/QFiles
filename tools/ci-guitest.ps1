@@ -582,24 +582,26 @@ Set-Content -Path "$cfBase\Ziel\x.txt" -Value "alt" -Encoding UTF8
 $script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + "$cfBase\Quelle" + '"'), ('"' + "$cfBase\Ziel" + '"') -PassThru
 Start-Sleep -Seconds 8
 Check-Alive "Start (Namenskonflikt)"
-for ($t = 0; $t -lt 40 -and $p.MainWindowHandle -eq [IntPtr]::Zero; $t++) { Start-Sleep -Milliseconds 500; $p.Refresh() }
-[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+# Hauptfenster über die Fensterklasse suchen (Process.MainWindowHandle kann ein Tooltip-Fenster sein)
+$mainWnd = [IntPtr]::Zero
+for ($t = 0; $t -lt 40 -and $mainWnd -eq [IntPtr]::Zero; $t++) { $mainWnd = [W]::FindWindow("QFilesMain", [NullString]::Value); if ($mainWnd -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 500 } }
+[W]::SetForegroundWindow($mainWnd) | Out-Null
 $panes = @()
 $h = [IntPtr]::Zero
 while ($true) {
-  $h = [W]::FindWindowEx($p.MainWindowHandle, $h, "QFilesPane", $null)
+  $h = [W]::FindWindowEx($mainWnd, $h, "QFilesPane", $null)
   if ($h -eq [IntPtr]::Zero) { break }
   if (-not [W]::IsWindowVisible($h)) { continue }
   $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
   $panes += [pscustomobject]@{ H = $h; L = $r.L; T = $r.T }
 }
 $panes = @($panes | Sort-Object T, L)
-"Hauptfenster: $($p.MainWindowHandle); Listen: $($panes.Count)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
+"Hauptfenster: $mainWnd; Listen: $($panes.Count)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
 if ($panes.Count -lt 2) {
   Shot "screenshot25.png"
-  $cls = New-Object System.Text.StringBuilder 64; [W]::GetClassName($p.MainWindowHandle, $cls, 64) | Out-Null
+  $cls = New-Object System.Text.StringBuilder 64; [W]::GetClassName($mainWnd, $cls, 64) | Out-Null
   "Fensterklasse: $cls; Titel: $($p.MainWindowTitle)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
-  Write-Output "::error title=Namenskonflikt::Listenfenster nicht gefunden (Hauptfenster $($p.MainWindowHandle), Klasse $cls, Titel $($p.MainWindowTitle))"
+  Write-Output "::error title=Namenskonflikt::Listenfenster nicht gefunden (Hauptfenster $mainWnd, Klasse $cls, Titel $($p.MainWindowTitle))"
   "Namenskonflikt: Listen nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 $cfList = [W]::FindWindowEx($panes[0].H, [IntPtr]::Zero, "SysListView32", $null)
