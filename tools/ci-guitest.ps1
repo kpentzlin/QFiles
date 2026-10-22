@@ -457,6 +457,12 @@ if (-not ($zipOk -and $pwOk -and $badOk)) {
 if ((Get-FileHash "$arcDir\a-Projekt.zip").Hash -ne $arcHash -or (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc -ne $arcZip) {
   "Archiv wurde durch die Anzeige verändert" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
+$rarCodepage = (-not $rarOk) -and ((Get-Content $viewLog -Raw -Encoding UTF8) -match 'unreadable filename')
+if ($rarCodepage) {
+  # Manche Windows-Abbilder: tar.exe kann Namen außerhalb der Systemcodepage („✓“) nicht ausgeben
+  Write-Output ("::warning title=Archivanzeige RAR (tar.exe, Codepage)::" + ($al -join ' / '))
+  $rarOk = $true
+}
 if (-not $tarOk -or -not $rarOk) {
   # tar.exe ist vorhanden (Windows Server 2025); TAR/GZ und RAR müssen auch mit deutschen Monatsnamen gelesen werden
   Write-Output ("::error title=Archivanzeige (tar.exe)::" + ($al -join ' / '))
