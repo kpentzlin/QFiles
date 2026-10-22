@@ -596,7 +596,10 @@ while ($true) {
 $panes = @($panes | Sort-Object T, L)
 "Hauptfenster: $($p.MainWindowHandle); Listen: $($panes.Count)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
 if ($panes.Count -lt 2) {
-  Write-Output "::error title=Namenskonflikt::Listenfenster nicht gefunden (Hauptfenster $($p.MainWindowHandle))"
+  Shot "screenshot25.png"
+  $cls = New-Object System.Text.StringBuilder 64; [W]::GetClassName($p.MainWindowHandle, $cls, 64) | Out-Null
+  "Fensterklasse: $cls; Titel: $($p.MainWindowTitle)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
+  Write-Output "::error title=Namenskonflikt::Listenfenster nicht gefunden (Hauptfenster $($p.MainWindowHandle), Klasse $cls, Titel $($p.MainWindowTitle))"
   "Namenskonflikt: Listen nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 $cfList = [W]::FindWindowEx($panes[0].H, [IntPtr]::Zero, "SysListView32", $null)
