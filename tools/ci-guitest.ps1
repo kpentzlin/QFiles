@@ -582,6 +582,7 @@ Set-Content -Path "$cfBase\Ziel\x.txt" -Value "alt" -Encoding UTF8
 $script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + "$cfBase\Quelle" + '"'), ('"' + "$cfBase\Ziel" + '"') -PassThru
 Start-Sleep -Seconds 8
 Check-Alive "Start (Namenskonflikt)"
+for ($t = 0; $t -lt 40 -and $p.MainWindowHandle -eq [IntPtr]::Zero; $t++) { Start-Sleep -Milliseconds 500; $p.Refresh() }
 [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
 $panes = @()
 $h = [IntPtr]::Zero
@@ -593,6 +594,11 @@ while ($true) {
   $panes += [pscustomobject]@{ H = $h; L = $r.L; T = $r.T }
 }
 $panes = @($panes | Sort-Object T, L)
+"Hauptfenster: $($p.MainWindowHandle); Listen: $($panes.Count)" | Out-File -FilePath $cfLog -Append -Encoding UTF8
+if ($panes.Count -lt 2) {
+  Write-Output "::error title=Namenskonflikt::Listenfenster nicht gefunden (Hauptfenster $($p.MainWindowHandle))"
+  "Namenskonflikt: Listen nicht gefunden" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
 $cfList = [W]::FindWindowEx($panes[0].H, [IntPtr]::Zero, "SysListView32", $null)
 $cr = New-Object W+RECT; [W]::GetWindowRect($cfList, [ref]$cr) | Out-Null
 [W]::Click($cr.L + 40, $cr.T + 24 + 1 * 20 + 10, $false); Start-Sleep -Milliseconds 500   # x.txt (nach „..“)
