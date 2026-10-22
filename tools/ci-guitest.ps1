@@ -457,11 +457,14 @@ if (-not ($zipOk -and $pwOk -and $badOk)) {
 if ((Get-FileHash "$arcDir\a-Projekt.zip").Hash -ne $arcHash -or (Get-Item "$arcDir\a-Projekt.zip").LastWriteTimeUtc -ne $arcZip) {
   "Archiv wurde durch die Anzeige verändert" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
-$rarCodepage = (-not $rarOk) -and ((Get-Content $viewLog -Raw -Encoding UTF8) -match 'unreadable filename')
-if ($rarCodepage) {
-  # Manche Windows-Abbilder: tar.exe kann Namen außerhalb der Systemcodepage („✓“) nicht ausgeben
-  Write-Output ("::warning title=Archivanzeige RAR (tar.exe, Codepage)::" + ($al -join ' / '))
-  $rarOk = $true
+# Manche Windows-Abbilder: tar.exe überspringt Namen außerhalb der Systemcodepage („tief ✓.txt“) – dann fehlt
+# genau diese Datei in TAR/GZ und RAR; das ist eine Grenze von tar.exe, kein Fehler von QFiles (Warnung)
+$tarCp = $al | Where-Object { $_ -match '^b-Quellen\.tar\.gz \| Archiv \|.*5 Dateien \| Datum bei (\d+) von \1$' }
+$rarCp = $al | Where-Object { $_ -match '^e-Projekt\.rar \| Archiv \| 4 Verz\. \| 5 Dateien \| Datum bei 9 von 9$' }
+if ((-not $tarOk -and $tarCp) -or (-not $rarOk -and $rarCp)) {
+  Write-Output ("::warning title=Archivanzeige (tar.exe, Codepage)::" + ($al -join ' / '))
+  if ($tarCp) { $tarOk = $true }
+  if ($rarCp) { $rarOk = $true }
 }
 if (-not $tarOk -or -not $rarOk) {
   # tar.exe ist vorhanden (Windows Server 2025); TAR/GZ und RAR müssen auch mit deutschen Monatsnamen gelesen werden
