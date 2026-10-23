@@ -708,11 +708,13 @@ bool FilePane::IsCutItem(const Item& it) const {
     return !it.isParent && !IsVirtual() && ClipboardHasCut() && ClipboardIsCut(ItemFullPath(it));
 }
 
-// Hintergrund nicht aktiver Listen: etwas heller als Kopf- und Fußleiste, leicht abgestuft von hell nach dunkel:
-// rechts oben (Liste 2), links oben (Liste 1), rechts unten (Liste 4), links unten (Liste 3)
+// Hintergrund nicht aktiver Listen, abgestuft von hell nach dunkel: rechts oben (Liste 2), links oben (Liste 1),
+// rechts unten (Liste 4), links unten (Liste 3). Das dunkelste Grau ist etwas heller als Kopf- und Fußleiste; die
+// übrigen teilen den Abstand bis Weiß in gleiche Stufen (die hellste bleibt von der weißen aktiven Liste unterscheidbar).
 COLORREF FilePane::InactiveBack() const {
-    static const int lighten[4] = {140, 190, 30, 85};   // Liste 1, 2, 3, 4 (Liste 3 = dunkelstes Grau)
-    return Blend(GetSysColor(COLOR_BTNFACE), RGB(255, 255, 255), lighten[index_ & 3]);
+    COLORREF darkest = Blend(GetSysColor(COLOR_BTNFACE), RGB(255, 255, 255), 30);
+    static const int lift[4] = {153, 224, 0, 77};   // Liste 1, 2, 3, 4: Anteil (von 255) des Wegs nach Weiß
+    return Blend(darkest, RGB(255, 255, 255), lift[index_ & 3]);
 }
 
 void FilePane::UpdateListColors() {
