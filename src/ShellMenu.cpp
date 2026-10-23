@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <dbghelp.h>
 #include <future>
+#include <thread>
 #include <new>
 
 #undef PathCombine
@@ -188,6 +189,8 @@ std::wstring LongPath(const std::wstring& p) {
     r.resize(n);
     return r;
 }
+
+std::wstring ShortToLongPath(const std::wstring& p) { return LongPath(p); }
 
 std::vector<std::wstring> ExcludePatterns(const std::wstring& option) {
     std::vector<std::wstring> r;
@@ -922,6 +925,77 @@ void PrefetchShellExtensionExclusion() {
     auto patterns = ExcludePatterns(g_exclPrefetchOption);
     if (patterns.empty()) return;
     g_exclPrefetch = std::async(std::launch::async, [patterns] { return FindExcludedExtensions(patterns); });
+}
+
+void WarmUpShellContextMenu(const std::wstring& sampleFile) {
+    std::vector<std::wstring> patterns = ExcludePatterns(App::Opt().shellExtExclude);
+    std::thread([patterns, sampleFile] {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+        Sleep(1500);   // erst nach dem Start (Fenster, Listen) – dann ist die Platte frei
+        HRESULT co = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        DWORD t0 = GetTickCount();
+        // 1. DLLs der Kontextmenü-Erweiterungen für Dateien, Ordner und Laufwerke laden (ohne ausgeschlossene).
+        //    Nur laden (DllMain), keine Objekte anlegen: Erweiterungscode läuft weiter erst im Menüaufbau,
+        //    geschützt wie bisher. Die DLLs bleiben geladen.
+        int loaded = 0;
+        std::vector<std::wstring> seen;
+        for (const wchar_t* ck : {L"*", L"AllFilesystemObjects", L"Directory", L"Folder", L"Directory\\Background",
+                                  L"Drive"}) {
+            HKEY h = nullptr;
+            if (RegOpenKeyExW(HKEY_CLASSES_ROOT, (std::wstring(ck) + L"\\shellex\\ContextMenuHandlers").c_str(), 0,
+                              KEY_READ, &h) != ERROR_SUCCESS)
+                continue;
+            wchar_t handler[512];
+            for (DWORD i = 0;; ++i) {
+                DWORD cch = 511;
+                if (RegEnumKeyExW(h, i, handler, &cch, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+                std::wstring clsidText = RegString(h, handler, nullptr);
+                CLSID clsid;
+                if (FAILED(CLSIDFromString(clsidText.c_str(), &clsid)) && FAILED(CLSIDFromString(handler, &clsid))) continue;
+                wchar_t guid[64] = {};
+                StringFromGUID2(clsid, guid, 63);
+                std::wstring clsKey = std::wstring(L"CLSID\\") + guid;
+                std::wstring desc = RegString(HKEY_CLASSES_ROOT, clsKey, nullptr);
+                std::wstring dll = RegString(HKEY_CLASSES_ROOT, clsKey + L"\\InprocServer32", nullptr);
+                if (dll.empty()) continue;
+                wchar_t exp[1024] = {};
+                if (ExpandEnvironmentStringsW(dll.c_str(), exp, 1023)) dll = exp;
+                if (dll.size() >= 2 && dll.front() == L'"' && dll.back() == L'"') dll = dll.substr(1, dll.size() - 2);
+                if (MatchesExclude(handler, patterns) || MatchesExclude(desc, patterns) ||
+                    MatchesExclude(dll, patterns) || MatchesExclude(ShortToLongPath(dll), patterns))
+                    continue;
+                std::wstring key = ToLower(dll);
+                if (std::find(seen.begin(), seen.end(), key) != seen.end()) continue;
+                seen.push_back(key);
+                if (GetModuleHandleW(dll.c_str())) continue;
+                if (LoadLibraryExW(dll.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH)) ++loaded;   // nicht freigeben
+            }
+            RegCloseKey(h);
+        }
+        // 2. Shell-Grundgerüst des Menüs (Namensraum, Standard-Kontextmenü) einmal anlegen, ohne Menüaufbau
+        if (!sampleFile.empty()) {
+            PIDLIST_ABSOLUTE pidl = nullptr;
+            if (SUCCEEDED(SHParseDisplayName(sampleFile.c_str(), nullptr, &pidl, 0, nullptr))) {
+                IShellFolder* parent = nullptr;
+                PCUITEMID_CHILD child = nullptr;
+                if (SUCCEEDED(SHBindToParent(pidl, IID_PPV_ARGS(&parent), &child))) {
+                    IContextMenu* cm = nullptr;
+                    if (SUCCEEDED(parent->GetUIObjectOf(nullptr, 1, &child, IID_IContextMenu, nullptr, (void**)&cm)) && cm)
+                        cm->Release();
+                    parent->Release();
+                }
+                CoTaskMemFree(pidl);
+            }
+        }
+        // Testhilfe: Ergebnis protokollieren (QFILES_TEST_WARMUPLOG=<Datei>)
+        wchar_t logPath[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(L"QFILES_TEST_WARMUPLOG", logPath, MAX_PATH)) {
+            std::string line = WideToUtf8(Format(L"Kontextmenü vorbereitet: %d Erweiterungs-DLLs geladen (%u ms)\r\n",
+                                                 loaded, (unsigned)(GetTickCount() - t0)));
+            WriteFileBytes(logPath, line.data(), line.size());
+        }
+        if (SUCCEEDED(co)) CoUninitialize();
+    }).detach();
 }
 
 void ShowShellProperties(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names) {

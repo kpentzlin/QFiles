@@ -6,6 +6,7 @@
 //   FTP/SFTP-Zugriff           "ftp://benutzer@host:21/pfad", "sftp://benutzer@host:22/pfad"
 //   WebDAV                     "davs://benutzer@host/pfad" (HTTPS), "dav://benutzer@host/pfad" (HTTP)
 //   Favoriten                  "Favoriten"            – als Favorit gekennzeichnete Dateien (vollständige Pfade)
+//   Papierkorb                 "Papierkorb"           – gelöschte Elemente (vollständige Pfade der $R-Dateien)
 //
 // UNC-Pfade (\\Server\Freigabe\…) sind gewöhnliche Verzeichnisse; über ".." geht es von der Freigabe zum Rechner
 // und weiter zur obersten Netzwerkebene.
@@ -17,8 +18,10 @@ namespace qf {
 extern const wchar_t* const kNetworkRoot;      // "\\"
 extern const wchar_t* const kNetworkName;      // "Netzwerk" (Anzeigename)
 extern const wchar_t* const kFavoritesLocation; // "Favoriten"
+extern const wchar_t* const kRecycleBinLocation; // "Papierkorb"
 
 bool IsFavoritesLocation(const std::wstring& p);
+bool IsRecycleBinLocation(const std::wstring& p);
 
 bool IsNetworkRoot(const std::wstring& p);
 bool IsNetworkServer(const std::wstring& p);   // "\\Server" (ohne Freigabe)

@@ -2,7 +2,7 @@
 // DocText.cpp – Text aus Office-Dokumenten für die Textsuche (Suchen, F3).
 //
 // Unterstützt werden die ZIP-basierten Formate: Word/Excel/PowerPoint ab 2007 (.docx, .xlsx, .pptx und Varianten),
-// OpenDocument (.odt, .ods, .odp, .odg und Vorlagen) sowie EPUB. Die enthaltenen XML-Teile mit dem eigentlichen
+// OpenDocument (.odt, .ods, .odp, .odg und Vorlagen), EPUB sowie PDF (PdfText.cpp). Die enthaltenen XML-Teile mit dem eigentlichen
 // Inhalt werden entpackt (Deflate, eigene Implementierung nach RFC 1951) und von Tags befreit; Absätze, Zellen und
 // Zeilenumbrüche werden zu Leerzeichen bzw. Zeilenwechseln.
 

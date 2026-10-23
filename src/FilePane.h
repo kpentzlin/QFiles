@@ -80,6 +80,8 @@ public:
     bool IsNetworkLevel() const;        // Netzwerk bzw. Rechner (Liste der Rechner/Freigaben)
     bool IsVirtual() const;             // eines von beiden (keine gewöhnlichen Dateioperationen)
     bool IsFavorites() const;           // Favoritenliste (Dateien aus verschiedenen Verzeichnissen, vollständige Pfade)
+    bool IsRecycleBin() const;          // Papierkorb (gelöschte Elemente, vollständige Pfade der $R-Dateien)
+    bool IsSpecialList() const { return IsFavorites() || IsRecycleBin(); }   // kein gewöhnliches Verzeichnis
     // Arbeitsverzeichnis für Programme: Verzeichnis der Liste; Favoriten: Verzeichnis der Fokusdatei; sonst ""
     std::wstring WorkingDir() const;
     bool ScanRunning() const { return netScanning_ || walkRunning_; }
@@ -105,6 +107,10 @@ public:
     void InvertSelection();
     void SelectPattern(const std::wstring& patterns, bool select);
     void SelectSameExtension();
+    // Suchergebnisse markieren (invert: alle übrigen Dateien). Liegen Treffer in Unterverzeichnissen (bzw. bei
+    // invert und Suche mit Unterverzeichnissen), wechselt die Liste zur Ansicht „Mit Unterverzeichnissen“ und
+    // markiert, sobald diese vollständig gelesen ist.
+    void MarkPaths(const std::vector<std::wstring>& fullPaths, bool invert, bool includeSubdirs);
     PaneContext Context() const;
 
     // Darstellung
@@ -165,7 +171,10 @@ private:
         CompareMark mark = CompareMark::None;
         int netKind = 0;               // 1 = Rechner, 2 = Freigabe (Netzwerkebenen)
         std::wstring sub;              // Unterverzeichnis (relativ) in der Ansicht „Mit Unterverzeichnissen“
+        std::wstring disp, origDir;    // Papierkorb: ursprünglicher Name und Ort (e.name/sub = $R-Datei)
     };
+    static const std::wstring& DispName(const Item& it) { return it.disp.empty() ? it.e.name : it.disp; }
+    static const std::wstring& DispDir(const Item& it) { return it.origDir.empty() ? it.sub : it.origDir; }
     // Name relativ zum Verzeichnis der Liste ("Unterverzeichnis\Datei" bzw. "Datei")
     static std::wstring RelName(const Item& it) { return it.sub.empty() ? it.e.name : it.sub + L"\\" + it.e.name; }
     struct TreeWalk;
@@ -329,6 +338,12 @@ private:
     size_t walkDirs_ = 0;
     std::wstring walkFocus_;                 // nach dem Neueinlesen wiederherzustellen
     std::vector<std::wstring> walkSel_;
+    struct PendingMark {
+        std::vector<std::wstring> rel;   // relative Namen (klein geschrieben, sortiert)
+        bool invert = false;
+    };
+    std::unique_ptr<PendingMark> pendingMark_;   // Markieren nach dem Lesen „Mit Unterverzeichnissen“
+    void ApplyMark(const PendingMark& pm);
 };
 
 } // namespace qf

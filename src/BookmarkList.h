@@ -13,6 +13,7 @@ namespace qf {
 
 class BookmarkList {
 public:
+    void UpdateRecycleIcon();   // Papierkorb-Symbol (leer/voll) nachführen
     struct Callbacks {
         std::function<void(const std::wstring& path, bool otherPane)> navigate;
         std::function<void()> changed;     // Liste geändert -> speichern

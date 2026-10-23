@@ -248,6 +248,40 @@ static void TestDocText() {
     CHECK(!InflateRaw((const uint8_t*)"\xff\xff\xff", 3, out, 1000));
 }
 
+#include "PdfTextData.inc"
+
+static void TestPdfText() {
+    auto extract = [](const unsigned char* d, size_t n) {
+        std::wstring text;
+        std::vector<uint8_t> v(d, d + n);
+        bool ok = ExtractDocumentTextFromMemory(L"Bericht.PDF", v, text);
+        return ok ? text : std::wstring(L"<Fehler>");
+    };
+    auto has = [](const std::wstring& t, const wchar_t* s) { return t.find(s) != std::wstring::npos; };
+    CHECK(IsDocumentContainer(L"C:\\x\\A.pdf"));
+    std::wstring t = extract(kPdfEinfach, sizeof(kPdfEinfach));   // Helvetica/WinAnsi, Flate, zwei Seiten
+    CHECK(has(t, L"Grüße aus Köln – Straße 12") && has(t, L"Hallo Welt") && has(t, L"Zweite Seite mit €uro"));
+    CHECK(has(t, L"Testtitel Quartalsbericht") && !has(t, L"12Hallo"));
+    t = extract(kPdfTtf, sizeof(kPdfTtf));                        // eingebettete TrueType-Teilmenge, ToUnicode
+    CHECK(has(t, L"Žluťoučký kůň úpěl ďábelské ódy") && has(t, L"Ünïcödé ✓ Ελληνικά"));
+    t = extract(kPdfHand, sizeof(kPdfHand));                      // TJ, Td-Abstände, Differences, Formular
+    CHECK(has(t, L"Grüße zusammen") && has(t, L"Erste Zeile") && has(t, L"äß€") && has(t, L"Text im Formular"));
+    CHECK(!has(t, L"Grüßezusammen") && !has(t, L"ErsteZeile"));
+    t = extract(kPdfRc4, sizeof(kPdfRc4));                        // RC4 128 Bit, leeres Benutzerkennwort
+    CHECK(has(t, L"Grüße aus Köln") && has(t, L"Zweite Seite"));
+    t = extract(kPdfAes128, sizeof(kPdfAes128));                  // AES-128
+    CHECK(has(t, L"Grüße aus Köln") && has(t, L"Zweite Seite"));
+    t = extract(kPdfAes256, sizeof(kPdfAes256));                  // AES-256 (R6)
+    CHECK(has(t, L"Žluťoučký kůň"));
+    t = extract(kPdfObjstm, sizeof(kPdfObjstm));                  // Objektströme
+    CHECK(has(t, L"Ünïcödé ✓"));
+    // beschädigt: kein Absturz
+    std::vector<uint8_t> broken(kPdfTtf, kPdfTtf + sizeof(kPdfTtf));
+    for (size_t i = 300; i < broken.size(); i += 7) broken[i] ^= 0x5A;
+    std::wstring bt;
+    ExtractDocumentTextFromMemory(L"kaputt.pdf", broken, bt);
+}
+
 #include "ArchiveData.inc"
 
 static void TestArchive(const std::wstring& base) {
@@ -635,6 +669,7 @@ int wmain() {
     TestLocations();
     TestMediaKinds();
     TestDocText();
+    TestPdfText();
     TestArchive(base);
     TestTarListing();
     TestDrives(base);

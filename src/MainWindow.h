@@ -28,6 +28,8 @@ public:
     // Dienste für App
     void NavigateActive(const std::wstring& dir, const std::wstring& select);
     void NavigateToFile(const std::wstring& path);
+    void MarkSearchResults(const std::vector<std::wstring>& dirs, const std::vector<std::wstring>& paths, bool invert,
+                           bool subdirs);
     void RefreshAll();
     void UpdateViewButtons();
     PaneContext ActiveContext() const;
@@ -97,6 +99,7 @@ private:
     void OpenFileItem(FilePane& p);
     // Netzwerkebenen und FTP/SFTP: eigene Behandlung der Befehle. true = behandelt.
     bool HandleVirtualCommand(int id);
+    bool HandleRecycleBinCommand(int id);   // Befehle in der Ansicht „Papierkorb“ (true = erledigt)
     void RemoteCopyOrMove(bool move);
     enum class RemoteOpenMode { Open, View, Edit, Hex, OpenWith };
     void RemoteOpenFocused(FilePane& p, RemoteOpenMode mode);

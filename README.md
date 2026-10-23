@@ -21,7 +21,7 @@ Eine nummerierte Gegenüberstellung der Funktionen von QFiles, Idoswin Pro und S
 
 | Bereich | Umsetzung in QFiles |
 |---|---|
-| Name, Symbol | „QFiles“ mit eigenem Programmsymbol (`res/QFiles.ico`) |
+| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: grüne Sammelmappe mit transparentem Hintergrund (`res/QFiles.ico`, erzeugt mit `tools/make-icon.py`) |
 | Unicode | Vollständig Unicode (UTF-16 intern), insbesondere Anzeige und Bearbeitung von Dateinamen |
 | Texteditor | Neue und **leere Dateien werden standardmäßig als UTF-8 ohne BOM** gespeichert; vorhandene Dateien behalten ihre Kodierung |
 | Disketten | Alle diskettenbezogenen Funktionen entfallen (keine Diskettenlaufwerke A:/B:, kein Formatieren/Kopieren von Disketten, keine Diskettengrößen beim Teilen) |
@@ -197,10 +197,13 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
   wie im Explorer.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
+- Schriftfarben: versteckte Dateien **mittelblau**, Systemdateien **rot** (leicht abgedunkelt), versteckte
+  Systemdateien **lila**. Das Grau ausgeschnittener Dateien hat Vorrang und ist leicht in Richtung dieser Farbe
+  abgetönt.
 - Spalte „Typ“: Endung der Datei; bei Verzeichnissen bleibt sie leer.
 - Optional (*Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
-  Listen mit hellgrauem Hintergrund, je Liste deutlich abgestuft (von hell nach dunkel: rechts oben, links oben,
-  rechts unten, links unten; das dunkelste Grau ist etwas heller als Kopf- und Fußleiste).
+  Listen mit hellgrauem Hintergrund, abgestuft von hell nach dunkel: oben (links und rechts gleich), rechts unten,
+  links unten; das dunkelste Grau ist etwas heller als Kopf- und Fußleiste.
 - Optional (*Optionen → Anzeige → „Listenanzeige gestreift“*) ist in der aktiven Liste jede zweite Zeile
   in diesem Hellgrau hinterlegt (Ansichten Details, Liste und Mit Unterverzeichnissen; in der Archivliste im
   abgetönten Gelb).
@@ -233,6 +236,27 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   mit QFiles führen die Favoriten nach. Neue Dateien/Verzeichnisse, Einfügen, Suchen, Vergleichen und
   Synchronisieren gibt es in den Favoriten nicht.
 
+### Papierkorb
+
+- Das Lesezeichen **Papierkorb** (hellblau wie die Windows-Standardverzeichnisse, mit dem Papierkorbsymbol – leer
+  bzw. voll) zeigt den Inhalt des Papierkorbs aller Laufwerke in der Liste; ebenso *Gehe zu → Spezielle
+  Verzeichnisse → Papierkorb* und die Eingabe `Papierkorb` im Verzeichnisfeld. Bestehende Einstellungen erhalten das
+  Lesezeichen einmalig hinter den Standardverzeichnissen; wer es entfernt, bekommt es nicht wieder.
+- Spalten: **Name** (ursprünglicher Name), **Ursprünglicher Ort**, Typ, Größe, Geändert und **Gelöscht am**;
+  sortierbar wie gewohnt, Tippen springt zum Namen. Die Ansicht entspricht „Mit Unterverzeichnissen“; beim
+  Verlassen gilt wieder die vorherige Ansicht.
+- Kontextmenü: **Wiederherstellen** (an den ursprünglichen Ort; fehlende Verzeichnisse werden angelegt),
+  **Wiederherstellen in die andere Liste** (Umschalt+F6, unter dem ursprünglichen Namen), **Kopieren in die andere
+  Liste** (Umschalt+F5, das Element bleibt im Papierkorb), **Anzeigen** (F11), **Endgültig löschen** (Entf, mit
+  Rückfrage), **Papierkorb leeren…** (auch *Werkzeuge → Papierkorb leeren…*).
+- Technik: Die Liste liefert die Shell (wie im Explorer); die Angaben je Element liest QFiles aus der
+  „$I…“-Datei neben dem Inhalt („$R…“) im Ordner `\$Recycle.Bin\<SID>` des Laufwerks. Wiederherstellen und
+  endgültiges Löschen erledigt QFiles selbst (Verschieben des $R-Elements, Löschen der $I-Datei).
+- **Löschen rückgängig:** Was QFiles in den Papierkorb gelöscht hat, stellt *Bearbeiten → Rückgängig* (Strg+Z)
+  wieder her.
+- Bearbeiten, Umbenennen, Attribute, Ausschneiden/Kopieren über die Zwischenablage, neue Dateien und Vergleichen gibt
+  es im Papierkorb nicht; Dateien gelangen nur über „Löschen“ hinein.
+
 ### Privater Modus und Verlauf
 
 - **Privater Modus**: Schaltfläche **P** am Ende der Werkzeugleiste (abgerundetes Viereck; grün gefüllt =
@@ -264,7 +288,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Wird eine **einzelne Datei** in ein anderes Verzeichnis kopiert oder verschoben, in dem es den Namen schon gibt,
   bietet QFiles **Mit neuem Namen ablegen** an (vorbelegt „Name (1).ext“, bei Bedarf hochgezählt), außerdem
   „Ersetzen“ und „Abbrechen“.
-- **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen und Anlegen.
+- **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen, Anlegen und Löschen in den Papierkorb.
 - Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Ziehen in ein Listenfenster **verschiebt**;
   mit gedrückter **Umschalt- oder Strg-Taste** wird kopiert. Ist das Ziel ein FTP/SFTP/WebDAV-Verzeichnis, wird erst
   nachgefragt (OK = verschieben, **Kopieren** = nur hochladen, Abbrechen). Auf Baum und Lesezeichen gilt die
@@ -351,7 +375,7 @@ Browser-Anmeldung erfordern und ist nicht eingebaut.
 | Werkzeug | Funktion |
 |---|---|
 | Dateigruppe umbenennen (Strg+M) | Masken mit Platzhaltern (siehe unten), Zähler, Suchen/Ersetzen (auch regulärer Ausdruck), Groß-/Kleinschreibung, Unterverzeichnisse, Live-Vorschau mit Konfliktprüfung; ein Rückgängig-Schritt; die umbenannten Dateien bleiben in der Liste markiert |
-| Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI sowie in Office-Dokumenten (.docx, .xlsx, .pptx, OpenDocument .odt/.ods/.odp, EPUB), Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“; Fenstergröße, -position und Spaltenbreiten bleiben erhalten |
+| Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI sowie in Office-Dokumenten (.docx, .xlsx, .pptx, OpenDocument .odt/.ods/.odp, EPUB) und **PDF** (Text der Seiten, Formulare/Kommentare und Dokumenteigenschaften; auch mit leerem Benutzerkennwort verschlüsselte PDFs – RC4, AES-128, AES-256; gescannte Seiten ohne Textebene enthalten keinen Text), Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“; **Schließen und markieren** markiert die gefundenen Dateien in der aktiven Liste, **Schließen und invers markieren** alle übrigen Dateien (die Liste wechselt dazu ggf. ins durchsuchte Verzeichnis und, wenn Treffer in Unterverzeichnissen liegen bzw. invers mit Unterverzeichnissen gesucht wurde, in die Ansicht „Mit Unterverzeichnissen“); Fenstergröße, -position und Spaltenbreiten bleiben erhalten |
 | Doppelte Dateien | Gleicher Inhalt: Größe, dann Hash, dann byteweiser Vergleich |
 | Dateien vergleichen (Strg+K) | Text zeilenweise nebeneinander mit Farbmarkierung und zeichengenauer Hervorhebung; Binärvergleich |
 | Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); markiert gleiche, unterschiedliche, neuere und fehlende Dateien farbig und wählt sie zum Kopieren aus |
@@ -535,6 +559,8 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
 | `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
 | `src/ProgramInfo.*` | Eigenschaften von Programmdateien (Versionsressource, PE-Kopf, Signatur, Shell-Eigenschaften) |
+| `src/DocText.*`, `PdfText.*` | Text aus Office-Dokumenten und PDF für die Suche (eigenes Deflate, PDF-Objekte, Schriftkodierungen, Entschlüsselung) |
+| `src/RecycleBin.*` | Papierkorb-Ansicht: Auflisten, Wiederherstellen, endgültig löschen, leeren |
 | `src/ArchiveView.cpp`, `ArchiveCore.h` | Archivliste der Dateianzeige (Lesen und Entpacken in `Archive.cpp`) |
 | `src/Drives.*` | Laufwerksarten und -symbole (lokal, subst, Netzwerk, CD/DVD, extern, RAM-Disk) |
 | `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
@@ -567,6 +593,11 @@ unverändert. Voreinstellung ist `ArchiCrypt` (die RAM-Disk-Erweiterung `URDShel
 RAM-Disk wirft beim Zeichnen ihres Eintrags „RAM-Disk erstellen“ Ausnahmen). Verursacht eine ausgeschlossene
 Erweiterung dennoch einen Fehler, wird er nur protokolliert, ohne Meldung, und ihr Eintrag für den Rest der Sitzung
 ausgeblendet. Ein leeres Feld schaltet den Ausschluss ab.
+
+Damit schon der erste Kontextmenü-Aufruf schnell ist, lädt QFiles kurz nach dem Start im Hintergrund (niedrige
+Priorität) die DLLs der für Dateien, Ordner und Laufwerke registrierten Kontextmenü-Erweiterungen – ohne die
+ausgeschlossenen und ohne Erweiterungscode außer der DLL-Initialisierung auszuführen – und legt das
+Standard-Kontextmenü der Shell einmal an.
 
 ## Bekannte Einschränkungen
 

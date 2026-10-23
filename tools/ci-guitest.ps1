@@ -694,6 +694,63 @@ if (@($pgl | Where-Object { $_ -match 'Signatur=gültig' }).Count -lt 3) {
   Write-Output "::warning title=Signaturprüfung::Nicht alle Systemdateien als gültig signiert erkannt"
 }
 
+# ---- Papierkorb: Datei in den Papierkorb löschen, in der Ansicht „Papierkorb“ (Liste 1) finden und über das
+#      Kontextmenü wiederherstellen ----
+$binDir = "C:\QFilesPapierkorb"
+New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+$binName = "weg ✓ " + (Get-Random -Maximum 99999) + ".txt"
+$binFile = Join-Path $binDir $binName
+Set-Content -Path $binFile -Value "Inhalt für den Papierkorb" -Encoding UTF8
+Add-Type -AssemblyName Microsoft.VisualBasic
+[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($binFile, 'OnlyErrorDialogs', 'SendToRecycleBin')
+$binDeleted = -not (Test-Path $binFile)
+$binLog = "$PWD\papierkorb-log.txt"
+Remove-Item $binLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_PANELOG = $binLog
+$warmLog = "$PWD\warmup-log.txt"
+Remove-Item $warmLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_WARMUPLOG = $warmLog
+$script:p = Start-Process -FilePath $Exe -ArgumentList 'Papierkorb',('"' + $binDir + '"') -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Papierkorb)"
+$mainH = [W]::FindWindow("QFilesMain", [NullString]::Value)
+[W]::SetForegroundWindow($mainH) | Out-Null
+$best = [IntPtr]::Zero; $bestKey = [int]::MaxValue; $h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($mainH, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $key = $r.L + $r.T * 10
+  if ($key -lt $bestKey) { $bestKey = $key; $best = $h }
+}
+$blist = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
+$brc = New-Object W+RECT; [W]::GetWindowRect($blist, [ref]$brc) | Out-Null
+[W]::Click($brc.L + 60, $brc.T + 24 + 10, $false); Start-Sleep -Milliseconds 600
+[System.Windows.Forms.SendKeys]::SendWait("{HOME}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("weg"); Start-Sleep -Milliseconds 800   # Tippen springt zum Namen
+Shot "screenshot28.png"   # Papierkorb-Ansicht (Name, ursprünglicher Ort, gelöscht am)
+[W]::Key(0x5D); Start-Sleep -Seconds 1
+Shot "screenshot29.png"   # Kontextmenü des Papierkorbs
+[System.Windows.Forms.SendKeys]::SendWait("w"); Start-Sleep -Seconds 3   # Wiederherstellen
+Check-Alive "Papierkorb wiederherstellen"
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_PANELOG
+Remove-Item Env:\QFILES_TEST_WARMUPLOG
+if (Test-Path $warmLog) { Write-Output ("::notice title=Kontextmenü vorbereitet::" + ((Get-Content $warmLog -Encoding UTF8) -join ' / ')) }
+else { Write-Output "::warning title=Kontextmenü vorbereitet::kein Protokoll" }
+$bl = if (Test-Path $binLog) { (Get-Content $binLog -Encoding UTF8) -join ' / ' } else { "" }
+$binListed = $bl -match [regex]::Escape("Liste 1 | Papierkorb |") -and $bl -match [regex]::Escape($binFile)
+$binRestored = Test-Path $binFile
+$binInfo = "gelöscht: $binDeleted; im Papierkorb gelistet: $binListed; wiederhergestellt: $binRestored"
+if ($binDeleted -and $binListed -and $binRestored) { Write-Output "::notice title=Papierkorb::$binInfo" }
+else {
+  Write-Output "::error title=Papierkorb::$binInfo – Protokoll: $($bl.Substring(0, [Math]::Min(600, $bl.Length)))"
+  "Papierkorb-Ansicht nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
 # ---- Favoriten und privater Modus: Liste 1 zeigt die Favoriten (hellgelb, Spalte „Verzeichnis“), eine nicht mehr
 #      vorhandene Datei entfällt stillschweigend; Kopfzeilen im privaten Modus grün ----
 $favLog = "$PWD\favoriten-log.txt"

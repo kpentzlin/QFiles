@@ -44,6 +44,11 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     App::Cfg().SetFilePath(cfgPath);
     App::Opt().Load(App::Cfg());
     PrefetchShellExtensionExclusion();
+    {
+        wchar_t exe[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        WarmUpShellContextMenu(exe);
+    }
     if (firstRun) {
         // Erste Lesezeichen als Vorgabe
         std::vector<Bookmark> b;
@@ -66,6 +71,26 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         if (!has) b.push_back({kNetworkName, kNetworkRoot});
         SaveBookmarks(App::Cfg(), b);
         App::Cfg().SetBool(L"Vorgaben", L"NetzwerkLesezeichen", true);
+        if (!firstRun) App::Cfg().Save();
+    }
+    // Standard-Lesezeichen „Papierkorb“ (bei den Windows-Standardverzeichnissen) – einmalig auch in bestehenden
+    // Einstellungen; ein vom Benutzer entferntes Lesezeichen kommt nicht wieder
+    if (!App::Cfg().GetBool(L"Vorgaben", L"PapierkorbLesezeichen", false)) {
+        auto b = LoadBookmarks(App::Cfg());
+        bool has = false;
+        for (auto& x : b)
+            if (IsRecycleBinLocation(x.path)) has = true;
+        if (!has) {
+            // nach dem letzten Lesezeichen eines Windows-Standardverzeichnisses (Desktop, Dokumente …), sonst am Ende
+            size_t pos = b.size();
+            for (size_t i = 0; i < b.size(); ++i)
+                for (const GUID* id : {&FOLDERID_Desktop, &FOLDERID_Documents, &FOLDERID_Downloads, &FOLDERID_Pictures,
+                                       &FOLDERID_Music, &FOLDERID_Videos, &FOLDERID_Profile})
+                    if (EqualsI(NormalizeDir(b[i].path), NormalizeDir(GetKnownFolder(*id)))) pos = i + 1;
+            b.insert(b.begin() + pos, Bookmark{kRecycleBinLocation, kRecycleBinLocation});
+        }
+        SaveBookmarks(App::Cfg(), b);
+        App::Cfg().SetBool(L"Vorgaben", L"PapierkorbLesezeichen", true);
         if (!firstRun) App::Cfg().Save();
     }
 

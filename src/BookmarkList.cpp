@@ -1,4 +1,5 @@
 #include "BookmarkList.h"
+#include "RecycleBin.h"
 #include "App.h"
 #include "Cloud.h"
 #include "Favorites.h"
@@ -60,6 +61,7 @@ const std::vector<std::wstring>& StandardFolders() {
 }
 
 int KindOf(const std::wstring& p) {
+    if (IsRecycleBinLocation(p)) return KindStandard;   // Papierkorb: bei den Windows-Standardverzeichnissen
     if (IsWebDavUrl(p)) return KindWebDav;
     if (IsRemoteUrl(p)) return KindRemote;
     if (IsNetworkPath(p)) return KindNetwork;
@@ -123,7 +125,9 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
             ht.pt = pt;
             ScreenToClient(list_, &ht.pt);
             int i = ItemOfRow(ListView_HitTest(list_, &ht));
-            if (i >= 0 && i < (int)items_.size() && !IsVirtualLocation(items_[i].path)) return items_[i].path;
+            if (i >= 0 && i < (int)items_.size() && !IsVirtualLocation(items_[i].path) &&
+                !IsRecycleBinLocation(items_[i].path))
+                return items_[i].path;
             return L"";
         },
         []() { App::RefreshPanes(); });
@@ -185,6 +189,23 @@ void BookmarkList::SetFavoritesCount(size_t count) {
     if (favSel && favRow_) ListView_SetItemState(list_, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 }
 
+void BookmarkList::UpdateRecycleIcon() {
+    uint64_t n = 0, bytes = 0;
+    int icon = -1;
+    for (size_t row = 0; row < rows_.size(); ++row) {
+        int k = rows_[row];
+        if (k < 0 || k >= (int)items_.size() || !IsRecycleBinLocation(items_[k].path)) continue;
+        if (icon < 0) icon = StockIndex(QueryRecycleBin(n, bytes) && n > 0 ? SIID_RECYCLERFULL : SIID_RECYCLER);
+        if (icons_[k] == icon) continue;
+        icons_[k] = icon;
+        LVITEMW it{};
+        it.mask = LVIF_IMAGE;
+        it.iItem = (int)row;
+        it.iImage = icon;
+        ListView_SetItem(list_, &it);
+    }
+}
+
 void BookmarkList::Rebuild(int select) {
     SendMessageW(list_, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(list_);
@@ -220,6 +241,9 @@ void BookmarkList::Rebuild(int select) {
                    : IsNetworkServer(p) ? StockIndex(SIID_SERVER)
                    : IsUncShareRoot(p) ? StockIndex(SIID_SERVERSHARE)
                    : (IsRootPath(p) ? StockIndex(SIID_DRIVENET) : folder);
+        } else if (IsRecycleBinLocation(p)) {
+            uint64_t n = 0, bytes = 0;
+            icon = StockIndex(QueryRecycleBin(n, bytes) && n > 0 ? SIID_RECYCLERFULL : SIID_RECYCLER);
         } else if (IsRootPath(p)) {
             icon = drive;
         }

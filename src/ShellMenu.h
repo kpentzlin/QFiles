@@ -17,6 +17,9 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dir, const std::vector<
 // Sucht im Hintergrund die nach Optionen „KontextmenueAusschluss“ auszuschließenden Kontextmenü-Erweiterungen
 // (einmal beim Programmstart aufrufen; das Kontextmenü wartet beim ersten Aufruf ggf. auf das Ergebnis).
 void PrefetchShellExtensionExclusion();
+// Bereitet den ersten Kontextmenü-Aufruf im Hintergrund vor: lädt die DLLs der Kontextmenü-Erweiterungen für Dateien,
+// Ordner und Laufwerke (ohne ausgeschlossene) und legt das Shell-Grundgerüst einmal an (sampleFile = beliebige Datei).
+void WarmUpShellContextMenu(const std::wstring& sampleFile);
 // Muss aus der Fensterprozedur des owner-Fensters aufgerufen werden (Untermenüs wie "Senden an", "Neu").
 bool HandleShellMenuMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT* result);
 

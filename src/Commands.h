@@ -99,6 +99,8 @@ enum : int {
     FavoriteAdd = 40405,        // Als Favorit kennzeichnen
     FavoriteRemove = 40406,     // Aus Favoriten entfernen
     FavoriteGotoDir = 40407,    // Favoriten: zum Verzeichnis der Datei wechseln
+    ShowRecycleBin = 40408,     // Papierkorb anzeigen
+    RecycleRestore = 40409,     // Papierkorb: an den ursprünglichen Ort wiederherstellen
     BookmarkFirst = 40410,    // dynamische Einträge
     BookmarkLast = 40499,
 
@@ -120,6 +122,7 @@ enum : int {
     ClearHistory,      // Verlauf löschen
     CompareWithPane0 = 40580,  // Mit anderer Liste vergleichen (Beyond Compare): + Index der anderen Liste (0–3)
     CompareWithPane3 = 40583,
+    RecycleEmpty = 40584,      // Papierkorb leeren
 
     // Hilfe
     Shortcuts = 40600,

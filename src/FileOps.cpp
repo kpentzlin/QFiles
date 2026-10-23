@@ -1,4 +1,5 @@
 #include "FileOps.h"
+#include "RecycleBin.h"
 #include "App.h"
 #include "Dialog.h"
 #include "Util.h"
@@ -16,7 +17,8 @@ namespace {
 
 // DeleteCreatedIfEmpty: neu angelegte Datei/Verzeichnis – beim Rückgängigmachen nur löschen, solange noch leer
 // (sonst könnten inzwischen hineinkopierte bzw. geschriebene Inhalte verloren gehen).
-enum class UndoType { DeleteCreated, DeleteCreatedIfEmpty, MoveBack, RenameBack };
+// Undelete: in den Papierkorb gelöscht – current = $R-Element, original = ursprünglicher Pfad
+enum class UndoType { DeleteCreated, DeleteCreatedIfEmpty, MoveBack, RenameBack, Undelete };
 
 struct UndoAction {
     UndoType type;
@@ -61,6 +63,7 @@ public:
     std::vector<std::wstring> topSources; // nur diese Quellen interessieren (nicht die Unterelemente)
     std::vector<std::pair<std::wstring, std::wstring>> created; // (Quelle, neues Element)
     std::vector<std::wstring> deleted;
+    std::vector<std::pair<std::wstring, std::wstring>> recycled;   // (ursprünglicher Pfad, Element im Papierkorb)
     bool aborted = false;
     virtual ~ProgressSink() = default;
 
@@ -109,10 +112,21 @@ public:
         return S_OK;
     }
     IFACEMETHODIMP PreDeleteItem(DWORD, IShellItem*) override { return S_OK; }
-    IFACEMETHODIMP PostDeleteItem(DWORD, IShellItem* item, HRESULT hr, IShellItem*) override {
+    IFACEMETHODIMP PostDeleteItem(DWORD, IShellItem* item, HRESULT hr, IShellItem* inBin) override {
         if (SUCCEEDED(hr)) {
             std::wstring p = ItemPath(item);
-            if (IsTop(p)) deleted.push_back(p);
+            if (IsTop(p)) {
+                deleted.push_back(p);
+                std::wstring r = ItemPath(inBin);
+                if (r.empty() && inBin) {
+                    PWSTR q = nullptr;
+                    if (SUCCEEDED(inBin->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &q)) && q) {
+                        r = q;
+                        CoTaskMemFree(q);
+                    }
+                }
+                if (IsRecycledPath(r)) recycled.emplace_back(p, r);
+            }
         }
         return S_OK;
     }
@@ -382,6 +396,14 @@ bool DeleteItems(HWND owner, const std::vector<std::wstring>& paths, bool recycl
     op->Unadvise(cookie);
     op->Release();
     for (auto& d : sink->deleted) LogOperation((recycle ? L"In Papierkorb: " : L"Gelöscht: ") + d);
+    if (recycle && !sink->recycled.empty()) {
+        // Rückgängig: aus dem Papierkorb wiederherstellen
+        UndoStep step;
+        step.description = sink->recycled.size() == 1 ? L"Löschen von „" + PathFileName(sink->recycled[0].first) + L"“"
+                                                      : L"Löschen von " + std::to_wstring(sink->recycled.size()) + L" Elementen";
+        for (auto& [orig, inBin] : sink->recycled) step.actions.push_back({UndoType::Undelete, inBin, orig});
+        PushUndo(std::move(step));
+    }
     sink->Release();
     return SUCCEEDED(hr) && !aborted;
 }
@@ -469,6 +491,7 @@ bool UndoLast(HWND owner) {
     }
     std::vector<std::wstring> toDelete;
     std::vector<CopyJob> moveBack;
+    std::vector<std::wstring> undelete;
     bool ok = true;
     // In umgekehrter Reihenfolge rückgängig machen
     for (auto it = step.actions.rbegin(); it != step.actions.rend(); ++it) {
@@ -499,6 +522,17 @@ bool UndoLast(HWND owner) {
             }
             moveBack.push_back({it->current, PathParent(it->original), PathFileName(it->original)});
             break;
+        case UndoType::Undelete:
+            if (PathExists(it->original)) {
+                MsgError(owner, L"Rückgängig nicht möglich: „" + it->original + L"“ existiert bereits.");
+                ok = false;
+            } else if (!PathExists(it->current)) {
+                MsgError(owner, L"„" + PathFileName(it->original) + L"“ ist nicht mehr im Papierkorb.");
+                ok = false;
+            } else {
+                undelete.push_back(it->current);
+            }
+            break;
         case UndoType::RenameBack:
             if (!MoveFileExW(LongPath(it->current).c_str(), LongPath(it->original).c_str(), 0)) {
                 MsgError(owner, L"Rückgängig nicht möglich für „" + it->current + L"“:\n" + LastErrorMessage());
@@ -510,6 +544,7 @@ bool UndoLast(HWND owner) {
         }
     }
     if (!moveBack.empty()) ok = RunTransfer(owner, moveBack, true, OpNoUndo) && ok;
+    if (!undelete.empty()) ok = RestoreRecycled(owner, undelete).size() == undelete.size() && ok;
     if (!toDelete.empty()) ok = DeleteItems(owner, toDelete, true, false) && ok;
     return ok;
 }

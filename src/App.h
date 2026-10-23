@@ -64,6 +64,10 @@ public:
     // Ansichtssymbole der Werkzeugleiste neu setzen (z. B. wenn die Archivliste den Fokus bekommt oder verliert)
     static void UpdateViewButtons();
     static PaneContext ActivePaneContext();
+    // Suchergebnisse in der aktiven Liste markieren (invert: alle übrigen Dateien). dirs = durchsuchte
+    // Verzeichnisse; zeigt die aktive Liste keines davon, wechselt sie zum ersten.
+    static void MarkSearchResults(const std::vector<std::wstring>& dirs, const std::vector<std::wstring>& paths,
+                                  bool invert, bool subdirs);
 };
 
 // ---- Dateisystemmonitor: Protokoll aller von QFiles ausgeführten Dateioperationen ----

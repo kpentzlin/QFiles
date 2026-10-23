@@ -66,6 +66,8 @@ enum : int {
     CID_STOP,
     CID_RESULTS,
     CID_STATUS,
+    CID_CLOSEMARK,
+    CID_CLOSEINVERT,
 };
 
 enum : int {
@@ -351,8 +353,13 @@ private:
     void FillHistory(int comboId, const std::vector<std::wstring>& list);
     static void AddToHistory(std::vector<std::wstring>& list, const std::wstring& value);
 
+    void CloseAndMark(bool invert);
+
     std::wstring startDir_;
     std::vector<Hit> results_;
+    std::vector<std::wstring> lastDirs_;   // Verzeichnisse der letzten Suche (für „Schließen und markieren“)
+    bool lastSubdirs_ = false;
+    bool searched_ = false;
     std::vector<std::wstring> histPattern_, histText_;
     int sortCol_ = -1;
     bool sortAsc_ = true;
@@ -391,6 +398,8 @@ BOOL FindFilesDialog::OnInit() {
     SetAnchor(IDOK, AnchorTopRight);
     SetAnchor(CID_STOP, AnchorTopRight);
     SetAnchor(IDCANCEL, AnchorTopRight);
+    SetAnchor(CID_CLOSEMARK, AnchorTopRight);
+    SetAnchor(CID_CLOSEINVERT, AnchorTopRight);
     SetAnchor(CID_RESULTS, AnchorAll);
     SetAnchor(CID_STATUS, AnchorBottomLeftRight);
     EnableResizing();
@@ -450,6 +459,8 @@ void FindFilesDialog::SetRunning(bool on) {
     for (int id : inputs) Enable(id, !on);
     Enable(IDOK, !on);
     Enable(CID_STOP, on);
+    Enable(CID_CLOSEMARK, searched_);
+    Enable(CID_CLOSEINVERT, searched_);
     // Standardschaltfläche: während der Suche keine
     SendMessageW(hwnd_, DM_SETDEFID, on ? CID_STOP : IDOK, 0);
     // Fokus nachführen, falls das fokussierte Element gerade deaktiviert wurde (nur im aktiven Dialog)
@@ -535,6 +546,9 @@ void FindFilesDialog::StartSearch() {
     stop_ = false;
     postPending_ = false;
     scanned_ = 0;
+    lastDirs_ = p.dirs;
+    lastSubdirs_ = p.subdirs;
+    searched_ = true;
     SetRunning(true);
     SetText(CID_STATUS, L"Suche läuft …");
     HWND target = hwnd_;
@@ -873,8 +887,28 @@ BOOL FindFilesDialog::OnCommand(int id, int code, HWND ctl) {
     case IDCANCEL:
         End(IDCANCEL);
         return TRUE;
+    case CID_CLOSEMARK:
+    case CID_CLOSEINVERT:
+        CloseAndMark(id == CID_CLOSEINVERT);
+        return TRUE;
     }
     return FALSE;
+}
+
+// Schließt den Dialog und markiert in der aktiven Liste die gefundenen (invert: die nicht gefundenen) Dateien.
+void FindFilesDialog::CloseAndMark(bool invert) {
+    if (!searched_) return;
+    if (running_) {
+        StopWorker();
+        Drain();
+    }
+    std::vector<std::wstring> paths;
+    paths.reserve(results_.size());
+    for (auto& r : results_) paths.push_back(r.Path());
+    std::vector<std::wstring> dirs = lastDirs_;
+    bool subdirs = lastSubdirs_;
+    End(IDOK);
+    App::MarkSearchResults(dirs, paths, invert, subdirs);
 }
 
 INT_PTR FindFilesDialog::OnNotify(NMHDR* nm) {
@@ -1020,6 +1054,8 @@ void FindFiles(HWND owner, const std::wstring& startDir) {
     t.DefButton(IDOK, L"&Starten", 400, 6, 63, 14);
     t.Button(CID_STOP, L"Sto&pp", 400, 23, 63, 14);
     t.Button(IDCANCEL, L"Schließen", 400, 40, 63, 14);
+    t.Button(CID_CLOSEMARK, L"Schließen und &markieren", 330, 82, 133, 14);
+    t.Button(CID_CLOSEINVERT, L"Schließen und invers m&arkieren", 330, 99, 133, 14);
     t.ListView(CID_RESULTS, 7, 118, 456, 180, LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA);
     t.Label(CID_STATUS, L"", 7, 303, 456, 8, SS_ENDELLIPSIS);
 

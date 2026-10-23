@@ -2,6 +2,7 @@
 #include "App.h"
 #include "Commands.h"
 #include "Favorites.h"
+#include "RecycleBin.h"
 #include "FileOps.h"
 #include "Glyphs.h"
 #include "Location.h"
@@ -277,7 +278,7 @@ void FilePane::SetupColumns(bool capture) {
         int id = kColumnOrder[k];
         if (id == ColExt && !o.showExtensionsColumn) continue;
         if (id == ColAttr && !o.showAttributesColumn) continue;
-        if (id == ColCreated && !o.showCreatedColumn) continue;
+        if (id == ColCreated && !o.showCreatedColumn && !IsRecycleBin()) continue;
         if (id == ColSubdir && view_ != PaneView::Recursive) continue;
         LVCOLUMNW c{};
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | LVCF_SUBITEM;
@@ -296,6 +297,9 @@ void FilePane::SetupColumns(bool capture) {
         const wchar_t* title = kColumnTitles[id];
         if (id == ColName && view_ == PaneView::Recursive) title = L"Dateiname";
         if (id == ColSubdir && IsFavorites()) title = L"Verzeichnis";   // Favoriten: vollständiger Pfad
+        if (id == ColSubdir && IsRecycleBin()) title = L"Ursprünglicher Ort";
+        if (id == ColCreated && IsRecycleBin()) title = L"Gelöscht am";
+        if (id == ColName && IsRecycleBin()) title = L"Name";
         c.pszText = const_cast<wchar_t*>(title);
         c.iSubItem = id;
         ListView_InsertColumn(list_, pos++, &c);
@@ -459,7 +463,7 @@ void FilePane::BuildHitRects() {
     x -= bs + pad;
     // Lesezeichensymbol entfällt bei FTP/SFTP (Zugänge entstehen über „Lesezeichen → Neuer FTP/sFTP-Zugriff“) und in
     // den Favoriten (die haben ihr eigenes Lesezeichen)
-    if (!IsRemoteUrl(dir_) && !IsFavorites()) {
+    if (!IsRemoteUrl(dir_) && !IsSpecialList()) {
         hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
         x -= bs + pad;
     }
@@ -708,12 +712,11 @@ bool FilePane::IsCutItem(const Item& it) const {
     return !it.isParent && !IsVirtual() && ClipboardHasCut() && ClipboardIsCut(ItemFullPath(it));
 }
 
-// Hintergrund nicht aktiver Listen, abgestuft von hell nach dunkel: rechts oben (Liste 2), links oben (Liste 1),
-// rechts unten (Liste 4), links unten (Liste 3). Das dunkelste Grau ist etwas heller als Kopf- und Fußleiste; die
-// übrigen teilen den Abstand bis Weiß in gleiche Stufen (die hellste bleibt von der weißen aktiven Liste unterscheidbar).
+// Hintergrund nicht aktiver Listen, abgestuft von hell nach dunkel: oben (Liste 1 und 2 gleich), rechts unten
+// (Liste 4), links unten (Liste 3). Das dunkelste Grau ist etwas heller als Kopf- und Fußleiste.
 COLORREF FilePane::InactiveBack() const {
     COLORREF darkest = Blend(GetSysColor(COLOR_BTNFACE), RGB(255, 255, 255), 30);
-    static const int lift[4] = {153, 224, 0, 77};   // Liste 1, 2, 3, 4: Anteil (von 255) des Wegs nach Weiß
+    static const int lift[4] = {153, 153, 0, 77};   // oben rechts wie oben links   // Liste 1, 2, 3, 4: Anteil (von 255) des Wegs nach Weiß
     return Blend(darkest, RGB(255, 255, 255), lift[index_ & 3]);
 }
 
@@ -772,7 +775,7 @@ void FilePane::OnClickArea(const HitRect& h) {
     case HitArea::Root: GoRoot(); break;
     case HitArea::Browse: {
         std::wstring d = BrowseForFolder(GetAncestor(hwnd_, GA_ROOT), L"Verzeichnis wählen",
-                                         IsVirtual() || IsFavorites() ? L"" : dir_);
+                                         IsVirtual() || IsSpecialList() ? L"" : dir_);
         if (!d.empty()) Navigate(d);
         break;
     }
@@ -815,6 +818,30 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
             items.push_back(std::move(it));
         }
         if (!gone.empty()) RemoveFavorites(gone, false);
+        if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
+        items_ = std::move(items);
+        return true;
+    }
+    if (IsRecycleBinLocation(dir)) {
+        // Papierkorb: e.name/sub = $R-Datei (für alle Dateibefehle), Anzeige mit ursprünglichem Namen und Ort
+        std::vector<RecycledItem> bin;
+        std::wstring berr;
+        ListRecycleBin(bin, berr);
+        std::vector<Item> items;
+        for (auto& r : bin) {
+            Item it;
+            it.e.name = PathFileName(r.path);
+            it.sub = PathParent(r.path);
+            it.disp = r.name;
+            it.origDir = r.origDir;
+            it.e.attributes = r.attributes;
+            it.e.size = r.size;
+            it.e.created = r.deleted;   // Spalte „Gelöscht am“
+            it.e.modified = r.modified;
+            it.e.accessed = r.accessed;
+            if (r.attributes & FILE_ATTRIBUTE_DIRECTORY) it.dirSize = r.size;
+            items.push_back(std::move(it));
+        }
         if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
         items_ = std::move(items);
         return true;
@@ -985,6 +1012,11 @@ void FilePane::OnTreeDone(WPARAM gen) {
     for (auto& it : items_)
         if (!it.isParent) names.push_back(RelName(it));
     TestLogPane(index_, dir_ + L" (rekursiv)", names, statusText_);
+    if (pendingMark_ && !walkCancelled_) {
+        std::unique_ptr<PendingMark> pm = std::move(pendingMark_);
+        ApplyMark(*pm);
+    }
+    pendingMark_.reset();
 }
 
 void FilePane::SortItems() {
@@ -998,7 +1030,7 @@ void FilePane::SortItems() {
         switch (key) {
         case SortKey::Name: break;
         case SortKey::Ext:
-            if (!(a.e.IsDir() && b.e.IsDir())) c = CompareI(ExtOf(a.e.name), ExtOf(b.e.name));
+            if (!(a.e.IsDir() && b.e.IsDir())) c = CompareI(ExtOf(DispName(a)), ExtOf(DispName(b)));
             break;
         case SortKey::Size: {
             uint64_t sa = a.e.IsDir() ? (a.dirSize == UINT64_MAX ? 0 : a.dirSize) : a.e.size;
@@ -1009,10 +1041,11 @@ void FilePane::SortItems() {
         case SortKey::Date: c = CompareFileTime(&a.e.modified, &b.e.modified); break;
         case SortKey::Created: c = CompareFileTime(&a.e.created, &b.e.created); break;
         case SortKey::Attr: c = (int)(a.e.attributes & 0xFF) - (int)(b.e.attributes & 0xFF); break;
-        case SortKey::Subdir: c = CompareNatural(a.sub, b.sub); break;
+        case SortKey::Subdir: c = CompareNatural(DispDir(a), DispDir(b)); break;
         }
+        if (c == 0) c = CompareNatural(DispName(a), DispName(b));
+        if (c == 0) c = CompareNatural(DispDir(a), DispDir(b));
         if (c == 0) c = CompareNatural(a.e.name, b.e.name);
-        if (c == 0) c = CompareNatural(a.sub, b.sub);
         return desc ? c > 0 : c < 0;
     });
 }
@@ -1085,13 +1118,14 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         if (focus.empty() && !oldDir.empty() && EqualsI(LocationParent(oldDir), dir)) focus = LocationFileName(oldDir);
     }
     bool remoteChanged = IsRemoteUrl(dir) != IsRemoteUrl(dir_);
-    bool wasFav = IsFavorites(), toFav = IsFavoritesLocation(dir);
+    bool wasFav = IsSpecialList(), toFav = IsFavoritesLocation(dir) || IsRecycleBinLocation(dir);
+    bool binChanged = IsRecycleBin() != IsRecycleBinLocation(dir);
     dir_ = dir;
-    if (wasFav != toFav) {
+    if (wasFav != toFav || binChanged) {
         // Favoriten: immer wie „Mit Unterverzeichnissen“ (Spalte „Verzeichnis“), hellgelb; beim Verlassen die vorherige
         // Ansicht wieder herstellen
         if (toFav) {
-            viewBeforeFav_ = view_;
+            if (!wasFav) viewBeforeFav_ = view_;
             view_ = PaneView::Recursive;
         } else {
             view_ = viewBeforeFav_;
@@ -1114,7 +1148,7 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         netCancelled_ = false;
         walkCancelled_ = false;
         pendingFocus_.clear();
-        if (view_ == PaneView::Recursive && !IsVirtual() && !IsFavorites()) {
+        if (view_ == PaneView::Recursive && !IsVirtual() && !IsSpecialList()) {
             walkFocus_ = FindItem(focus) < 0 ? focus : L"";
             walkSel_.clear();
             StartTreeWalk();
@@ -1152,7 +1186,7 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
     if (!IsNetworkVirtual(dir_)) {
         std::vector<std::wstring> names;
         for (auto& it : items_)
-            if (!it.isParent) names.push_back(it.e.name);
+            if (!it.isParent) names.push_back(it.origDir.empty() ? it.e.name : PathCombine(it.origDir, it.disp));
         TestLogPane(index_, dir_, names, statusText_);
     }
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
@@ -1212,7 +1246,7 @@ void FilePane::Reload() {
     }
     SortItems();
     // Fokus: gelöschtes Element -> Nachfolger an gleicher Position
-    bool recursive = view_ == PaneView::Recursive && !IsVirtual() && !IsFavorites();
+    bool recursive = view_ == PaneView::Recursive && !IsVirtual() && !IsSpecialList();
     if (recursive) {
         // Dateien der Unterverzeichnisse kommen nach und nach; Fokus/Markierung dann wiederherstellen
         walkFocus_ = FindItem(focus) < 0 ? focus : L"";
@@ -1234,7 +1268,7 @@ void FilePane::Reload() {
 // Belegter und freier Speicher des Laufwerks bzw. der Freigabe
 void FilePane::UpdateFreeSpace() {
     ULARGE_INTEGER freeAvail{}, total{}, totalFree{};
-    freeKnown_ = !IsVirtualLocation(dir_) && !IsFavorites() &&
+    freeKnown_ = !IsVirtualLocation(dir_) && !IsSpecialList() &&
                  GetDiskFreeSpaceExW(dir_.c_str(), &freeAvail, &total, &totalFree) != 0;
     freeBytes_ = freeKnown_ ? freeAvail.QuadPart : 0;
     usedBytes_ = freeKnown_ && total.QuadPart >= totalFree.QuadPart ? total.QuadPart - totalFree.QuadPart : 0;
@@ -1268,8 +1302,10 @@ bool FilePane::IsRemote() const { return IsRemoteUrl(dir_); }
 bool FilePane::IsNetworkLevel() const { return IsNetworkVirtual(dir_); }
 bool FilePane::IsVirtual() const { return IsVirtualLocation(dir_); }
 bool FilePane::IsFavorites() const { return IsFavoritesLocation(dir_); }
+bool FilePane::IsRecycleBin() const { return IsRecycleBinLocation(dir_); }
 
 std::wstring FilePane::WorkingDir() const {
+    if (IsRecycleBin()) return L"";
     if (IsFavorites()) {
         std::wstring f = FocusedPath();
         return f.empty() ? L"" : PathParent(f);
@@ -1278,8 +1314,8 @@ std::wstring FilePane::WorkingDir() const {
 }
 
 PaneView FilePane::ViewFor(const std::wstring& dir) const {
-    if (IsFavoritesLocation(dir)) return PaneView::Recursive;
-    return IsFavorites() ? viewBeforeFav_ : view_;
+    if (IsFavoritesLocation(dir) || IsRecycleBinLocation(dir)) return PaneView::Recursive;
+    return IsSpecialList() ? viewBeforeFav_ : view_;
 }
 std::wstring FilePane::Combine(const std::wstring& name) const { return LocationCombine(dir_, name); }
 
@@ -1485,15 +1521,15 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
         int sub = di->item.iSubItem;
         int colId = (sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub;
         switch (colId) {
-        case ColName: s = it.e.name; break;
-        case ColSubdir: s = it.sub; break;
+        case ColName: s = DispName(it); break;
+        case ColSubdir: s = DispDir(it); break;
         case ColExt:
             if (it.isParent) s = L"";
             else if (it.netKind == 1) s = L"<Rechner>";
             else if (it.netKind == 2) s = L"<Freigabe>";
             else if (it.e.IsDir()) s = L"";   // Verzeichnisse: Typ bleibt leer
             else {
-                s = ExtOf(it.e.name);
+                s = ExtOf(DispName(it));
                 if (!s.empty()) s = s.substr(1);
             }
             break;
@@ -1537,6 +1573,12 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
     }
 }
 
+namespace {
+const COLORREF kHiddenText = RGB(30, 90, 210);        // mittelblau
+const COLORREF kSystemText = RGB(200, 20, 20);        // Rot, leicht abgedunkelt
+const COLORREF kSystemHiddenText = RGB(140, 30, 170); // lila
+} // namespace
+
 LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
     switch (cd->nmcd.dwDrawStage) {
     case CDDS_PREPAINT: return CDRF_NOTIFYITEMDRAW;
@@ -1560,11 +1602,24 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
             cd->clrTextBk = IsFavorites() ? Blend(kFavoritesBack, RGB(120, 100, 0), 22) : InactiveBack();
             changed = true;
         }
+        // Versteckt: mittelblau, System: abgedunkeltes Rot, beides: lila
+        COLORREF attrColor = CLR_NONE;
+        if (!it.isParent) {
+            DWORD hs = it.e.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
+            if (hs == (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
+                attrColor = kSystemHiddenText;
+            else if (hs == FILE_ATTRIBUTE_HIDDEN)
+                attrColor = kHiddenText;
+            else if (hs == FILE_ATTRIBUTE_SYSTEM)
+                attrColor = kSystemText;
+        }
         if (IsCutItem(it)) {
-            cd->clrText = RGB(128, 128, 128);   // ausgeschnitten: mittelgrau, bis sie eingefügt (verschoben) sind
+            // ausgeschnitten: mittelgrau (Vorrang), bis sie eingefügt (verschoben) sind; leicht in Richtung der
+            // Attributfarbe abgetönt
+            cd->clrText = attrColor == CLR_NONE ? RGB(128, 128, 128) : Blend(RGB(128, 128, 128), attrColor, 70);
             changed = true;
-        } else if (!it.isParent && (it.e.attributes & FILE_ATTRIBUTE_HIDDEN)) {
-            cd->clrText = GetSysColor(COLOR_GRAYTEXT);
+        } else if (attrColor != CLR_NONE) {
+            cd->clrText = attrColor;
             changed = true;
         } else if (!it.isParent && (it.e.attributes & (FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED))) {
             cd->clrText = (it.e.attributes & FILE_ATTRIBUTE_ENCRYPTED) ? RGB(0, 128, 0) : RGB(0, 0, 200);
@@ -1601,7 +1656,13 @@ void FilePane::UpdateStatus() {
         }
     }
     std::wstring s = IntToStr((long long)dirs) + L" Verz., " + IntToStr((long long)files) + L" Dateien (" + FormatSize(total) + L")";
-    if (IsFavorites()) {
+    if (IsRecycleBin()) {
+        size_t n = files + dirs;
+        s = IntToStr((long long)n) + (n == 1 ? L" Element im Papierkorb (" : L" Elemente im Papierkorb (") +
+            FormatSize(total) + L")";
+        if (selFiles + selDirs)
+            s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
+    } else if (IsFavorites()) {
         s = IntToStr((long long)files) + (files == 1 ? L" Favorit (" : L" Favoriten (") + FormatSize(total) + L")";
     } else if (view_ == PaneView::Recursive && !IsVirtual()) {
         s = IntToStr((long long)files) + L" Dateien in " + IntToStr((long long)walkDirs_ + 1) + L" Verzeichnissen (" +
@@ -1713,6 +1774,58 @@ void FilePane::SelectNames(const std::vector<std::wstring>& names, bool focusFir
     UpdateStatus();
 }
 
+void FilePane::MarkPaths(const std::vector<std::wstring>& fullPaths, bool invert, bool includeSubdirs) {
+    pendingMark_.reset();
+    if (IsVirtual() || IsSpecialList()) return;
+    std::wstring prefix = dir_;
+    if (!prefix.empty() && prefix.back() != L'\\') prefix += L'\\';
+    auto pm = std::make_unique<PendingMark>();
+    pm->invert = invert;
+    bool inSubdir = false;
+    for (auto& p : fullPaths) {
+        if (p.size() <= prefix.size() || !StartsWithI(p, prefix)) continue;
+        std::wstring rel = p.substr(prefix.size());
+        if (rel.find(L'\\') != std::wstring::npos) inSubdir = true;
+        pm->rel.push_back(ToLower(rel));
+    }
+    std::sort(pm->rel.begin(), pm->rel.end());
+    if (includeSubdirs && view_ != PaneView::Recursive && (inSubdir || invert)) {
+        pendingMark_ = std::move(pm);
+        SetView(PaneView::Recursive);   // liest neu (im Hintergrund); OnTreeDone markiert
+        if (!walkRunning_ && pendingMark_) {
+            std::unique_ptr<PendingMark> keep = std::move(pendingMark_);
+            ApplyMark(*keep);
+        }
+        return;
+    }
+    if (walkRunning_) {
+        pendingMark_ = std::move(pm);
+        return;
+    }
+    ApplyMark(*pm);
+}
+
+void FilePane::ApplyMark(const PendingMark& pm) {
+    ListView_SetItemState(list_, -1, 0, LVIS_SELECTED);
+    int first = -1;
+    for (size_t i = 0; i < items_.size(); ++i) {
+        const Item& it = items_[i];
+        if (it.isParent) continue;
+        bool hit = std::binary_search(pm.rel.begin(), pm.rel.end(), ToLower(RelName(it)));
+        bool sel = pm.invert ? (!hit && !it.e.IsDir()) : hit;
+        if (!sel) continue;
+        ListView_SetItemState(list_, (int)i, LVIS_SELECTED, LVIS_SELECTED);
+        if (first < 0) first = (int)i;
+    }
+    if (first >= 0) {
+        ListView_SetItemState(list_, -1, 0, LVIS_FOCUSED);
+        ListView_SetItemState(list_, first, LVIS_FOCUSED, LVIS_FOCUSED);
+        ListView_SetSelectionMark(list_, first);
+        ListView_EnsureVisible(list_, first, FALSE);
+    }
+    UpdateStatus();
+}
+
 void FilePane::SetFocusName(const std::wstring& name) {
     int i = FindItem(name);
     if (i < 0) return;
@@ -1794,7 +1907,7 @@ void FilePane::ToggleSelectFocused(bool moveDown) {
 // ===================== Darstellung =====================
 
 void FilePane::SetView(PaneView v) {
-    if (IsFavorites()) {
+    if (IsSpecialList()) {
         // Favoriten bleiben „Mit Unterverzeichnissen“; die gewählte Ansicht gilt nach dem Verlassen
         viewBeforeFav_ = v;
         if (host_) host_->OnPaneLayoutChanged(this);
@@ -1890,7 +2003,7 @@ void FilePane::OpenFocused() {
 DropTargetInfo FilePane::DropTargetAt(POINT screenPt) {
     DropTargetInfo info;
     bool remote = IsRemote();
-    if (dir_.empty() || (IsVirtual() && !remote) || IsFavorites()) {   // Favoriten: keine Ablage
+    if (dir_.empty() || (IsVirtual() && !remote) || IsSpecialList()) {   // Favoriten: keine Ablage
         ClearDropHighlight();
         return info;
     }
@@ -2169,7 +2282,7 @@ void FilePane::OnThumbReady(WPARAM, LPARAM lp) {
 
 void FilePane::StartWatch() {
     StopWatch();
-    if (!App::Opt().autoRefresh || dir_.empty() || IsVirtual() || IsFavorites()) return;
+    if (!App::Opt().autoRefresh || dir_.empty() || IsVirtual() || IsSpecialList()) return;
     watchStop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE stop = watchStop_;
     HWND hwnd = hwnd_;
@@ -2226,7 +2339,7 @@ void FilePane::LoadState(const Config& c, const std::wstring& s) {
 void FilePane::SaveState(Config& c, const std::wstring& s) const {
     // Privater Modus: Verzeichnis und Verlauf wie beim Einschalten
     c.Set(s, L"Verzeichnis", privActive_ ? privSnap_.dir : dir_);
-    c.SetInt(s, L"Ansicht", (int)(IsFavorites() ? viewBeforeFav_ : view_));
+    c.SetInt(s, L"Ansicht", (int)(IsSpecialList() ? viewBeforeFav_ : view_));
     c.SetInt(s, L"Sortierung", (int)sortKey_);
     c.SetBool(s, L"Absteigend", sortDesc_);
     // Aktuelle Spaltenbreiten (in 96-DPI-Pixeln)
@@ -2492,7 +2605,7 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         for (int k = 0; k < n; ++k) {
             int i = (start + k) % n;
             if (items_[i].isParent) continue;
-            if (StartsWithI(items_[i].e.name, needle)) return i;
+            if (StartsWithI(DispName(items_[i]), needle)) return i;
         }
         return -1;
     }

@@ -10,7 +10,10 @@ const wchar_t* const kNetworkRoot = L"\\\\";
 const wchar_t* const kNetworkName = L"Netzwerk";
 const wchar_t* const kFavoritesLocation = L"Favoriten";
 
+const wchar_t* const kRecycleBinLocation = L"Papierkorb";
+
 bool IsFavoritesLocation(const std::wstring& p) { return EqualsI(p, kFavoritesLocation); }
+bool IsRecycleBinLocation(const std::wstring& p) { return EqualsI(p, kRecycleBinLocation); }
 
 namespace {
 
@@ -96,6 +99,7 @@ std::wstring NormalizeSpecialLocation(const std::wstring& raw) {
     if (p.size() >= 2 && p.front() == L'"' && p.back() == L'"') p = p.substr(1, p.size() - 2);
     if (IsNetworkRoot(p)) return kNetworkRoot;
     if (IsFavoritesLocation(p)) return kFavoritesLocation;
+    if (IsRecycleBinLocation(p)) return kRecycleBinLocation;
     if (IsNetworkServer(p)) return L"\\\\" + UncRest(p);
     if (IsRemoteUrl(p) || StartsWithI(p, L"http://") || StartsWithI(p, L"https://")) {
         // http(s):// im Verzeichnisfeld = WebDAV
@@ -106,7 +110,7 @@ std::wstring NormalizeSpecialLocation(const std::wstring& raw) {
 }
 
 std::wstring LocationParent(const std::wstring& p) {
-    if (IsNetworkRoot(p) || IsFavoritesLocation(p)) return L"";
+    if (IsNetworkRoot(p) || IsFavoritesLocation(p) || IsRecycleBinLocation(p)) return L"";
     if (IsNetworkServer(p)) return kNetworkRoot;
     if (IsUncShareRoot(p)) {
         auto parts = Split(UncRest(p), L'\\');
@@ -136,6 +140,7 @@ std::wstring LocationCombine(const std::wstring& dir, const std::wstring& name) 
 std::wstring LocationFileName(const std::wstring& p) {
     if (IsNetworkRoot(p)) return kNetworkName;
     if (IsFavoritesLocation(p)) return kFavoritesLocation;
+    if (IsRecycleBinLocation(p)) return kRecycleBinLocation;
     if (IsRemoteUrl(p)) {
         RemoteUrl u;
         if (!ParseRemoteUrl(p, u)) return p;

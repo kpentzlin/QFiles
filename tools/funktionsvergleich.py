@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.10"
+QF_VERSION = "0.1.11"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -93,7 +93,10 @@ DATA = [
         ("Übergeordnetes Verzeichnis, Stammverzeichnis („\\“)", "ja", "ja", "ja", "", False),
         ("Klick auf Laufwerk springt zum zuletzt besuchten Verzeichnis", "ja", "?", "?", "", False),
         ("Spezielle Verzeichnisse anspringen (Desktop, Dokumente, Downloads …)", "ja", "ja", "ja", "Idoswin: Menü „Springen“", False),
-        ("Shell-Namensraum (Dieser PC, Papierkorb, virtuelle Ordner)", "–", "teilw.", "ja", "Idoswin: Papierkorb-Anzeige", False),
+        ("Shell-Namensraum (Dieser PC, Papierkorb, virtuelle Ordner)", "teilw.", "teilw.", "ja",
+         "QFiles und Idoswin: Papierkorb; QFiles (neu in 0.1.11): eigene Ansicht mit ursprünglichem Ort und Löschdatum, "
+         "Wiederherstellen, endgültig löschen, leeren", A),
+        ("Löschen in den Papierkorb rückgängig machen (Strg+Z)", "ja", "?", "?", "neu in QFiles 0.1.11", False),
         ("Smartphones, Tablets, Kameras (MTP)", "–", "–", "ja", "", False),
         ("Netzwerkübersicht (Rechner, Freigaben)", "ja", "ja", "ja", "QFiles: Suche im Hintergrund, abbrechbar", False),
         ("Netzlaufwerke verbinden/trennen", "–", "–", "ja", "", False),
@@ -123,6 +126,7 @@ DATA = [
         ("Verzeichnisgrößen berechnen", "ja", "ja", "ja", "", False),
         ("Verzeichnisgrößen automatisch im Hintergrund", "ja", "–", "ja", "", False),
         ("Versteckte und Systemdateien ein-/ausblenden", "ja", "?", "ja", "", False),
+        ("Versteckte und Systemdateien farbig (blau, rot, beides lila)", "ja", "?", "?", "neu in QFiles 0.1.11", False),
         ("Dateierweiterung ausblenden", "–", "ja", "?", "QFiles: eigene Spalte „Typ“", False),
         ("Dateifilter je Liste (Ein-/Ausschlussmuster)", "ja", "ja", "ja", "", False),
         ("Filter nach Größe, Alter, Attributen", "–", "ja", "ja", "", False),
@@ -196,13 +200,15 @@ DATA = [
     ("Suchen", [
         ("Dateisuche nach Name, Größe, Datum, Attributen", "ja", "–", "ja", "", False),
         ("Inhaltssuche in Text (UTF-8, UTF-16, ANSI)", "ja", "–", "ja", "", False),
-        ("Suche in Office-Dokumenten und PDF", "teilw.", "–", "ja", "QFiles: Office, OpenDocument, EPUB, kein PDF; SC: über IFilter", A),
+        ("Suche in Office-Dokumenten und PDF", "ja", "–", "ja",
+         "QFiles: Office, OpenDocument, EPUB, PDF (neu in 0.1.11, auch verschlüsselt ohne Kennwort); SC: über IFilter", False),
         ("Hexadezimale bzw. binäre Inhaltssuche", "–", "–", "ja", "", False),
         ("Suchoperatoren UND/ODER/NICHT, reguläre Ausdrücke", "–", "–", "ja", "", False),
         ("Suche in Archiven", "–", "–", "ja", "", False),
         ("Everything-Integration", "–", "–", "ja (Pro)", "", False),
         ("Nur leere Ordner suchen", "–", "–", "ja", "", False),
-        ("Treffer in die Liste übernehmen", "teilw.", "–", "ja", "QFiles: „Gehe zu“ auf einen Treffer", A),
+        ("Treffer in die Liste übernehmen", "teilw.", "–", "ja",
+         "QFiles: „Gehe zu“; neu in 0.1.11: „Schließen und markieren“ bzw. „… invers markieren“ in der Liste", A),
         ("Suchprofile", "–", "–", "ja", "", False),
         ("Doppelte Dateien finden", "ja", "ja", "ja", "QFiles: Größe, Hash, byteweise; Idoswin: über den Verzeichnisvergleich", False),
     ]),

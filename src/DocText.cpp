@@ -1,6 +1,7 @@
 // DocText.cpp – Text aus ZIP-basierten Office-Dokumenten (siehe DocText.h).
 
 #include "DocText.h"
+#include "PdfText.h"
 #include "Util.h"
 
 #include <windows.h>
@@ -191,7 +192,7 @@ bool InflateRaw(const uint8_t* data, size_t size, std::string& out, size_t maxOu
 
 namespace {
 
-enum class DocFamily { None, Word, Excel, PowerPoint, OpenDocument, Epub };
+enum class DocFamily { None, Word, Excel, PowerPoint, OpenDocument, Epub, Pdf };
 
 DocFamily FamilyOf(const std::wstring& path) {
     std::wstring ext = ToLower(PathExtension(path));
@@ -205,6 +206,7 @@ DocFamily FamilyOf(const std::wstring& path) {
     for (const wchar_t* e : {L"odt", L"ods", L"odp", L"odg", L"ott", L"ots", L"otp", L"odm"})
         if (ext == e) return DocFamily::OpenDocument;
     if (ext == L"epub") return DocFamily::Epub;
+    if (ext == L"pdf") return DocFamily::Pdf;
     return DocFamily::None;
 }
 
@@ -387,6 +389,7 @@ bool IsDocumentContainer(const std::wstring& path) { return FamilyOf(path) != Do
 bool ExtractDocumentTextFromMemory(const std::wstring& nameForType, const std::vector<uint8_t>& data, std::wstring& text) {
     DocFamily f = FamilyOf(nameForType);
     if (f == DocFamily::None) return false;
+    if (f == DocFamily::Pdf) return ExtractPdfText(data.data(), data.size(), text, nullptr);
     return ExtractFromZip(f, data.data(), data.size(), text, nullptr);
 }
 
@@ -397,7 +400,7 @@ bool ExtractDocumentText(const std::wstring& path, std::wstring& text, const std
                            OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
     LARGE_INTEGER size{};
-    bool ok = GetFileSizeEx(h, &size) && size.QuadPart > 22 && (uint64_t)size.QuadPart <= kMaxFile;
+    bool ok = GetFileSizeEx(h, &size) && size.QuadPart > (f == DocFamily::Pdf ? 8 : 22) && (uint64_t)size.QuadPart <= kMaxFile;
     std::vector<uint8_t> data;
     if (ok) {
         data.resize((size_t)size.QuadPart);
@@ -417,6 +420,7 @@ bool ExtractDocumentText(const std::wstring& path, std::wstring& text, const std
         }
     }
     CloseHandle(h);
+    if (ok && f == DocFamily::Pdf) return ExtractPdfText(data.data(), data.size(), text, stop);
     return ok && ExtractFromZip(f, data.data(), data.size(), text, stop);
 }
 

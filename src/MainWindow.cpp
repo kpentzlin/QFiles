@@ -5,6 +5,7 @@
 #include "Commands.h"
 #include "Dialog.h"
 #include "Favorites.h"
+#include "RecycleBin.h"
 #include "FileOps.h"
 #include "Glyphs.h"
 #include "HexView.h"
@@ -66,6 +67,16 @@ const SpecialFolder kSpecial[] = {
     {L"&Temp", nullptr},
 };
 constexpr int kSpecialCount = (int)(sizeof(kSpecial) / sizeof(kSpecial[0]));
+
+// Im Papierkorb nicht verfügbare Befehle (die Elemente heißen dort $R…; Wiederherstellen über eigene Befehle)
+const std::vector<int>& RecycleBinBlocked() {
+    static const std::vector<int> ids = {
+        cmd::NewFolder, cmd::NewFile, cmd::NewTextFile, cmd::ClipPaste, cmd::ClipCut, cmd::ClipCopy, cmd::FindFiles,
+        cmd::FindDuplicates, cmd::CreateZip, cmd::GoRoot, cmd::Rename, cmd::BatchRename, cmd::Edit, cmd::Attributes,
+        cmd::Duplicate, cmd::SplitFile, cmd::JoinFiles, cmd::Wipe, cmd::FavoriteAdd, cmd::CompareDirs, cmd::SyncDirs,
+        cmd::CompareFiles, cmd::OpenArchive, cmd::Undo};
+    return ids;
+}
 
 bool IsArchive(const std::wstring& name) {
     return MatchAnyPattern(L"*.zip;*.7z;*.rar;*.tar;*.tgz;*.tar.gz;*.gz;*.bz2;*.tbz2;*.xz;*.txz;*.cab;*.iso;*.lzh;*.lha;*.arj",
@@ -239,6 +250,10 @@ void App::NavigateTo(const std::wstring& dir, const std::wstring& selectName) {
 }
 void App::NavigateToFile(const std::wstring& fullPath) {
     if (g_main) g_main->NavigateToFile(fullPath);
+}
+void App::MarkSearchResults(const std::vector<std::wstring>& dirs, const std::vector<std::wstring>& paths, bool invert,
+                            bool subdirs) {
+    if (g_main) g_main->MarkSearchResults(dirs, paths, invert, subdirs);
 }
 void App::RefreshPanes() {
     if (g_main) g_main->RefreshAll();
@@ -634,6 +649,8 @@ void MainWindow::BuildMenu() {
     AddSep(m);
     HMENU sp = CreatePopupMenu();
     for (int i = 0; i < kSpecialCount; ++i) AddItem(sp, cmd::GoSpecialFirst + i, kSpecial[i].name);
+    AddSep(sp);
+    AddItem(sp, cmd::ShowRecycleBin, L"Papier&korb");
     AppendMenuW(m, MF_POPUP, (UINT_PTR)sp, L"S&pezielle Verzeichnisse");
     AddSep(m);
     AddItem(m, cmd::NextPane, L"&Nächste Liste\tTab");
@@ -660,6 +677,7 @@ void MainWindow::BuildMenu() {
     AddSep(m);
     AddItem(m, cmd::DirSizes, L"Verzeichnis&größen berechnen\tAlt+Umschalt+Eingabe");
     AddItem(m, cmd::DriveOverview, L"&Laufwerksübersicht…");
+    AddItem(m, cmd::RecycleEmpty, L"Papierkorb &leeren…");
     AddItem(m, cmd::OpLog, L"Dateisystem&monitor (Protokoll)…");
     AddItem(m, cmd::CommandPrompt, L"&Eingabeaufforderung hier öffnen");
     AddSep(m);
@@ -740,7 +758,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     {
         // Favoriten: nur Dateien (keine Verzeichnisse, nicht auf FTP/SFTP/WebDAV)
         bool canAdd = false, allFav = false;
-        if (!a.IsVirtual() && !a.IsFavorites()) {
+        if (!a.IsVirtual() && !a.IsSpecialList()) {
             auto paths = a.SelectedOrFocusedPaths();
             canAdd = !paths.empty();
             allFav = !paths.empty();
@@ -755,6 +773,8 @@ void MainWindow::UpdateMenu(HMENU m) {
             for (int id : {cmd::NewFolder, cmd::NewFile, cmd::NewTextFile, cmd::ClipPaste, cmd::FindFiles, cmd::FindDuplicates,
                            cmd::DirSizes, cmd::CreateZip, cmd::PrintList, cmd::GoRoot})
                 enable(id, false);
+        if (a.IsRecycleBin())
+            for (int id : RecycleBinBlocked()) enable(id, false);
     }
     if (a.IsVirtual()) {
         // Netzwerkebenen und FTP/SFTP: nicht unterstützte Befehle sperren
@@ -775,7 +795,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     }
     enable(cmd::GoOtherSame, Other() != nullptr);
     enable(cmd::SwapPanes, Other() != nullptr);
-    bool favSide = a.IsFavorites() || (Other() && Other()->IsFavorites());
+    bool favSide = a.IsSpecialList() || (Other() && Other()->IsSpecialList());
     enable(cmd::CompareDirs, Other() != nullptr && !favSide);
     enable(cmd::SyncDirs, Other() != nullptr && !favSide);
     enable(cmd::ClearCompareMarks, a.HasMarks() || (Other() && Other()->HasMarks()));
@@ -1551,7 +1571,7 @@ FilePane* MainWindow::Other() {
 std::wstring MainWindow::OtherDir() {
     // Nur gewöhnliche Verzeichnisse (Ziel für Entpacken, Teilen usw.); FTP/Netzwerkebenen -> ""
     FilePane* o = Other();
-    return o && !o->IsVirtual() && !o->IsFavorites() ? o->Dir() : L"";
+    return o && !o->IsVirtual() && !o->IsSpecialList() ? o->Dir() : L"";
 }
 
 void MainWindow::SetActive(int index, bool focus) {
@@ -1778,6 +1798,26 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
         ShowVirtualContextMenu(*p, pt, onItems);
         return;
     }
+    if (p->IsRecycleBin()) {
+        // Papierkorb: eigene Befehle statt des Explorer-Menüs (die Elemente heißen dort $R…)
+        HMENU m = CreatePopupMenu();
+        if (onItems && !p->SelectedOrFocusedNames().empty()) {
+            AddItem(m, cmd::RecycleRestore, L"&Wiederherstellen");
+            if (!OtherDir().empty()) {
+                AddItem(m, cmd::Move, L"Wiederherstellen in die &andere Liste\tUmschalt+F6");
+                AddItem(m, cmd::Copy, L"&Kopieren in die andere Liste\tUmschalt+F5");
+            }
+            if (!p->FocusedIsDir()) AddItem(m, cmd::View, L"A&nzeigen\tF11");
+            AddItem(m, cmd::DeletePermanent, L"&Endgültig löschen\tEntf");
+            AddSep(m);
+        }
+        AddItem(m, cmd::RecycleEmpty, L"Papierkorb &leeren…");
+        AddItem(m, cmd::Refresh, L"&Aktualisieren\tF5");
+        UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, hwnd_, nullptr);
+        DestroyMenu(m);
+        if (id) OnCommand((int)id);
+        return;
+    }
     if (p->IsFavorites() && !onItems) {
         // Favoriten: kein Verzeichnis – nur Aktualisieren
         HMENU m = CreatePopupMenu();
@@ -1837,7 +1877,7 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
             for (int i = 0; i < 4; ++i) {
                 if (i == p->Index() || !PaneVisible(i) || (quickView_ && i == quickViewPane_)) continue;
                 FilePane& o = *panes_[i];
-                if (o.IsVirtual() || o.IsFavorites() || o.Dir().empty()) continue;
+                if (o.IsVirtual() || o.IsSpecialList() || o.Dir().empty()) continue;
                 std::wstring other = PathCombine(o.Dir(), PathFileName(mine));
                 if (FileExists(other) && !EqualsI(CanonicalPath(other), CanonicalPath(mine))) others.push_back(i);
             }
@@ -1909,6 +1949,20 @@ void MainWindow::NavigateToFile(const std::wstring& path) {
     NavigateActive(PathParent(path), PathFileName(path));
 }
 
+void MainWindow::MarkSearchResults(const std::vector<std::wstring>& dirs, const std::vector<std::wstring>& paths,
+                                   bool invert, bool subdirs) {
+    std::wstring target;
+    for (auto& d : dirs)
+        if (EqualsI(NormalizeDir(d), NormalizeDir(Active().Dir()))) target = Active().Dir();
+    if (target.empty() && !dirs.empty()) target = dirs.front();
+    if (target.empty()) return;
+    if (!EqualsI(NormalizeDir(target), NormalizeDir(Active().Dir())) && !Active().Navigate(target, L""))
+        return;
+    Active().MarkPaths(paths, invert, subdirs);
+    SetForegroundWindow(hwnd_);
+    Active().FocusList();
+}
+
 void MainWindow::RefreshAll() {
     ReloadVisible();
 }
@@ -1922,6 +1976,7 @@ void MainWindow::ReloadOthers() {
 void MainWindow::ReloadVisible() {
     for (int i = 0; i < 4; ++i)
         if (PaneVisible(i) && !(quickView_ && i == quickViewPane_)) panes_[i]->Reload();
+    bookmarks_.UpdateRecycleIcon();
     if (!Active().Dir().empty()) tree_.RefreshPath(Active().Dir());
 }
 
@@ -2448,6 +2503,50 @@ void MainWindow::ShowVirtualContextMenu(FilePane& p, POINT pt, bool onItems) {
     if (id) OnCommand((int)id);
 }
 
+bool MainWindow::HandleRecycleBinCommand(int id) {
+    FilePane& a = Active();
+    FilePane* o = Other();
+    const auto& blocked = RecycleBinBlocked();
+    if (std::find(blocked.begin(), blocked.end(), id) != blocked.end()) {
+        MsgInfo(hwnd_, L"Diese Funktion ist im Papierkorb nicht verfügbar.");
+        return true;
+    }
+    switch (id) {
+    case cmd::Delete:
+    case cmd::DeletePermanent: {
+        auto paths = a.SelectedOrFocusedPaths();
+        if (paths.empty()) return true;
+        DeleteRecycled(hwnd_, paths, true);
+        a.Reload();
+        ReloadOthers();
+        bookmarks_.UpdateRecycleIcon();
+        return true;
+    }
+    case cmd::RecycleRestore: {
+        auto paths = a.SelectedOrFocusedPaths();
+        if (paths.empty()) return true;
+        auto done = RestoreRecycled(hwnd_, paths);
+        ReloadVisible();
+        for (auto& d : done) tree_.RefreshPath(PathParent(d));
+        return true;
+    }
+    case cmd::Copy:
+    case cmd::Move: {
+        auto paths = a.SelectedOrFocusedPaths();
+        if (paths.empty()) return true;
+        std::wstring target = o && !o->IsVirtual() && !o->IsSpecialList() ? o->Dir() : L"";
+        if (target.empty()) {
+            MsgInfo(hwnd_, L"Die andere Liste zeigt kein gewöhnliches Verzeichnis.");
+            return true;
+        }
+        RestoreRecycled(hwnd_, paths, target, id == cmd::Copy);
+        ReloadVisible();
+        return true;
+    }
+    default: return false;
+    }
+}
+
 bool MainWindow::HandleVirtualCommand(int id) {
     FilePane& a = Active();
     FilePane* o = Other();
@@ -2461,6 +2560,11 @@ bool MainWindow::HandleVirtualCommand(int id) {
     // Favoriten: kein gewöhnliches Verzeichnis
     if ((id == cmd::CompareDirs || id == cmd::SyncDirs) && (a.IsFavorites() || (o && o->IsFavorites()))) {
         MsgInfo(hwnd_, L"Die Favoriten lassen sich nicht vergleichen oder synchronisieren.");
+        return true;
+    }
+    if (a.IsRecycleBin() && paneFocus && HandleRecycleBinCommand(id)) return true;
+    if (o && o->IsRecycleBin() && !a.IsRecycleBin() && (id == cmd::Copy || id == cmd::Move)) {
+        MsgInfo(hwnd_, L"In den Papierkorb gelangen Dateien und Verzeichnisse über „Löschen“ (Entf).");
         return true;
     }
     if (a.IsFavorites() && paneFocus) {
@@ -2497,6 +2601,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
     case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
     case cmd::BookmarkAddCloud: case cmd::BookmarkFavorites: case cmd::PrivateMode: case cmd::ClearHistory:
+    case cmd::ShowRecycleBin: case cmd::RecycleEmpty:
     case cmd::FunctionKeys:
     case cmd::Options: case cmd::Shortcuts: case cmd::About: case cmd::Exit: case cmd::ClearCompareMarks: case cmd::OpLog:
     case cmd::DriveOverview: case cmd::CommandPrompt:
@@ -3180,6 +3285,18 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::ClearHistory: ClearAllHistory(); break;
+
+    // ---- Papierkorb ----
+    case cmd::ShowRecycleBin:
+        a.Navigate(kRecycleBinLocation);
+        a.FocusList();
+        break;
+    case cmd::RecycleEmpty:
+        if (EmptyRecycleBinAsk(hwnd_)) {
+            ReloadVisible();
+            bookmarks_.UpdateRecycleIcon();
+        }
+        break;
 
     // ---- Favoriten ----
     case cmd::BookmarkFavorites:
