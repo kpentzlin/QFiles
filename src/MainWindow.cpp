@@ -1105,14 +1105,14 @@ void MainWindow::BuildToolbar() {
             RenderAlphaCell(px, stride, 18 * sz, sz, [&](HDC d, const RECT&) {   // Eingabeaufforderung: Symbol von cmd.exe
                 wchar_t sys[MAX_PATH] = {};
                 GetSystemDirectoryW(sys, MAX_PATH);
-                HICON big = nullptr, small = nullptr;
-                if (ExtractIconExW((std::wstring(sys) + L"\\cmd.exe").c_str(), 0, &big, &small, 1) > 0) {
-                    HICON ic = large ? big : small;
-                    if (!ic) ic = big ? big : small;
+                HICON iconBig = nullptr, iconSmall = nullptr;   // („small“ ist bei MSVC ein Makro)
+                if (ExtractIconExW((std::wstring(sys) + L"\\cmd.exe").c_str(), 0, &iconBig, &iconSmall, 1) > 0) {
+                    HICON ic = large ? iconBig : iconSmall;
+                    if (!ic) ic = iconBig ? iconBig : iconSmall;
                     if (ic) DrawIconEx(d, 0, 0, ic, sz, sz, 0, nullptr, DI_NORMAL);
                 }
-                if (big) DestroyIcon(big);
-                if (small) DestroyIcon(small);
+                if (iconBig) DestroyIcon(iconBig);
+                if (iconSmall) DestroyIcon(iconSmall);
             });
             page(19, L"L", RGB(90, 90, 90));
             stock(20, SIID_RECYCLER);
