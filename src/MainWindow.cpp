@@ -1091,7 +1091,28 @@ void MainWindow::BuildToolbar() {
             auto glyph = [&](int idx, Glyph g) {
                 RenderAlphaCell(px, stride, idx * sz, sz, [&](HDC d, const RECT& r) { DrawGlyph(d, g, r, RGB(30, 30, 30)); });
             };
-            glyph(7, Glyph::Refresh);
+            RenderAlphaCell(px, stride, 7 * sz, sz, [&](HDC d, const RECT&) {   // Aktualisieren: Kreispfeil
+                int w = std::max(2, sz / 8), m = sz / 6 + w / 2;
+                HPEN pen = CreatePen(PS_SOLID, w, RGB(30, 110, 50));
+                HGDIOBJ op = SelectObject(d, pen), ob = SelectObject(d, GetStockObject(NULL_BRUSH));
+                int c = sz / 2;
+                // offener Kreis von rechts oben (Lücke) gegen den Uhrzeigersinn
+                Arc(d, m, m, sz - m, sz - m, c + (sz - 2 * m) / 4, m, sz - m, c - (sz - 2 * m) / 8);
+                SelectObject(d, op);
+                DeleteObject(pen);
+                HBRUSH br = CreateSolidBrush(RGB(30, 110, 50));
+                HPEN np = (HPEN)GetStockObject(NULL_PEN);
+                SelectObject(d, br);
+                SelectObject(d, np);
+                // Pfeilspitze am Ende des Bogens (rechts), nach oben zeigend
+                int r = (sz - 2 * m) / 2;
+                int ax = c + (int)(r * 0.94), ay = c - (int)(r * 0.34);
+                int hs = std::max(3, sz / 4);
+                POINT tri[3] = {{ax - hs + 1, ay + 1}, {ax, ay - hs}, {ax + hs - 1, ay + 1}};
+                Polygon(d, tri, 3);
+                SelectObject(d, ob);
+                DeleteObject(br);
+            });
             stock(8, SIID_RENAME);
             page(9, L"M", RGB(20, 55, 150));
             page(10, L"A", RGB(20, 110, 40));
