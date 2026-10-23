@@ -153,6 +153,18 @@ private:
     std::vector<std::pair<int, std::wstring>> toolTips_;  // Befehl -> Tooltip der Werkzeugleiste
     int imgPrivateOff_ = -1, imgPrivateOn_ = -1;          // Symbol „P“ der Werkzeugleiste (privater Modus aus/ein)
     void UpdatePrivateButton();
+    // Werkzeugleiste anpassen: alle wählbaren Schaltflächen und die gewählte Belegung (Schlüssel, "-" = Trennlinie)
+    struct ToolDef {
+        std::wstring key;
+        int cmd;
+        int image;
+        std::wstring tip;
+    };
+    std::vector<ToolDef> toolDefs_;
+    std::vector<std::wstring> toolLayout_;   // leer = Standard
+    static std::vector<std::wstring> DefaultToolLayout();
+    void ApplyToolbarLayout();
+    void CustomizeToolbar();
 };
 
 } // namespace qf

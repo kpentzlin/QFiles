@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.11"
+QF_VERSION = "0.1.12"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -68,7 +68,8 @@ DATA = [
         ("Füllstandswarnung an den Laufwerkssymbolen", "–", "–", "ja", "", False),
         ("Verzeichnisfeld mit Verlauf, Autovervollständigung, Umgebungsvariablen", "ja", "ja", "ja", "", False),
         ("Nicht vorhandenes Verzeichnis über das Adressfeld anlegen", "–", "ja", "–", "", False),
-        ("Werkzeugleiste", "ja", "ja", "ja", "QFiles: eine feste Leiste mit Ansichtssymbolen", False),
+        ("Werkzeugleiste", "ja", "ja", "ja", "", False),
+        ("Werkzeugleiste anpassen", "ja", "?", "ja", "neu in QFiles 0.1.12: gut 50 Schaltflächen, Reihenfolge, Trennlinien", False),
         ("Menüs und Symbolleisten anpassen", "–", "ja", "ja", "Idoswin: elf frei platzierbare Leisten; SC: mit Symboleditor", False),
         ("Befehlszeile im aktuellen Verzeichnis (mit Verlauf, Dateien hineinziehen)", "ja", "ja", "ja", "", False),
         ("Integriertes Ausgabefenster der Konsole (cmd/PowerShell)", "–", "?", "ja", "QFiles: Befehle laufen in einem eigenen Konsolenfenster", False),
@@ -112,7 +113,8 @@ DATA = [
         ("Detailansicht", "ja", "ja", "ja", "", False),
         ("Ansichten Liste und Symbole", "ja", "ja", "ja", "", False),
         ("Miniaturansicht", "ja", "ja", "ja",
-         "QFiles: über die Windows-Shell; Idoswin: eigene Miniaturen für Bilder, Text, PDF", False),
+         "QFiles: Windows-Shell, sonst WIC bzw. EXIF-Vorschau (HEIC); Vorausladen im Hintergrund (neu in 0.1.12); "
+         "Idoswin: eigene Miniaturen für Bilder, Text, PDF", False),
         ("Ansicht „Mit Unterverzeichnissen“ (alle Dateien mit Teilpfad)", "ja", "–", "?", "", False),
         ("Spalten frei wählen (Explorer- und Metadatenspalten)", "teilw.", "ja", "ja",
          "QFiles: nur Typ, Attribute, Erstellt zuschaltbar", A),

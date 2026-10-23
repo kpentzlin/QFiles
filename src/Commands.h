@@ -123,6 +123,7 @@ enum : int {
     CompareWithPane0 = 40580,  // Mit anderer Liste vergleichen (Beyond Compare): + Index der anderen Liste (0–3)
     CompareWithPane3 = 40583,
     RecycleEmpty = 40584,      // Papierkorb leeren
+    CustomizeToolbar = 40585,  // Werkzeugleiste anpassen
 
     // Hilfe
     Shortcuts = 40600,

@@ -173,6 +173,8 @@ private:
         int netKind = 0;               // 1 = Rechner, 2 = Freigabe (Netzwerkebenen)
         std::wstring sub;              // Unterverzeichnis (relativ) in der Ansicht „Mit Unterverzeichnissen“
         std::wstring disp, origDir;    // Papierkorb: ursprünglicher Name und Ort (e.name/sub = $R-Datei)
+        std::wstring label;            // Kachelbeschriftung (zwischengespeichert, gültig für labelKey)
+        unsigned labelKey = 0;
     };
     static const std::wstring& DispName(const Item& it) { return it.disp.empty() ? it.e.name : it.disp; }
     static const std::wstring& DispDir(const Item& it) { return it.origDir.empty() ? it.sub : it.origDir; }
@@ -228,7 +230,9 @@ private:
     void OpenFocused();
     void StartWatch();
     void StopWatch();
-    void RequestThumb(int index);
+    void RequestThumb(int index, bool background = false);
+    void PrefetchThumbs();          // weitere Miniaturen im Hintergrund laden (Blättern ohne Wartezeit)
+    std::wstring TileLabel(Item& it);   // Kachelbeschriftung: Name gekürzt („…“), Endung immer sichtbar
     void StopThumbWorker();
     void OnThumbReady(WPARAM wp, LPARAM lp);
     int AddThumbnail(HBITMAP bmp);
@@ -317,6 +321,10 @@ private:
     std::deque<ThumbRequest> thumbQueue_;
     bool thumbStop_ = false;
     std::atomic<unsigned> generation_{1};
+    int thumbVisMin_ = -1, thumbVisMax_ = -1;   // Bereich der zuletzt sichtbar angeforderten Kacheln
+    int thumbLoaded_ = 0;                      // geladene Miniaturen (Speicherschranke fürs Vorausladen)
+    unsigned labelKey_ = 1;                    // Kachelbeschriftungen neu berechnen, wenn sich das ändert
+    int labelWidth_ = 0;
 
     // Verzeichnisgrößen
     std::shared_ptr<std::atomic<bool>> sizeCancel_;

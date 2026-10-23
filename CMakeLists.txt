@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(QFiles VERSION 0.1.11 LANGUAGES C CXX RC)
+project(QFiles VERSION 0.1.12 LANGUAGES C CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -91,7 +91,7 @@ if(QFILES_BUILD_TESTS)
     add_executable(QFilesTests
         tests/QFilesTests.cpp
         src/Util.cpp src/Dialog.cpp src/Settings.cpp src/App.cpp src/Encoding.cpp src/FileOps.cpp src/RecycleBin.cpp
-        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp src/MediaPreview.cpp src/DocText.cpp src/PdfText.cpp src/Archive.cpp src/Drives.cpp
+        src/Location.cpp src/RemoteCommon.cpp src/FtpClient.cpp src/SftpClient.cpp src/WebDavClient.cpp src/MediaPreview.cpp src/DocText.cpp src/PdfText.cpp src/Thumbnail.cpp src/Archive.cpp src/Drives.cpp
     )
     target_include_directories(QFilesTests PRIVATE src res)
     target_compile_definitions(QFilesTests PRIVATE UNICODE _UNICODE NOMINMAX STRICT _WIN32_WINNT=0x0A00 WINVER=0x0A00

@@ -455,6 +455,13 @@ void MainWindow::LoadState() {
     treeWidth_ = std::clamp(c.GetInt(S, L"BaumBreite", 220), 60, 1200);
     bookmarkWidth_ = std::clamp(c.GetInt(S, L"LesezeichenBreite", 150), 50, 1000);
     showToolbar_ = c.GetBool(S, L"Werkzeugleiste", true);
+    {
+        toolLayout_.clear();
+        for (auto& k : Split(c.Get(L"Werkzeugleiste", L"Schaltflaechen"), L','))
+            if (!Trim(k).empty()) toolLayout_.push_back(Trim(k));
+        if (toolLayout_ == DefaultToolLayout()) toolLayout_.clear();
+        if (!toolLayout_.empty()) ApplyToolbarLayout();
+    }
     showFKeys_ = c.GetBool(S, L"Funktionstastenleiste", true);
     showCmdLine_ = c.GetBool(S, L"Befehlszeile", true);
     showStatus_ = c.GetBool(S, L"Statusleiste", true);
@@ -482,6 +489,7 @@ void MainWindow::SaveState() {
     c.SetInt(S, L"BaumBreite", treeWidth_);
     c.SetInt(S, L"LesezeichenBreite", bookmarkWidth_);
     c.SetBool(S, L"Werkzeugleiste", showToolbar_);
+    c.Set(L"Werkzeugleiste", L"Schaltflaechen", Join(toolLayout_, L","));   // leer = Standard
     c.SetBool(S, L"Funktionstastenleiste", showFKeys_);
     c.SetBool(S, L"Befehlszeile", showCmdLine_);
     c.SetBool(S, L"Statusleiste", showStatus_);
@@ -630,6 +638,7 @@ void MainWindow::BuildMenu() {
     AddItem(m, cmd::Filter, L"Datei&filter…\tStrg+Umschalt+F");
     AddSep(m);
     AddItem(m, cmd::ToggleToolbar, L"&Werkzeugleiste");
+    AddItem(m, cmd::CustomizeToolbar, L"Werkzeugleiste an&passen…");
     AddItem(m, cmd::ToggleCommandLine, L"&Befehlszeile");
     AddItem(m, cmd::ToggleFKeyBar, L"&Funktionstastenleiste");
     AddItem(m, cmd::ToggleStatusBar, L"Status&leiste");
@@ -1022,12 +1031,13 @@ void MainWindow::BuildToolbar() {
     TBADDBITMAP ah{HINST_COMMCTRL, (UINT_PTR)(large ? IDB_HIST_LARGE_COLOR : IDB_HIST_SMALL_COLOR)};
     int offHist = (int)SendMessageW(toolbar_, TB_ADDBITMAP, 0, (LPARAM)&ah);
     if (offHist <= 0) offHist = offView + 13;
-    // Eigene Symbole: Papierkorb (Windows-Standardsymbol) und Radiergummi (selbst gezeichnet), 32 Bit mit Alpha
+    // Eigene Symbole, 32 Bit mit Alpha: Papierkorb (Windows-Standardsymbol), Radiergummi, „Mit Unterverzeichnissen“,
+    // Neue Datei/Textdatei, „P“ aus/ein und die Symbole der zusätzlich wählbaren Schaltflächen (Werkzeugleiste anpassen)
     int custom = -1;
+    const int cells = 27;
     {
         int sz = large ? 24 : 16;
         BITMAPINFO bi{};
-        const int cells = 7;   // Papierkorb, Radiergummi, Mit Unterverzeichnissen, Neue Datei, Neue Textdatei, P aus/ein
         bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz * cells, -sz, 1, 32, BI_RGB};
         void* bits = nullptr;
         HBITMAP strip = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
@@ -1060,86 +1070,366 @@ void MainWindow::BuildToolbar() {
                 }
             SelectObject(dc, old);
             // Zellen 3–6: geglättet gezeichnet (Papierblatt mit N bzw. T, „P“ aus/ein)
-            RenderAlphaCell(px, sz * cells, 3 * sz, sz, [](HDC d, const RECT& r) { DrawPageLetter(d, r, L"N", RGB(20, 55, 150)); });
-            RenderAlphaCell(px, sz * cells, 4 * sz, sz, [](HDC d, const RECT& r) { DrawPageLetter(d, r, L"T", RGB(150, 35, 20)); });
-            RenderAlphaCell(px, sz * cells, 5 * sz, sz, [](HDC d, const RECT& r) { DrawPrivateP(d, r, false); });
-            RenderAlphaCell(px, sz * cells, 6 * sz, sz, [](HDC d, const RECT& r) { DrawPrivateP(d, r, true); });
+            int stride = sz * cells;
+            RenderAlphaCell(px, stride, 3 * sz, sz, [](HDC d, const RECT& r) { DrawPageLetter(d, r, L"N", RGB(20, 55, 150)); });
+            RenderAlphaCell(px, stride, 4 * sz, sz, [](HDC d, const RECT& r) { DrawPageLetter(d, r, L"T", RGB(150, 35, 20)); });
+            RenderAlphaCell(px, stride, 5 * sz, sz, [](HDC d, const RECT& r) { DrawPrivateP(d, r, false); });
+            RenderAlphaCell(px, stride, 6 * sz, sz, [](HDC d, const RECT& r) { DrawPrivateP(d, r, true); });
+            // Zellen 7–26: zusätzliche Schaltflächen
+            auto stock = [&](int idx, SHSTOCKICONID id) {
+                RenderAlphaCell(px, stride, idx * sz, sz, [&](HDC d, const RECT&) {
+                    SHSTOCKICONINFO si{sizeof(si)};
+                    if (SUCCEEDED(SHGetStockIconInfo(id, SHGSI_ICON | (large ? SHGSI_LARGEICON : SHGSI_SMALLICON), &si))) {
+                        DrawIconEx(d, 0, 0, si.hIcon, sz, sz, 0, nullptr, DI_NORMAL);
+                        DestroyIcon(si.hIcon);
+                    }
+                });
+            };
+            auto page = [&](int idx, const wchar_t* letter, COLORREF color) {
+                RenderAlphaCell(px, stride, idx * sz, sz, [&](HDC d, const RECT& r) { DrawPageLetter(d, r, letter, color); });
+            };
+            auto glyph = [&](int idx, Glyph g) {
+                RenderAlphaCell(px, stride, idx * sz, sz, [&](HDC d, const RECT& r) { DrawGlyph(d, g, r, RGB(30, 30, 30)); });
+            };
+            glyph(7, Glyph::Refresh);
+            stock(8, SIID_RENAME);
+            page(9, L"M", RGB(20, 55, 150));
+            page(10, L"A", RGB(20, 110, 40));
+            page(11, L"#", RGB(120, 30, 120));
+            stock(12, SIID_ZIPFILE);
+            stock(13, SIID_PRINTER);
+            page(14, L"=", RGB(20, 55, 150));
+            page(15, L"≠", RGB(150, 35, 20));
+            page(16, L"Σ", RGB(20, 110, 40));
+            stock(17, SIID_DRIVEFIXED);
+            RenderAlphaCell(px, stride, 18 * sz, sz, [&](HDC d, const RECT&) {   // Eingabeaufforderung: Symbol von cmd.exe
+                wchar_t sys[MAX_PATH] = {};
+                GetSystemDirectoryW(sys, MAX_PATH);
+                HICON big = nullptr, small = nullptr;
+                if (ExtractIconExW((std::wstring(sys) + L"\\cmd.exe").c_str(), 0, &big, &small, 1) > 0) {
+                    HICON ic = large ? big : small;
+                    if (!ic) ic = big ? big : small;
+                    if (ic) DrawIconEx(d, 0, 0, ic, sz, sz, 0, nullptr, DI_NORMAL);
+                }
+                if (big) DestroyIcon(big);
+                if (small) DestroyIcon(small);
+            });
+            page(19, L"L", RGB(90, 90, 90));
+            stock(20, SIID_RECYCLER);
+            RenderAlphaCell(px, stride, 21 * sz, sz, [](HDC d, const RECT& r) {   // Favoriten: Asterisk
+                DrawAsterisk(d, r, RGB(150, 20, 20), GetPixel(d, 0, 0));
+            });
+            RenderAlphaCell(px, stride, 22 * sz, sz, [&](HDC d, const RECT&) {   // Dateifilter: Trichter
+                HBRUSH br = CreateSolidBrush(RGB(60, 110, 190));
+                HPEN pen = CreatePen(PS_SOLID, 1, RGB(30, 60, 120));
+                HGDIOBJ ob = SelectObject(d, br), op = SelectObject(d, pen);
+                int m = sz / 8;
+                POINT f[6] = {{m, m + 1}, {sz - m - 1, m + 1}, {sz / 2 + sz / 10, sz / 2}, {sz / 2 + sz / 10, sz - m - 1},
+                              {sz / 2 - sz / 10, sz - m - 3}, {sz / 2 - sz / 10, sz / 2}};
+                Polygon(d, f, 6);
+                SelectObject(d, ob);
+                SelectObject(d, op);
+                DeleteObject(br);
+                DeleteObject(pen);
+            });
+            RenderAlphaCell(px, stride, 23 * sz, sz, [&](HDC d, const RECT&) {   // versteckte Dateien: Auge
+                HPEN pen = CreatePen(PS_SOLID, std::max(1, sz / 12), RGB(40, 40, 40));
+                HGDIOBJ op = SelectObject(d, pen), ob = SelectObject(d, GetStockObject(WHITE_BRUSH));
+                int m = sz / 10;
+                Ellipse(d, m, sz / 4, sz - m, sz - sz / 4);
+                HBRUSH iris = CreateSolidBrush(RGB(30, 90, 210));
+                SelectObject(d, iris);
+                Ellipse(d, sz / 2 - sz / 6, sz / 2 - sz / 6, sz / 2 + sz / 6 + 1, sz / 2 + sz / 6 + 1);
+                SelectObject(d, op);
+                SelectObject(d, ob);
+                DeleteObject(pen);
+                DeleteObject(iris);
+            });
+            glyph(24, Glyph::Split);
+            page(25, L"F", RGB(20, 55, 150));
+            stock(26, SIID_HELP);
             DeleteDC(dc);
             TBADDBITMAP ac{nullptr, (UINT_PTR)strip};
             custom = (int)SendMessageW(toolbar_, TB_ADDBITMAP, cells, (LPARAM)&ac);
         }
     }
-    int imgRecycle = custom >= 0 ? custom : offStd + STD_DELETE;
-    int imgEraser = custom >= 0 ? custom + 1 : offStd + STD_DELETE;
-    int imgRecursive = custom >= 0 ? custom + 2 : offView + VIEW_DETAILS;
-    int imgNewFile = custom >= 0 ? custom + 3 : offStd + STD_FILENEW;
-    int imgNewText = custom >= 0 ? custom + 4 : offStd + STD_FILENEW;
-    imgPrivateOff_ = custom >= 0 ? custom + 5 : offStd + STD_PROPERTIES;
-    imgPrivateOn_ = custom >= 0 ? custom + 6 : offStd + STD_PROPERTIES;
+    auto img = [&](int cell, int fallback) { return custom >= 0 ? custom + cell : fallback; };
+    imgPrivateOff_ = img(5, offStd + STD_PROPERTIES);
+    imgPrivateOn_ = img(6, offStd + STD_PROPERTIES);
 
-    struct B {
+    // Alle wählbaren Schaltflächen (Schlüssel in der Einstellungsdatei, Befehl, Symbol, Tooltip)
+    toolDefs_ = {
+        {L"Zurueck", cmd::GoBack, offHist + HIST_BACK, L"Zurück (Alt+←)"},
+        {L"Vor", cmd::GoForward, offHist + HIST_FORWARD, L"Vor (Alt+→)"},
+        {L"Hoch", cmd::GoUp, offView + VIEW_PARENTFOLDER, L"Übergeordnetes Verzeichnis (Rücktaste)"},
+        {L"Aktualisieren", cmd::Refresh, img(7, offView + VIEW_DETAILS), L"Aktualisieren (Strg+R)"},
+        {L"Kopieren", cmd::Copy, offStd + STD_COPY, L"Kopieren in die andere Liste (Umschalt+F5)"},
+        {L"Verschieben", cmd::Move, offStd + STD_CUT, L"Verschieben in die andere Liste (Umschalt+F6)"},
+        {L"NeuesVerzeichnis", cmd::NewFolder, offView + VIEW_NEWFOLDER, L"Neues Verzeichnis (F8)"},
+        {L"NeueDatei", cmd::NewFile, img(3, offStd + STD_FILENEW), L"Neue Datei (F9)"},
+        {L"NeueTextdatei", cmd::NewTextFile, img(4, offStd + STD_FILENEW), L"Neue Textdatei (Umschalt+F9)"},
+        {L"Umbenennen", cmd::Rename, img(8, offStd + STD_REPLACE), L"Umbenennen (F2)"},
+        {L"GruppeUmbenennen", cmd::BatchRename, img(9, offStd + STD_REPLACE), L"Dateigruppe umbenennen (Strg+M)"},
+        {L"Duplizieren", cmd::Duplicate, offStd + STD_COPY, L"Duplizieren (F10)"},
+        {L"Loeschen", cmd::Delete, img(0, offStd + STD_DELETE), L"Löschen – in den Papierkorb (Entf)"},
+        {L"EndgueltigLoeschen", cmd::DeletePermanent, offStd + STD_DELETE, L"Endgültig löschen (Umschalt+Entf)"},
+        {L"Radieren", cmd::Wipe, img(1, offStd + STD_DELETE), L"Radieren – mit Zufallsdaten überschreiben und löschen (Alt+Entf)"},
+        {L"Rueckgaengig", cmd::Undo, offStd + STD_UNDO, L"Rückgängig (Strg+Z)"},
+        {L"Ausschneiden", cmd::ClipCut, offStd + STD_CUT, L"Ausschneiden – Zwischenablage (Strg+X)"},
+        {L"KopierenZwischenablage", cmd::ClipCopy, offStd + STD_COPY, L"Kopieren – Zwischenablage (Strg+C)"},
+        {L"Einfuegen", cmd::ClipPaste, offStd + STD_PASTE, L"Einfügen – Zwischenablage (Strg+V)"},
+        {L"Attribute", cmd::Attributes, img(10, offStd + STD_PROPERTIES), L"Attribute/Datum ändern (Strg+Umschalt+A)"},
+        {L"Anzeigen", cmd::View, offStd + STD_PRINTPRE, L"Anzeigen (F11)"},
+        {L"Bearbeiten", cmd::Edit, offStd + STD_FILENEW, L"Bearbeiten (F4)"},
+        {L"HexEditor", cmd::HexEdit, img(11, offStd + STD_FILENEW), L"Im Hex-Editor bearbeiten (Alt+F11)"},
+        {L"Eigenschaften", cmd::Properties, offStd + STD_PROPERTIES, L"Eigenschaften (Alt+Eingabe)"},
+        {L"ZipErstellen", cmd::CreateZip, img(12, offStd + STD_FILESAVE), L"ZIP-Archiv erstellen (Alt+F5)"},
+        {L"Drucken", cmd::PrintList, img(13, offStd + STD_PRINT), L"Verzeichnisliste drucken (Strg+P)"},
+        {L"Suchen", cmd::FindFiles, offStd + STD_FIND, L"Dateien suchen (F3)"},
+        {L"Doppelte", cmd::FindDuplicates, img(14, offStd + STD_FIND), L"Doppelte Dateien suchen"},
+        {L"DateienVergleichen", cmd::CompareFiles, img(15, offStd + STD_REPLACE), L"Dateien vergleichen (Strg+K)"},
+        {L"VerzeichnisseVergleichen", cmd::CompareDirs, offStd + STD_REPLACE, L"Verzeichnisse vergleichen (F7)"},
+        {L"Synchronisieren", cmd::SyncDirs, offStd + STD_REDOW, L"Verzeichnisse synchronisieren (Strg+Umschalt+Y)"},
+        {L"Verzeichnisgroessen", cmd::DirSizes, img(16, offStd + STD_PROPERTIES), L"Verzeichnisgrößen berechnen (Alt+Umschalt+Eingabe)"},
+        {L"Laufwerke", cmd::DriveOverview, img(17, offStd + STD_PROPERTIES), L"Laufwerksübersicht"},
+        {L"Eingabeaufforderung", cmd::CommandPrompt, img(18, offStd + STD_PROPERTIES), L"Eingabeaufforderung im aktuellen Verzeichnis"},
+        {L"Dateisystemmonitor", cmd::OpLog, img(19, offStd + STD_PROPERTIES), L"Dateisystemmonitor (Protokoll)"},
+        {L"Papierkorb", cmd::ShowRecycleBin, img(20, offStd + STD_DELETE), L"Papierkorb anzeigen"},
+        {L"Favoriten", cmd::BookmarkFavorites, img(21, offHist + HIST_FAVORITES), L"Favoriten anzeigen"},
+        {L"Details", cmd::ViewDetails, offView + VIEW_DETAILS, L"Details (Strg+Umschalt+1)"},
+        {L"Liste", cmd::ViewList, offView + VIEW_LIST, L"Liste (Strg+Umschalt+2)"},
+        {L"Symbole", cmd::ViewIcons, offView + VIEW_SMALLICONS, L"Symbole (Strg+Umschalt+3)"},
+        {L"Miniaturen", cmd::ViewThumbnails, offView + VIEW_LARGEICONS, L"Miniaturansicht (Strg+Umschalt+4)"},
+        {L"MitUnterverzeichnissen", cmd::ViewRecursive, img(2, offView + VIEW_DETAILS), L"Mit Unterverzeichnissen (Strg+Umschalt+5)"},
+        {L"Dateifilter", cmd::Filter, img(22, offView + VIEW_SORTTYPE), L"Dateifilter (Strg+Umschalt+F)"},
+        {L"Versteckte", cmd::ShowHidden, img(23, offView + VIEW_SORTTYPE), L"Versteckte Dateien anzeigen (Strg+H)"},
+        {L"ZweiListen", cmd::TwoPanes, offHist + HIST_VIEWTREE, L"Eine/zwei Dateilisten (Strg+Umschalt+L)"},
+        {L"Teilen", cmd::SplitToggle, img(24, offHist + HIST_VIEWTREE), L"Liste teilen (Strg+T)"},
+        {L"Schnellansicht", cmd::QuickView, offView + VIEW_VIEWMENU, L"Dateianzeige im anderen Fenster (Strg+Q)"},
+        {L"LesezeichenHinzufuegen", cmd::BookmarkAdd, offHist + HIST_ADDTOFAVORITES, L"Lesezeichen hinzufügen (Strg+D)"},
+        {L"Funktionstasten", cmd::FunctionKeys, img(25, offStd + STD_PROPERTIES), L"Funktionstasten belegen"},
+        {L"Optionen", cmd::Options, offStd + STD_PROPERTIES, L"Optionen"},
+        {L"Tastenkuerzel", cmd::Shortcuts, img(26, offStd + STD_HELP), L"Tastenkürzel (F1)"},
+        {L"PrivaterModus", cmd::PrivateMode, App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_,
+         L"Privater Modus: Verlauf nicht speichern (grün = eingeschaltet)"},
+    };
+    toolTips_.clear();
+    for (auto& d : toolDefs_) toolTips_.emplace_back(d.cmd, d.tip);
+    SendMessageW(toolbar_, WM_SETFONT, (WPARAM)App::UIFont(), TRUE);
+    ApplyToolbarLayout();
+}
+
+namespace {
+
+// Dialog „Werkzeugleiste anpassen“: links die verfügbaren, rechts die gewählten Schaltflächen (mit Trennlinien)
+class ToolbarDlg : public DialogBase {
+public:
+    struct Def {
+        std::wstring key, text;
         int image;
-        int cmd;
-        const wchar_t* text;
-        bool showText;
     };
-    const B buttons[] = {
-        {offHist + HIST_BACK, cmd::GoBack, L"Zurück", false},
-        {offHist + HIST_FORWARD, cmd::GoForward, L"Vor", false},
-        {offView + VIEW_PARENTFOLDER, cmd::GoUp, L"Übergeordnetes Verzeichnis", false},
-        {-1, 0, nullptr, false},
-        {offStd + STD_COPY, cmd::Copy, L"Kopieren in die andere Liste (Umschalt+F5)", false},
-        {offStd + STD_CUT, cmd::Move, L"Verschieben in die andere Liste (Umschalt+F6)", false},
-        {offView + VIEW_NEWFOLDER, cmd::NewFolder, L"Neues Verzeichnis (F8)", false},
-        {imgNewFile, cmd::NewFile, L"Neue Datei (F9)", false},
-        {imgNewText, cmd::NewTextFile, L"Neue Textdatei (Umschalt+F9)", false},
-        {imgRecycle, cmd::Delete, L"Löschen – in den Papierkorb (Entf)", false},
-        {offStd + STD_DELETE, cmd::DeletePermanent, L"Endgültig löschen (Umschalt+Entf)", false},
-        {imgEraser, cmd::Wipe, L"Radieren – mit Zufallsdaten überschreiben und löschen (Alt+Entf)", false},
-        {offStd + STD_UNDO, cmd::Undo, L"Rückgängig (Strg+Z)", false},
-        {-1, 0, nullptr, false},
-        {offStd + STD_PRINTPRE, cmd::View, L"Anzeigen (F11)", false},
-        {offStd + STD_FILENEW, cmd::Edit, L"Bearbeiten (F4)", false},
-        {offStd + STD_PROPERTIES, cmd::Properties, L"Eigenschaften (Alt+Eingabe)", false},
-        {-1, 0, nullptr, false},
-        {offStd + STD_FIND, cmd::FindFiles, L"Dateien suchen (F3)", false},
-        {offStd + STD_REPLACE, cmd::CompareDirs, L"Verzeichnisse vergleichen (F7)", false},
-        {offStd + STD_REDOW, cmd::SyncDirs, L"Verzeichnisse synchronisieren (Strg+Umschalt+Y)", false},
-        {-1, 0, nullptr, false},
-        {offView + VIEW_DETAILS, cmd::ViewDetails, L"Details (Strg+Umschalt+1)", false},
-        {offView + VIEW_LIST, cmd::ViewList, L"Liste (Strg+Umschalt+2)", false},
-        {offView + VIEW_SMALLICONS, cmd::ViewIcons, L"Symbole (Strg+Umschalt+3)", false},
-        {offView + VIEW_LARGEICONS, cmd::ViewThumbnails, L"Miniaturansicht (Strg+Umschalt+4)", false},
-        {imgRecursive, cmd::ViewRecursive, L"Mit Unterverzeichnissen (Strg+Umschalt+5)", false},
-        {-1, 0, nullptr, false},
-        {offHist + HIST_VIEWTREE, cmd::TwoPanes, L"Eine/zwei Dateilisten", false},
-        {offView + VIEW_VIEWMENU, cmd::QuickView, L"Dateianzeige im anderen Fenster (Strg+Q)", false},
-        {-1, 0, nullptr, false},
-        {offHist + HIST_ADDTOFAVORITES, cmd::BookmarkAdd, L"Lesezeichen hinzufügen (Strg+D)", false},
-        {offStd + STD_PROPERTIES, cmd::Options, L"Optionen", false},
-        {-1, 0, nullptr, false},
-        {App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_, cmd::PrivateMode,
-         L"Privater Modus: Verlauf nicht speichern (grün = eingeschaltet)", false},
-    };
+    ToolbarDlg(std::vector<Def> defs, std::vector<std::wstring> layout, std::vector<std::wstring> defaults, HIMAGELIST il)
+        : defs_(std::move(defs)), layout_(std::move(layout)), defaults_(std::move(defaults)), il_(il) {}
+    const std::vector<std::wstring>& Layout() const { return layout_; }
+
+    enum { kAvail = 101, kAdd, kRemove, kSep, kCur, kUp, kDown, kDefault, kLblAvail, kLblCur };
+
+protected:
+    BOOL OnInit() override {
+        for (int id : {kAvail, kCur}) {
+            HWND lv = Item(id);
+            ListView_SetExtendedListViewStyle(lv, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+            ListView_SetImageList(lv, il_, LVSIL_SMALL);
+            RECT rc;
+            GetClientRect(lv, &rc);
+            LVCOLUMNW c{};
+            c.mask = LVCF_WIDTH;
+            c.cx = rc.right - GetSystemMetrics(SM_CXVSCROLL);
+            ListView_InsertColumn(lv, 0, &c);
+        }
+        Fill(0, 0);
+        return TRUE;
+    }
+    BOOL OnCommand(int id, int code, HWND ctl) override {
+        switch (id) {
+        case kAdd: Add(); return TRUE;
+        case kRemove: Remove(); return TRUE;
+        case kSep: Insert(L"-"); return TRUE;
+        case kUp: Move(-1); return TRUE;
+        case kDown: Move(1); return TRUE;
+        case kDefault:
+            layout_ = defaults_;
+            Fill(0, 0);
+            return TRUE;
+        }
+        return DialogBase::OnCommand(id, code, ctl);
+    }
+    INT_PTR OnNotify(NMHDR* nm) override {
+        if (nm->code == NM_DBLCLK) {
+            if (nm->idFrom == kAvail) Add();
+            if (nm->idFrom == kCur) Remove();
+        }
+        if (nm->code == LVN_ITEMCHANGED) UpdateButtons();
+        return 0;
+    }
+
+private:
+    const Def* Find(const std::wstring& key) const {
+        for (auto& d : defs_)
+            if (d.key == key) return &d;
+        return nullptr;
+    }
+    static int Sel(HWND lv) { return ListView_GetNextItem(lv, -1, LVNI_SELECTED); }
+    void AddRow(HWND lv, int row, const std::wstring& text, int image) {
+        LVITEMW it{};
+        it.mask = LVIF_TEXT | LVIF_IMAGE;
+        it.iItem = row;
+        it.pszText = const_cast<wchar_t*>(text.c_str());
+        it.iImage = image;
+        ListView_InsertItem(lv, &it);
+    }
+    void Fill(int selAvail, int selCur) {
+        HWND a = Item(kAvail), c = Item(kCur);
+        SendMessageW(a, WM_SETREDRAW, FALSE, 0);
+        SendMessageW(c, WM_SETREDRAW, FALSE, 0);
+        ListView_DeleteAllItems(a);
+        ListView_DeleteAllItems(c);
+        avail_.clear();
+        for (auto& d : defs_)
+            if (std::find(layout_.begin(), layout_.end(), d.key) == layout_.end()) {
+                AddRow(a, (int)avail_.size(), d.text, d.image);
+                avail_.push_back(d.key);
+            }
+        for (size_t i = 0; i < layout_.size(); ++i) {
+            const Def* d = Find(layout_[i]);
+            AddRow(c, (int)i, layout_[i] == L"-" ? L"──────── Trennlinie ────────" : d ? d->text : layout_[i],
+                   d ? d->image : I_IMAGENONE);
+        }
+        auto select = [](HWND lv, int i) {
+            int n = ListView_GetItemCount(lv);
+            if (n == 0) return;
+            i = std::clamp(i, 0, n - 1);
+            ListView_SetItemState(lv, i, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            ListView_EnsureVisible(lv, i, FALSE);
+        };
+        select(a, selAvail);
+        select(c, selCur);
+        SendMessageW(a, WM_SETREDRAW, TRUE, 0);
+        SendMessageW(c, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(a, nullptr, TRUE);
+        InvalidateRect(c, nullptr, TRUE);
+        UpdateButtons();
+    }
+    void UpdateButtons() {
+        int a = Sel(Item(kAvail)), c = Sel(Item(kCur));
+        Enable(kAdd, a >= 0);
+        Enable(kRemove, c >= 0);
+        Enable(kUp, c > 0);
+        Enable(kDown, c >= 0 && c + 1 < (int)layout_.size());
+    }
+    void Insert(const std::wstring& key) {
+        int c = Sel(Item(kCur));
+        size_t pos = c >= 0 ? (size_t)c + 1 : layout_.size();
+        layout_.insert(layout_.begin() + pos, key);
+        Fill(Sel(Item(kAvail)), (int)pos);
+    }
+    void Add() {
+        int a = Sel(Item(kAvail));
+        if (a < 0 || a >= (int)avail_.size()) return;
+        Insert(avail_[a]);
+    }
+    void Remove() {
+        int c = Sel(Item(kCur));
+        if (c < 0 || c >= (int)layout_.size()) return;
+        layout_.erase(layout_.begin() + c);
+        Fill(Sel(Item(kAvail)), c);
+    }
+    void Move(int dir) {
+        int c = Sel(Item(kCur));
+        int t = c + dir;
+        if (c < 0 || t < 0 || t >= (int)layout_.size()) return;
+        std::swap(layout_[c], layout_[t]);
+        Fill(Sel(Item(kAvail)), t);
+    }
+
+    std::vector<Def> defs_;
+    std::vector<std::wstring> layout_, defaults_, avail_;
+    HIMAGELIST il_;
+};
+
+} // namespace
+
+void MainWindow::CustomizeToolbar() {
+    if (!toolbar_) return;
+    std::vector<ToolbarDlg::Def> defs;
+    for (auto& d : toolDefs_)
+        defs.push_back({d.key, d.tip, d.cmd == cmd::PrivateMode ? (App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_)
+                                                                 : d.image});
+    HIMAGELIST il = (HIMAGELIST)SendMessageW(toolbar_, TB_GETIMAGELIST, 0, 0);
+    ToolbarDlg dlg(defs, toolLayout_.empty() ? DefaultToolLayout() : toolLayout_, DefaultToolLayout(), il);
+    DialogTemplate t(L"Werkzeugleiste anpassen", 430, 262);
+    t.Label(ToolbarDlg::kLblAvail, L"&Verfügbare Schaltflächen:", 7, 7, 170, 9);
+    t.ListView(ToolbarDlg::kAvail, 7, 18, 170, 200,
+               LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_SHAREIMAGELISTS | WS_TABSTOP);
+    t.Button(ToolbarDlg::kAdd, L"&Hinzufügen →", 183, 70, 64, 14);
+    t.Button(ToolbarDlg::kRemove, L"← &Entfernen", 183, 88, 64, 14);
+    t.Button(ToolbarDlg::kSep, L"&Trennlinie", 183, 114, 64, 14);
+    t.Label(ToolbarDlg::kLblCur, L"&Schaltflächen der Werkzeugleiste:", 253, 7, 170, 9);
+    t.ListView(ToolbarDlg::kCur, 253, 18, 170, 200,
+               LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_SHAREIMAGELISTS | WS_TABSTOP);
+    t.Button(ToolbarDlg::kUp, L"Nach &oben", 253, 222, 60, 14);
+    t.Button(ToolbarDlg::kDown, L"Nach &unten", 317, 222, 60, 14);
+    t.Button(ToolbarDlg::kDefault, L"Standar&d", 7, 222, 60, 14);
+    t.DefButton(IDOK, L"OK", 319, 242, 50, 14);
+    t.Button(IDCANCEL, L"Abbrechen", 373, 242, 50, 14);
+    if (dlg.DoModal(hwnd_, t) != IDOK) return;
+    toolLayout_ = dlg.Layout();
+    if (toolLayout_ == DefaultToolLayout()) toolLayout_.clear();
+    ApplyToolbarLayout();
+    UpdatePrivateButton();
+    App::SaveSettings();
+}
+
+// Standardbelegung der Werkzeugleiste ("-" = Trennlinie)
+std::vector<std::wstring> MainWindow::DefaultToolLayout() {
+    return {L"Zurueck", L"Vor", L"Hoch", L"-", L"Kopieren", L"Verschieben", L"NeuesVerzeichnis", L"NeueDatei",
+            L"NeueTextdatei", L"Loeschen", L"EndgueltigLoeschen", L"Radieren", L"Rueckgaengig", L"-", L"Anzeigen",
+            L"Bearbeiten", L"Eigenschaften", L"-", L"Suchen", L"VerzeichnisseVergleichen", L"Synchronisieren", L"-",
+            L"Details", L"Liste", L"Symbole", L"Miniaturen", L"MitUnterverzeichnissen", L"-", L"ZweiListen",
+            L"Schnellansicht", L"-", L"LesezeichenHinzufuegen", L"Optionen", L"-", L"PrivaterModus"};
+}
+
+// Schaltflächen nach toolLayout_ (leer = Standard) neu aufbauen
+void MainWindow::ApplyToolbarLayout() {
+    if (!toolbar_) return;
+    while (SendMessageW(toolbar_, TB_BUTTONCOUNT, 0, 0) > 0) SendMessageW(toolbar_, TB_DELETEBUTTON, 0, 0);
+    std::vector<std::wstring> layout = toolLayout_.empty() ? DefaultToolLayout() : toolLayout_;
     std::vector<TBBUTTON> tb;
-    for (auto& b : buttons) {
+    bool lastSep = true;
+    for (auto& key : layout) {
         TBBUTTON t{};
-        if (b.image < 0) {
+        if (key == L"-") {
+            if (lastSep) continue;   // keine doppelten Trennlinien
             t.fsStyle = BTNS_SEP;
+            lastSep = true;
         } else {
-            t.iBitmap = b.image;
-            t.idCommand = b.cmd;
+            auto it = std::find_if(toolDefs_.begin(), toolDefs_.end(), [&](const ToolDef& d) { return d.key == key; });
+            if (it == toolDefs_.end()) continue;   // unbekannt (ältere/neuere Version)
+            t.iBitmap = it->cmd == cmd::PrivateMode ? (App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_) : it->image;
+            t.idCommand = it->cmd;
             t.fsState = TBSTATE_ENABLED;
             t.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-            if (b.cmd >= cmd::ViewDetails && b.cmd <= cmd::ViewRecursive) t.fsStyle |= BTNS_CHECK;   // Zustand setzt UpdateViewButtons
+            if (it->cmd >= cmd::ViewDetails && it->cmd <= cmd::ViewRecursive) t.fsStyle |= BTNS_CHECK;   // Zustand setzt UpdateViewButtons
             t.iString = -1;
-            toolTips_.emplace_back(b.cmd, b.text);
+            lastSep = false;
         }
         tb.push_back(t);
     }
-    SendMessageW(toolbar_, TB_ADDBUTTONSW, tb.size(), (LPARAM)tb.data());
-    SendMessageW(toolbar_, WM_SETFONT, (WPARAM)App::UIFont(), TRUE);
+    while (!tb.empty() && (tb.back().fsStyle & BTNS_SEP)) tb.pop_back();
+    if (!tb.empty()) SendMessageW(toolbar_, TB_ADDBUTTONSW, tb.size(), (LPARAM)tb.data());
     SendMessageW(toolbar_, TB_AUTOSIZE, 0, 0);
+    UpdateViewButtons();
+    if (hwnd_ && IsWindowVisible(hwnd_)) Layout();
 }
 
 // Symbol „P“: grün gefüllt, solange der private Modus eingeschaltet ist
@@ -2599,6 +2889,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::ViewList: case cmd::ViewIcons: case cmd::ViewThumbnails: case cmd::ViewRecursive: case cmd::SortName: case cmd::SortExt:
     case cmd::SortSize: case cmd::SortDate: case cmd::SortAttr: case cmd::SortCreated: case cmd::SortDescending:
     case cmd::ShowHidden: case cmd::ShowDirSizes: case cmd::Filter: case cmd::Refresh: case cmd::ToggleToolbar: case cmd::ToggleFKeyBar:
+    case cmd::CustomizeToolbar:
     case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
     case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
@@ -3046,6 +3337,7 @@ void MainWindow::OnCommand(int id) {
         tree_.SelectPath(a.Dir());
         break;
     case cmd::ToggleToolbar: showToolbar_ = !showToolbar_; Layout(); break;
+    case cmd::CustomizeToolbar: CustomizeToolbar(); break;
     case cmd::ToggleFKeyBar: showFKeys_ = !showFKeys_; Layout(); break;
     case cmd::ToggleCommandLine: showCmdLine_ = !showCmdLine_; Layout(); break;
     case cmd::ToggleStatusBar: showStatus_ = !showStatus_; Layout(); break;
@@ -3543,6 +3835,18 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         auto* nm = (NMHDR*)lp;
         if (nm->hwndFrom == tree_.Hwnd()) return tree_.OnNotify(nm);
         if (nm->hwndFrom == bookmarks_.Hwnd()) return bookmarks_.OnNotify(nm);
+        if (nm->hwndFrom == toolbar_ && nm->code == NM_RCLICK) {
+            // Rechtsklick auf die Werkzeugleiste: anpassen bzw. ausblenden
+            HMENU m = CreatePopupMenu();
+            AddItem(m, cmd::CustomizeToolbar, L"Werkzeugleiste an&passen…");
+            AddItem(m, cmd::ToggleToolbar, L"Werkzeugleiste an&zeigen");
+            POINT pt;
+            GetCursorPos(&pt);
+            UINT id = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, hwnd_, nullptr);
+            DestroyMenu(m);
+            if (id) OnCommand((int)id);
+            return TRUE;
+        }
         if (nm->code == TTN_GETDISPINFOW) {
             // Tooltips der Werkzeugleiste (Mauszeiger über einem Symbol)
             auto* di = (NMTTDISPINFOW*)nm;

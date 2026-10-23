@@ -184,7 +184,15 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   - Kopfzeile rechts: Lesezeichen hinzufügen, Split.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
   - Die Zeile mit den Spaltenköpfen hat die Farbe der Laufwerksleiste (aktive Liste hellblau).
-- Ansichten: Details, Liste, Symbole, Miniaturansicht (über die Windows-Shell, Größe einstellbar) und
+- **Miniaturansicht** (Kacheln, Größe einstellbar): Sind die sichtbaren Kacheln geladen, lädt QFiles die übrigen im
+  Hintergrund (zuerst die folgenden, dann die vorangehenden; neu sichtbare haben Vorrang), damit das Blättern ohne
+  Wartezeit geht. Die Beschriftung zeigt immer die Endung; passt der Name nicht in zwei Zeilen, wird der Namensteil
+  mit „…“ gekürzt (der vollständige Name steht im Tooltip). Videos haben eine grau hinterlegte Beschriftung.
+  Miniaturen kommen von der Windows-Shell; fehlt dort eine, dekodiert QFiles Bildformate selbst über WIC (sofern der
+  Codec installiert ist), und bei Handyfotos im Format HEIC/HEIF ohne HEVC-Decoder nimmt es das in den EXIF-Daten
+  eingebettete Vorschaubild (falls vorhanden). Für vollständige HEIC-Bilder unter Windows: „HEIF-Bilderweiterungen“
+  und „HEVC-Videoerweiterungen“ aus dem Microsoft Store.
+- Ansichten: Details, Liste, Symbole, Miniaturansicht und
   **Mit Unterverzeichnissen** (Strg+Umschalt+5): wie Details, aber statt „Name“ die Spalten „Dateiname“ und
   „Unterverzeichnis“. Gezeigt werden alle Dateien des Verzeichnisses und seiner Unterverzeichnisse; „Unterverzeichnis“
   enthält den relativen Teilpfad (leer für Dateien direkt im Verzeichnis). Das Einlesen läuft im Hintergrund, die
@@ -210,7 +218,12 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Automatische Aktualisierung bei Änderungen im Dateisystem.
 - Werkzeugleiste, u. a. mit Symbolen für „Neue Datei“ (Blatt mit N) und „Neue Textdatei“ (Blatt mit T), je einem
   Symbol für die fünf Ansichten (die Ansicht der aktiven Liste ist eingedrückt) und ganz rechts **P** für den
-  privaten Modus.
+  privaten Modus. **Anpassbar** über *Ansicht → Werkzeugleiste anpassen…* oder Rechtsklick auf die Leiste: links
+  die verfügbaren Schaltflächen (gut 50, z. B. auch Aktualisieren, Umbenennen, Zwischenablage, Attribute,
+  Hex-Editor, ZIP, Drucken, Doppelte, Dateien vergleichen, Verzeichnisgrößen, Laufwerksübersicht,
+  Eingabeaufforderung, Papierkorb, Favoriten, Dateifilter, versteckte Dateien, Teilen, Funktionstasten,
+  Tastenkürzel), rechts die Leiste; Hinzufügen/Entfernen (auch Doppelklick), Trennlinien, Reihenfolge, „Standard“.
+  Gespeichert in `[Werkzeugleiste] Schaltflaechen=` (leer = Standard).
 - Befehlszeile: führt Befehle im aktuellen Verzeichnis in einem Konsolenfenster aus. `cd` und `X:` wechseln das
   Verzeichnis der Liste. Mit Verlauf; Dateien lassen sich hineinziehen.
 - Funktionstastenleiste. Bei gedrückter Strg- bzw. Strg+Umschalt-Taste zeigt sie die Belegung der programmierbaren
@@ -560,6 +573,7 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
 | `src/ProgramInfo.*` | Eigenschaften von Programmdateien (Versionsressource, PE-Kopf, Signatur, Shell-Eigenschaften) |
 | `src/DocText.*`, `PdfText.*` | Text aus Office-Dokumenten und PDF für die Suche (eigenes Deflate, PDF-Objekte, Schriftkodierungen, Entschlüsselung) |
+| `src/Thumbnail.*` | Miniaturen der Kachelansicht (Shell, WIC, EXIF-Vorschaubild aus HEIC/HEIF) |
 | `src/RecycleBin.*` | Papierkorb-Ansicht: Auflisten, Wiederherstellen, endgültig löschen, leeren |
 | `src/ArchiveView.cpp`, `ArchiveCore.h` | Archivliste der Dateianzeige (Lesen und Entpacken in `Archive.cpp`) |
 | `src/Drives.*` | Laufwerksarten und -symbole (lokal, subst, Netzwerk, CD/DVD, extern, RAM-Disk) |

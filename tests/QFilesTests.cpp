@@ -22,6 +22,7 @@
 #include "FileOps.h"
 #include "MediaPreview.h"
 #include "DocText.h"
+#include "Thumbnail.h"
 #include "ArchiveCore.h"
 #include "Drives.h"
 #include "Location.h"
@@ -280,6 +281,16 @@ static void TestPdfText() {
     for (size_t i = 300; i < broken.size(); i += 7) broken[i] ^= 0x5A;
     std::wstring bt;
     ExtractDocumentTextFromMemory(L"kaputt.pdf", broken, bt);
+}
+
+#include "HeicData.inc"
+
+static void TestHeicThumbnail() {
+    std::vector<uint8_t> file(kTestHeic, kTestHeic + sizeof(kTestHeic)), jpeg;
+    CHECK(HeifExifThumbnail(file, jpeg));
+    CHECK(jpeg.size() > 100 && jpeg[0] == 0xFF && jpeg[1] == 0xD8 && jpeg[jpeg.size() - 2] == 0xFF);
+    std::vector<uint8_t> cut(file.begin(), file.begin() + file.size() / 3), j2;
+    HeifExifThumbnail(cut, j2);   // abgeschnitten: kein Absturz
 }
 
 #include "ArchiveData.inc"
@@ -670,6 +681,7 @@ int wmain() {
     TestMediaKinds();
     TestDocText();
     TestPdfText();
+    TestHeicThumbnail();
     TestArchive(base);
     TestTarListing();
     TestDrives(base);

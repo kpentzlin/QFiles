@@ -3,6 +3,8 @@
 #include "Commands.h"
 #include "Favorites.h"
 #include "RecycleBin.h"
+#include "Thumbnail.h"
+#include "MediaPreview.h"
 #include "FileOps.h"
 #include "Glyphs.h"
 #include "Location.h"
@@ -125,6 +127,18 @@ void TestLogPane(int index, const std::wstring& dir, const std::vector<std::wstr
     WriteFileBytes(path, u.data(), u.size());
 }
 
+// Testhilfe: QFILES_TEST_THUMBLOG=<Datei> protokolliert, wie jede Miniatur entstand (Arbeitsthread)
+void TestLogThumb(const std::wstring& path, const std::wstring& how) {
+    static std::mutex m;
+    wchar_t log[MAX_PATH] = {};
+    if (!GetEnvironmentVariableW(L"QFILES_TEST_THUMBLOG", log, MAX_PATH)) return;
+    std::lock_guard<std::mutex> lock(m);
+    std::vector<uint8_t> old;
+    ReadFileBytes(log, old);
+    std::string u = std::string(old.begin(), old.end()) + WideToUtf8(PathFileName(path) + L" | " + how + L"\r\n");
+    WriteFileBytes(log, u.data(), u.size());
+}
+
 void CopyToBuf(wchar_t* buf, int cch, const std::wstring& s) {
     if (!buf || cch <= 0) return;
     size_t n = std::min<size_t>(s.size(), (size_t)cch - 1);
@@ -228,6 +242,7 @@ void FilePane::CreateListFont() {
     SendMessageW(list_, WM_SETFONT, (WPARAM)font, TRUE);
     if (listFont_) DeleteObject(listFont_);
     listFont_ = font;
+    ++labelKey_;
 }
 
 void FilePane::CaptureColumnWidths() {
@@ -360,10 +375,14 @@ void FilePane::ApplyViewStyle() {
             ImageList_Add(thumbList_, bmp, nullptr);
             DeleteObject(bmp);
             for (auto& it : items_) it.thumb = -1;
+            thumbLoaded_ = 0;
+            thumbVisMin_ = thumbVisMax_ = -1;
         }
         ListView_SetImageList(list_, thumbList_, LVSIL_NORMAL);
         ListView_SetView(list_, LV_VIEW_ICON);
         ListView_SetIconSpacing(list_, size + ToPx(24), size + ToPx(40));
+        labelWidth_ = size + ToPx(24) - ToPx(12);
+        ++labelKey_;
         break;
     }
     }
@@ -819,6 +838,7 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
         }
         if (!gone.empty()) RemoveFavorites(gone, false);
         if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
+        thumbLoaded_ = 0;
         items_ = std::move(items);
         return true;
     }
@@ -843,6 +863,7 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
             items.push_back(std::move(it));
         }
         if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
+        thumbLoaded_ = 0;
         items_ = std::move(items);
         return true;
     }
@@ -881,6 +902,7 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
     // Neue Elemente fordern ihre Miniaturen neu an: alte Bilder (außer dem Platzhalter 0) verwerfen,
     // sonst wächst die Bildliste bei jedem Neueinlesen (z. B. durch die Verzeichnisüberwachung) unbegrenzt.
     if (thumbList_) ImageList_SetImageCount(thumbList_, 1);
+    thumbLoaded_ = 0;
     items_ = std::move(items);
     return true;
 }
@@ -1058,6 +1080,7 @@ int FilePane::FindItem(const std::wstring& name) const {
 
 void FilePane::FillList(const std::wstring& focusName, const std::vector<std::wstring>& selected, int topIndex) {
     generation_++;
+    thumbVisMin_ = thumbVisMax_ = -1;
     {
         std::lock_guard<std::mutex> lock(thumbMutex_);
         thumbQueue_.clear();
@@ -1521,7 +1544,7 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
         int sub = di->item.iSubItem;
         int colId = (sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub;
         switch (colId) {
-        case ColName: s = DispName(it); break;
+        case ColName: s = view_ == PaneView::Thumbnails && !it.isParent ? TileLabel(it) : DispName(it); break;
         case ColSubdir: s = DispDir(it); break;
         case ColExt:
             if (it.isParent) s = L"";
@@ -1559,6 +1582,8 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
                 if (it.thumb == -1 && !it.isParent && !IsVirtual()) {
                     it.thumb = -2;
                     RequestThumb(i);
+                    if (thumbVisMin_ < 0 || i < thumbVisMin_) thumbVisMin_ = i;
+                    if (i > thumbVisMax_) thumbVisMax_ = i;
                 }
             }
         } else {
@@ -1595,6 +1620,12 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
         case CompareMark::Missing: cd->clrTextBk = RGB(205, 225, 255); changed = true; break;
         case CompareMark::Duplicate: cd->clrTextBk = RGB(235, 215, 250); changed = true; break;
         default: break;
+        }
+        // Kachelansicht: Videos mit grau hinterlegtem Namen
+        if (view_ == PaneView::Thumbnails && !it.isParent && !it.e.IsDir() &&
+            MediaKindForPath(DispName(it)) == MediaKind::Video) {
+            cd->clrTextBk = RGB(200, 200, 200);
+            changed = true;
         }
         // Gestreift: in der aktiven Liste jede zweite Zeile in der Farbe nicht aktiver Listen (Option)
         if (App::Opt().striped && activeLook_ && (i % 2) == 1 && !changed &&
@@ -2159,10 +2190,14 @@ void FilePane::ComputeDirSizes(bool selectedOnly, bool onlyMissing) {
 
 // ===================== Miniaturen =====================
 
-void FilePane::RequestThumb(int index) {
+void FilePane::RequestThumb(int index, bool background) {
     {
         std::lock_guard<std::mutex> lock(thumbMutex_);
-        thumbQueue_.push_front({generation_, index, ItemFullPath(items_[index])});
+        // sichtbare Kacheln zuerst, vorausgeladene hinten anstellen
+        if (background)
+            thumbQueue_.push_back({generation_, index, ItemFullPath(items_[index])});
+        else
+            thumbQueue_.push_front({generation_, index, ItemFullPath(items_[index])});
         thumbStop_ = false;
     }
     if (!thumbThread_.joinable()) {
@@ -2180,13 +2215,9 @@ void FilePane::RequestThumb(int index) {
                     thumbQueue_.pop_front();
                 }
                 if (req.gen != generation_) continue;
-                HBITMAP bmp = nullptr;
-                IShellItemImageFactory* f = nullptr;
-                if (SUCCEEDED(SHCreateItemFromParsingName(req.path.c_str(), nullptr, IID_PPV_ARGS(&f)))) {
-                    SIZE sz{size, size};
-                    f->GetImage(sz, SIIGBF_BIGGERSIZEOK | SIIGBF_RESIZETOFIT, &bmp);
-                    f->Release();
-                }
+                std::wstring how;
+                HBITMAP bmp = CreateThumbnail(req.path, size, &how);
+                TestLogThumb(req.path, how);
                 auto* r = new ThumbResult{req.gen, req.index, bmp};
                 if (!PostMessageW(hwnd, WM_APP_THUMB, 0, (LPARAM)r)) {
                     if (bmp) DeleteObject(bmp);
@@ -2280,11 +2311,72 @@ void FilePane::OnThumbReady(WPARAM, LPARAM lp) {
             DeleteObject(r->bmp);
         }
         items_[r->index].thumb = index >= 0 ? index : 0;
+        if (index > 0) ++thumbLoaded_;
         ListView_RedrawItems(list_, r->index, r->index);
     } else if (r->bmp) {
         DeleteObject(r->bmp);
     }
     delete r;
+    PrefetchThumbs();
+}
+
+// Sobald die sichtbaren Kacheln geladen sind (Warteschlange leer), die nächsten im Hintergrund laden: zuerst die
+// folgenden, dann die vorangehenden. Je Durchgang ein Block, damit neu sichtbare Kacheln Vorrang behalten.
+void FilePane::PrefetchThumbs() {
+    if (view_ != PaneView::Thumbnails || IsVirtual() || !thumbList_ || thumbVisMax_ < 0) return;
+    {
+        std::lock_guard<std::mutex> lock(thumbMutex_);
+        if (!thumbQueue_.empty()) return;
+    }
+    constexpr int kChunk = 32, kMaxLoaded = 5000;
+    if (thumbLoaded_ >= kMaxLoaded) return;
+    int n = (int)items_.size(), queued = 0;
+    for (int i = thumbVisMax_ + 1; i < n && queued < kChunk; ++i) {
+        if (items_[i].isParent || items_[i].thumb != -1) continue;
+        items_[i].thumb = -2;
+        RequestThumb(i, true);
+        ++queued;
+    }
+    for (int i = std::min(thumbVisMin_, n) - 1; i >= 0 && queued < kChunk; --i) {
+        if (items_[i].isParent || items_[i].thumb != -1) continue;
+        items_[i].thumb = -2;
+        RequestThumb(i, true);
+        ++queued;
+    }
+}
+
+// Kachelbeschriftung: passt der Name nicht in zwei Zeilen, wird der Namensteil gekürzt („…“) und die Endung bleibt
+std::wstring FilePane::TileLabel(Item& it) {
+    const std::wstring& name = DispName(it);
+    if (it.labelKey == labelKey_) return it.label;
+    it.labelKey = labelKey_;
+    it.label = name;
+    if (labelWidth_ <= 0) return it.label;
+    HDC dc = GetDC(list_);
+    HGDIOBJ old = SelectObject(dc, (HFONT)SendMessageW(list_, WM_GETFONT, 0, 0));
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    int lineH = tm.tmHeight + tm.tmExternalLeading;
+    auto fits = [&](const std::wstring& t) {
+        RECT r{0, 0, labelWidth_, 0};
+        DrawTextW(dc, t.c_str(), (int)t.size(), &r, DT_CALCRECT | DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX | DT_CENTER);
+        return r.bottom <= 2 * lineH + 1 && r.right <= labelWidth_;
+    };
+    if (!fits(name)) {
+        std::wstring ext = it.e.IsDir() ? L"" : ExtOf(name);
+        if (ext.size() > 10 || ext.size() >= name.size()) ext.clear();
+        std::wstring base = name.substr(0, name.size() - ext.size());
+        size_t lo = 0, hi = base.size();
+        while (lo < hi) {   // längstes Präfix, das mit „…“ und Endung passt
+            size_t mid = (lo + hi + 1) / 2;
+            if (fits(base.substr(0, mid) + L"…" + ext)) lo = mid;
+            else hi = mid - 1;
+        }
+        it.label = base.substr(0, lo) + L"…" + ext;
+    }
+    SelectObject(dc, old);
+    ReleaseDC(list_, dc);
+    return it.label;
 }
 
 // ===================== Verzeichnisüberwachung =====================

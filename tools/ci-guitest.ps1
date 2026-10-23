@@ -751,6 +751,65 @@ else {
   "Papierkorb-Ansicht nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
+# ---- Kachelansicht: viele Bilder (Vorausladen im Hintergrund), lange Namen (Endung bleibt), Videos, HEIC mit
+#      EXIF-Vorschaubild; danach „Werkzeugleiste anpassen“ (Schaltfläche „Aktualisieren“ hinzufügen) ----
+$kDir = "C:\QFilesKacheln"
+& python tools\make-test-thumbs.py $kDir
+$thumbLog = "$PWD\miniaturen-log.txt"
+Remove-Item $thumbLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_THUMBLOG = $thumbLog
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $kDir + '"'),'"C:\Windows"' -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Kacheln)"
+$mainH = [W]::FindWindow("QFilesMain", [NullString]::Value)
+[W]::SetForegroundWindow($mainH) | Out-Null
+$best = [IntPtr]::Zero; $bestKey = [int]::MaxValue; $h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($mainH, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $key = $r.L + $r.T * 10
+  if ($key -lt $bestKey) { $bestKey = $key; $best = $h }
+}
+$klist = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
+$krc = New-Object W+RECT; [W]::GetWindowRect($klist, [ref]$krc) | Out-Null
+[W]::Click($krc.L + 60, $krc.T + 24 + 10, $false); Start-Sleep -Milliseconds 600
+[System.Windows.Forms.SendKeys]::SendWait("^+4"); Start-Sleep -Seconds 2
+Shot "screenshot30.png"   # Kacheln (Anfang)
+# Vorausladen: ohne Blättern müssen nach kurzer Zeit alle Miniaturen geladen sein
+for ($t = 0; $t -lt 60; $t++) {
+  if ((Test-Path $thumbLog) -and @(Get-Content $thumbLog -Encoding UTF8).Count -ge 153) { break }
+  Start-Sleep -Milliseconds 500
+}
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("H"); Start-Sleep -Seconds 1   # zum HEIC-Bild
+Shot "screenshot31.png"   # Kacheln (HEIC, Videos grau)
+# Werkzeugleiste anpassen: Ansicht → Werkzeugleiste anpassen…, erste verfügbare Schaltfläche hinzufügen, OK
+[System.Windows.Forms.SendKeys]::SendWait("%a"); Start-Sleep -Milliseconds 600
+[System.Windows.Forms.SendKeys]::SendWait("p"); Start-Sleep -Seconds 2
+Shot "screenshot32.png"   # Dialog „Werkzeugleiste anpassen“
+[System.Windows.Forms.SendKeys]::SendWait("%h"); Start-Sleep -Milliseconds 600
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+Shot "screenshot33.png"   # Werkzeugleiste mit „Aktualisieren“
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_THUMBLOG
+$tl = @()
+if (Test-Path $thumbLog) { $tl = @(Get-Content $thumbLog -Encoding UTF8) }
+$byHow = ($tl | ForEach-Object { ($_ -split ' \| ')[1] } | Group-Object | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ', '
+$heic = ($tl | Where-Object { $_ -match '^Handyfoto\.heic' }) -join ''
+$iniNow = Get-Content $ini -Raw -Encoding UTF8
+$tbOk = $iniNow -match 'Schaltflaechen=[^\r\n]*Aktualisieren'
+$kInfo = "Miniaturen: $($tl.Count) von 153 ($byHow); HEIC: $heic; Werkzeugleiste angepasst: $tbOk"
+if ($tl.Count -ge 153 -and $tbOk) { Write-Output "::notice title=Kacheln/Werkzeugleiste::$kInfo" }
+else {
+  Write-Output "::error title=Kacheln/Werkzeugleiste::$kInfo"
+  "Kachelansicht bzw. Werkzeugleiste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+if ($heic -notmatch '\| (Shell|WIC|EXIF)$') { Write-Output "::warning title=HEIC::Keine Miniatur für HEIC ($heic)" }
+
 # ---- Favoriten und privater Modus: Liste 1 zeigt die Favoriten (hellgelb, Spalte „Verzeichnis“), eine nicht mehr
 #      vorhandene Datei entfällt stillschweigend; Kopfzeilen im privaten Modus grün ----
 $favLog = "$PWD\favoriten-log.txt"
