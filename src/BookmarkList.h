@@ -41,9 +41,14 @@ private:
     void Rebuild(int select);
     int Selected() const;          // Index in items_ (-1: nichts oder „Favoriten“)
     int SelectedRow() const;       // Zeile der ListView
-    int Offset() const { return favRow_ ? 1 : 0; }
-    int ItemOfRow(int row) const { return row - Offset(); }   // < 0: „Favoriten“
-    bool IsFavRow(int row) const { return favRow_ && row == 0; }
+    // Zeilen: Index in items_ bzw. kRowFavorites / kRowLinux (automatische Einträge)
+    static constexpr int kRowFavorites = -1, kRowLinux = -2, kRowNone = -100;
+    int ItemOfRow(int row) const { return row >= 0 && row < (int)rows_.size() ? rows_[row] : kRowNone; }
+    int RowOfItem(int item) const;
+    bool IsFavRow(int row) const { return ItemOfRow(row) == kRowFavorites; }
+    bool IsLinuxRow(int row) const { return ItemOfRow(row) == kRowLinux; }
+    bool IsSpecialRow(int row) const { int k = ItemOfRow(row); return k == kRowFavorites || k == kRowLinux; }
+    std::wstring RowPath(int row) const;   // Ziel einer Zeile (Lesezeichen, „Favoriten“, „Linux“), "" = keins
     void DrawFavoritesRow(NMLVCUSTOMDRAW* cd);
     int IconColumnWidth() const;
     int IconColumnItemAt(POINT screenPt) const;
@@ -57,6 +62,9 @@ private:
     std::vector<int> icons_;   // Symbol je Eintrag (für die Symbolspalte)
     std::vector<int> kinds_;   // Art je Eintrag (lokal, Netzwerk, FTP/SFTP, Standardverzeichnis, WebDAV, Cloud) – Farbe/Sortierung
     bool favRow_ = false;      // Eintrag „Favoriten“ sichtbar
+    std::vector<int> rows_;    // Zeile -> Index in items_ bzw. kRowFavorites/kRowLinux
+    std::vector<std::wstring> wsl_;   // Linux-Distributionen (WSL); nicht leer -> Eintrag „Linux“ unter „Netzwerk“
+    int linuxIcon_ = -1;
     size_t favCount_ = 0;      // Anzahl der Favoriten (Tooltip)
 };
 

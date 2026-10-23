@@ -4,6 +4,7 @@
 #include "Favorites.h"
 #include "Glyphs.h"
 #include "Location.h"
+#include "Network.h"
 #include "Remote.h"
 #include "ShellMenu.h"
 #include "Util.h"
@@ -30,7 +31,7 @@ const COLORREF kNetworkBack = RGB(255, 228, 228);   // hellrot: Netzwerkpfade
 const COLORREF kRemoteBack = RGB(220, 244, 220);    // hellgrün: FTP/SFTP
 const COLORREF kWebDavBack = RGB(234, 250, 234);    // noch heller grün: WebDAV
 const COLORREF kStandardBack = RGB(228, 240, 253);  // hellblau: Windows-Standardverzeichnisse
-const COLORREF kCloudBack = RGB(238, 228, 252);     // hell-lila: Dropbox, Google Drive, OneDrive
+const COLORREF kCloudBack = RGB(226, 210, 248);     // hell-lila: Dropbox, Google Drive, OneDrive
 
 enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3, KindWebDav = 4, KindCloud = 5 };
 
@@ -103,6 +104,18 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
     int order[2] = {1, 0};                 // Symbolspalte links anzeigen
     ListView_SetColumnOrderArray(list_, 2, order);
     SetWindowSubclass(list_, Subclass, 1, (DWORD_PTR)this);
+    // Linux (WSL): Eintrag „Linux“ unter „Netzwerk“, Symbol wie im Explorer (Shell-Ordner „Linux“)
+    wsl_ = WslDistributions();
+    if (!wsl_.empty()) {
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        SHFILEINFOW sfiL{};
+        if (SUCCEEDED(SHParseDisplayName(L"::{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}", nullptr, &pidl, 0, nullptr))) {
+            if (SHGetFileInfoW((LPCWSTR)pidl, 0, &sfiL, sizeof(sfiL), SHGFI_PIDL | SHGFI_SYSICONINDEX | SHGFI_SMALLICON))
+                linuxIcon_ = sfiL.iIcon;
+            CoTaskMemFree(pidl);
+        }
+        if (linuxIcon_ < 0) linuxIcon_ = StockIndex(SIID_SERVER);
+    }
     RegisterFileDropTarget(
         list_,
         [this](POINT pt) -> std::wstring {
@@ -176,17 +189,26 @@ void BookmarkList::Rebuild(int select) {
     SendMessageW(list_, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(list_);
     int folder = StockIndex(SIID_FOLDER), drive = StockIndex(SIID_DRIVEFIXED);
-    if (favRow_) {
-        // „Favoriten“: Symbol und Hintergrund zeichnet NM_CUSTOMDRAW (Ordnersymbol nur für die Zeilengeometrie)
-        LVITEMW it{};
-        it.mask = LVIF_TEXT | LVIF_IMAGE;
-        it.iItem = 0;
-        it.pszText = const_cast<wchar_t*>(kFavoritesLocation);
-        it.iImage = folder;
-        ListView_InsertItem(list_, &it);
+    // Zeilenfolge: „Favoriten“ (falls vorhanden), Lesezeichen; „Linux“ direkt unter „Netzwerk“ (ohne „Netzwerk“ oben)
+    rows_.clear();
+    if (favRow_) rows_.push_back(kRowFavorites);
+    bool linuxDone = wsl_.empty();
+    bool hasNetwork = false;
+    for (auto& b : items_)
+        if (IsNetworkRoot(b.path)) hasNetwork = true;
+    if (!linuxDone && !hasNetwork) {
+        rows_.push_back(kRowLinux);
+        linuxDone = true;
     }
-    const int off = Offset();
+    for (size_t i = 0; i < items_.size(); ++i) {
+        rows_.push_back((int)i);
+        if (!linuxDone && IsNetworkRoot(items_[i].path)) {
+            rows_.push_back(kRowLinux);
+            linuxDone = true;
+        }
+    }
     kinds_.assign(items_.size(), 0);
+    icons_.assign(items_.size(), folder);
     for (size_t i = 0; i < items_.size(); ++i) {
         const std::wstring& p = items_[i].path;
         int icon = folder;
@@ -201,36 +223,45 @@ void BookmarkList::Rebuild(int select) {
         } else if (IsRootPath(p)) {
             icon = drive;
         }
+        icons_[i] = icon;
+    }
+    for (size_t row = 0; row < rows_.size(); ++row) {
+        int k = rows_[row];
         LVITEMW it{};
         it.mask = LVIF_TEXT | LVIF_IMAGE;
-        it.iItem = (int)i + off;
-        it.pszText = const_cast<wchar_t*>(items_[i].name.c_str());
-        it.iImage = icon;
+        it.iItem = (int)row;
+        // „Favoriten“: Symbol und Hintergrund zeichnet NM_CUSTOMDRAW (Ordnersymbol nur für die Zeilengeometrie)
+        it.pszText = const_cast<wchar_t*>(k == kRowFavorites ? kFavoritesLocation : k == kRowLinux ? L"Linux" : items_[k].name.c_str());
+        it.iImage = k == kRowFavorites ? folder : k == kRowLinux ? linuxIcon_ : icons_[k];
         ListView_InsertItem(list_, &it);
     }
-    icons_.clear();
-    for (size_t i = 0; i < items_.size(); ++i) {
-        LVITEMW it{};
-        it.mask = LVIF_IMAGE;
-        it.iItem = (int)i + off;
-        ListView_GetItem(list_, &it);
-        icons_.push_back(it.iImage);
-    }
     if (select >= 0 && select < (int)items_.size()) {
-        ListView_SetItemState(list_, select + off, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-        ListView_EnsureVisible(list_, select + off, FALSE);
+        int row = RowOfItem(select);
+        ListView_SetItemState(list_, row, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(list_, row, FALSE);
     }
     SendMessageW(list_, WM_SETREDRAW, TRUE, 0);
     Resize();
 }
 
+int BookmarkList::RowOfItem(int item) const {
+    for (size_t r = 0; r < rows_.size(); ++r)
+        if (rows_[r] == item) return (int)r;
+    return -1;
+}
+
+std::wstring BookmarkList::RowPath(int row) const {
+    int k = ItemOfRow(row);
+    if (k == kRowFavorites) return kFavoritesLocation;
+    if (k == kRowLinux) return kWslRoot;
+    return k >= 0 && k < (int)items_.size() ? items_[k].path : L"";
+}
+
 int BookmarkList::SelectedRow() const { return ListView_GetNextItem(list_, -1, LVNI_SELECTED); }
 
 int BookmarkList::Selected() const {
-    int row = SelectedRow();
-    if (row < 0 || IsFavRow(row)) return -1;
-    int i = ItemOfRow(row);
-    return i < (int)items_.size() ? i : -1;
+    int i = ItemOfRow(SelectedRow());
+    return i >= 0 && i < (int)items_.size() ? i : -1;
 }
 
 int BookmarkList::FindPath(const std::wstring& path) const {
@@ -293,7 +324,7 @@ void BookmarkList::RenameSelected() {
     int i = Selected();
     if (i < 0) return;
     SetFocus(list_);
-    ListView_EditLabel(list_, i + Offset());
+    ListView_EditLabel(list_, RowOfItem(i));
 }
 
 void BookmarkList::MoveSelected(int delta) {
@@ -307,7 +338,8 @@ void BookmarkList::MoveSelected(int delta) {
 
 void BookmarkList::ContextMenu(POINT pt) {
     int i = Selected();
-    bool fav = IsFavRow(SelectedRow());
+    bool fav = IsSpecialRow(SelectedRow());   // „Favoriten“ bzw. „Linux“
+    std::wstring specialPath = RowPath(SelectedRow());
     HMENU m = CreatePopupMenu();
     UINT has = i >= 0 ? MF_STRING : (MF_STRING | MF_GRAYED);
     UINT canOpen = (i >= 0 || fav) ? MF_STRING : (MF_STRING | MF_GRAYED);
@@ -328,7 +360,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     switch (id) {
     case MenuOpen:
     case MenuOpenOther:
-        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? std::wstring(kFavoritesLocation) : items_[i].path, id == MenuOpenOther);
+        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? specialPath : items_[i].path, id == MenuOpenOther);
         break;
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
@@ -410,16 +442,15 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
     case LVN_ITEMACTIVATE: {
         auto* ia = (NMITEMACTIVATE*)nm;
         int row = ia->iItem >= 0 ? ia->iItem : SelectedRow();
-        int i = ItemOfRow(row);
-        bool fav = IsFavRow(row);
-        if ((fav || (i >= 0 && i < (int)items_.size())) && cb_.navigate) {
+        std::wstring target = RowPath(row);
+        if (!target.empty() && cb_.navigate) {
             bool other = (ia->uKeyFlags & LVKF_SHIFT) != 0;
             // Klick auf das Symbol in der linken Spalte: in der anderen Liste öffnen (nicht bei der Eingabetaste)
             if (GetKeyState(VK_RETURN) >= 0) {
                 DWORD mp = GetMessagePos();
                 if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == row) other = true;
             }
-            cb_.navigate(fav ? std::wstring(kFavoritesLocation) : items_[i].path, other);
+            cb_.navigate(target, other);
         }
         return 0;
     }
@@ -436,6 +467,9 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
             std::wstring s = L"Favoriten: " + std::to_wstring(favCount_) + (favCount_ == 1 ? L" Datei" : L" Dateien") +
                              L"\n(Kontextmenü einer Datei: „Als Favorit kennzeichnen“)";
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
+        } else if (IsLinuxRow(ti->iItem)) {
+            std::wstring s = L"Linux (WSL): " + Join(wsl_, L", ") + L"\n" + kWslRoot;
+            wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         } else if (k >= 0 && k < (int)items_.size()) {
             std::wstring s = LocationDisplay(items_[k].path);
             // Netzwerk und FTP nicht prüfen (nicht erreichbare Server würden die Oberfläche blockieren)
@@ -451,7 +485,7 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         return 0;
     }
     case LVN_BEGINLABELEDITW:
-        return IsFavRow(((NMLVDISPINFOW*)nm)->item.iItem) ? TRUE : FALSE;   // „Favoriten“ nicht umbenennen
+        return IsSpecialRow(((NMLVDISPINFOW*)nm)->item.iItem) ? TRUE : FALSE;   // „Favoriten“/„Linux“ nicht umbenennen
     case LVN_ENDLABELEDITW: {
         auto* di = (NMLVDISPINFOW*)nm;
         int k = ItemOfRow(di->item.iItem);
@@ -486,7 +520,8 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
             return CDRF_NOTIFYSUBITEMDRAW;
         case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
             int row = (int)cd->nmcd.dwItemSpec;
-            size_t i = (size_t)ItemOfRow(row);
+            int k = ItemOfRow(row);
+            size_t i = k >= 0 ? (size_t)k : SIZE_MAX;
             if (cd->iSubItem == 1) {
                 // Symbolspalte: hellgrau wie Kopf- und Fußleisten, Symbol des Lesezeichens mittig
                 RECT rc{};
@@ -494,10 +529,16 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 FillRect(cd->nmcd.hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
                 HIMAGELIST il = ListView_GetImageList(list_, LVSIL_SMALL);
                 int sz = DpiScale(list_, 16);
-                if (il && i < icons_.size())
-                    ImageList_DrawEx(il, icons_[i], cd->nmcd.hdc, (rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2,
+                int iconIndex = k == kRowLinux ? linuxIcon_ : (i < icons_.size() ? icons_[i] : -1);
+                if (il && iconIndex >= 0)
+                    ImageList_DrawEx(il, iconIndex, cd->nmcd.hdc, (rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2,
                                      sz, sz, CLR_NONE, CLR_NONE, ILD_TRANSPARENT);
                 return CDRF_SKIPDEFAULT;
+            }
+            if (k == kRowLinux) {   // „Linux“ wie „Netzwerk“
+                cd->clrTextBk = kNetworkBack;
+                cd->clrText = RGB(0, 0, 0);
+                return CDRF_NEWFONT;
             }
             if (i < kinds_.size() && kinds_[i]) {
                 cd->clrTextBk = KindColor(kinds_[i]);
@@ -542,10 +583,8 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         break;
     case WM_KEYDOWN:
         if (wp == VK_RETURN) {
-            int i = self->Selected();
-            bool fav = self->IsFavRow(self->SelectedRow());
-            if ((i >= 0 || fav) && self->cb_.navigate)
-                self->cb_.navigate(fav ? std::wstring(kFavoritesLocation) : self->items_[i].path, GetKeyState(VK_SHIFT) < 0);
+            std::wstring target = self->RowPath(self->SelectedRow());
+            if (!target.empty() && self->cb_.navigate) self->cb_.navigate(target, GetKeyState(VK_SHIFT) < 0);
             return 0;
         }
         break;

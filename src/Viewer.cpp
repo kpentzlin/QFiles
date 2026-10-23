@@ -11,6 +11,7 @@
 #include "HexView.h"
 #include "MediaPreview.h"
 #include "Modules.h"
+#include "ProgramInfo.h"
 #include "Util.h"
 
 #include <windowsx.h>
@@ -56,6 +57,7 @@ constexpr wchar_t kViewerSection[] = L"Anzeige";
 constexpr UINT WM_QF_IMAGEDONE = WM_APP + 0x351;   // Hintergrund-Dekodierung fertig (wParam = Generation)
 constexpr UINT WM_QF_MEDIAPROGRESS = WM_APP + 0x352;   // PDF/Video: Fortschritt (wParam = Generation)
 constexpr UINT WM_QF_ARCHIVEDONE = WM_APP + 0x353;     // Archiv gelesen (wParam = Generation)
+constexpr UINT WM_QF_PROGRAMDONE = WM_APP + 0x355;     // Eigenschaften einer exe/dll gelesen (wParam = Generation)
 constexpr UINT WM_QF_FRAMEACTIVATE = WM_APP + 0x354;   // Anzeigefenster nach Abschluss des auslösenden Vorgangs aktivieren
 
 constexpr size_t kTextLimitWindow = 8u * 1024 * 1024;     // Text im Anzeigefenster: max. 8 MB
@@ -481,7 +483,33 @@ void ArchiveWorker(std::shared_ptr<ArchiveJob> job, HWND notify, UINT gen) {
     PostMessageW(notify, WM_QF_ARCHIVEDONE, (WPARAM)gen, 0);
 }
 
-enum class Eff { None, Message, Text, Hex, Image, Preview, Directory, Archive };
+// Eigenschaften einer Programmdatei lesen (Hintergrund-Thread: Signaturprüfung und Shell-Eigenschaften dauern)
+struct ProgramJob {
+    std::mutex m;
+    std::wstring path;
+    int iconSize = 48;
+    std::atomic<bool> cancel{false};
+    bool done = false;
+    std::vector<ProgramProperty> props;
+    HICON icon = nullptr;
+    ~ProgramJob() {
+        if (icon) DestroyIcon(icon);
+    }
+};
+
+void ProgramWorker(std::shared_ptr<ProgramJob> job, HWND notify, UINT gen) {
+    std::vector<ProgramProperty> props = ReadProgramProperties(job->path, &job->cancel);
+    HICON icon = job->cancel ? nullptr : LoadProgramIcon(job->path, job->iconSize);
+    {
+        std::lock_guard<std::mutex> lock(job->m);
+        job->props = std::move(props);
+        job->icon = icon;
+        job->done = true;
+    }
+    PostMessageW(notify, WM_QF_PROGRAMDONE, (WPARAM)gen, 0);
+}
+
+enum class Eff { None, Message, Text, Hex, Image, Preview, Directory, Archive, Program };
 
 struct ViewerState {
     HWND hwnd = nullptr;
@@ -544,6 +572,15 @@ struct ViewerState {
 
     // Verzeichnis
     std::vector<std::pair<std::wstring, std::wstring>> dirInfo;
+
+    // Programmdatei (exe/dll): Eigenschaften mit Symbol, eigener Bildlauf
+    std::shared_ptr<ProgramJob> progJob;
+    bool progLoading = false;
+    std::vector<ProgramProperty> progInfo;
+    HICON progIcon = nullptr;
+    int progScroll = 0, progTotal = 0, progLayoutW = -1, progLabelW = 0, progIconH = 0;
+    std::vector<int> progTop, progH;   // Lage der Zeilen (ohne Bildlauf, relativ zum Inhaltsanfang)
+    bool progScrollBar = false;
 
     // Darstellung
     HFONT uiFont = nullptr, uiBold = nullptr, monoFont = nullptr;
@@ -910,6 +947,20 @@ void Unload(ViewerState& s) {
     s.arcLoading = false;
     s.messageCentered = false;
     if (s.archiveView) ArchiveViewClear(s.archiveView);
+    if (s.progJob) s.progJob->cancel = true;
+    s.progJob.reset();
+    s.progLoading = false;
+    s.progInfo.clear();
+    if (s.progIcon) DestroyIcon(s.progIcon);
+    s.progIcon = nullptr;
+    s.progScroll = s.progTotal = 0;
+    s.progLayoutW = -1;
+    s.progTop.clear();
+    s.progH.clear();
+    if (s.progScrollBar) {
+        ShowScrollBar(s.hwnd, SB_VERT, FALSE);
+        s.progScrollBar = false;
+    }
 }
 
 bool ReadSample(const std::wstring& path, std::vector<uint8_t>& data) { return ReadFileBytes(path, data, kSampleSize); }
@@ -1101,6 +1152,51 @@ void OnArchiveDone(ViewerState& s, UINT gen) {
     Layout(s);
     InvalidateRect(s.hwnd, nullptr, FALSE);
     if (hadFocus) SetFocus(FocusTarget(s));
+    if (s.changed) s.changed();
+}
+
+// ---------- Programmdateien (exe/dll) ----------
+
+void StartProgram(ViewerState& s) {
+    ShowChild(s, nullptr);
+    s.eff = Eff::Program;
+    s.progLoading = true;
+    auto job = std::make_shared<ProgramJob>();
+    job->path = s.path;
+    job->iconSize = DpiScale(s.hwnd, 48);
+    s.progJob = job;
+    UINT gen = ++s.gen;
+    try {
+        std::thread(ProgramWorker, job, s.hwnd, gen).detach();
+    } catch (...) {
+        ProgramWorker(job, s.hwnd, gen);
+    }
+}
+
+void UpdateProgramScroll(ViewerState& s);
+
+void OnProgramDone(ViewerState& s, UINT gen) {
+    if (gen != s.gen || !s.progJob) return;
+    std::shared_ptr<ProgramJob> job = s.progJob;
+    std::lock_guard<std::mutex> lock(job->m);
+    if (!job->done) return;
+    s.progJob.reset();
+    s.progLoading = false;
+    s.progInfo = std::move(job->props);
+    s.progIcon = job->icon;
+    job->icon = nullptr;
+    s.progScroll = 0;
+    s.progLayoutW = -1;
+    // Testprotokoll: Anzahl der Eigenschaften, Symbol, einige Werte
+    std::wstring sample;
+    for (auto& x : s.progInfo)
+        if (!x.heading && (x.label == L"Format" || x.label == L"Prozessor" || x.label == L"Subsystem" ||
+                           x.label == L"Dateibeschreibung" || x.label == L"Signatur"))
+            sample += L" | " + x.label + L"=" + x.value;
+    TestViewerLog(PathFileName(s.path) + L" | Programm | " + std::to_wstring(s.progInfo.size()) + L" Zeilen | Symbol " +
+                  (s.progIcon ? L"ja" : L"nein") + sample);
+    UpdateProgramScroll(s);
+    InvalidateRect(s.hwnd, nullptr, FALSE);
     if (s.changed) s.changed();
 }
 
@@ -1396,6 +1492,8 @@ void LoadPath(ViewerState& s, const std::wstring& path, bool force) {
         SetMessage(s, L"„" + PathFileName(path) + L"“ kann nicht gelesen werden:\n" + LastErrorMessage(attrErr));
     } else if (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         LoadDirectory(s, fad);
+    } else if (s.mode == ViewerMode::Auto && size > 0 && IsProgramFile(path)) {
+        StartProgram(s);   // exe/dll: sämtliche Eigenschaften mit Programmsymbol
     } else if (s.mode == ViewerMode::Auto && size > 0 && IsArchiveFile(path)) {
         StartArchive(s);   // gepackte Datei: Inhalt als Liste
     } else if (MediaKind mk = s.mode == ViewerMode::Auto && size > 0 ? MediaKindForPath(path) : MediaKind::None;
@@ -1436,6 +1534,8 @@ void UpdateFonts(ViewerState& s) {
     s.monoFont = mono;
     s.lineH = FontHeight(s.hwnd, ui);
     s.headerH = s.lineH + DpiScale(s.hwnd, 8);
+    s.progLayoutW = -1;
+    UpdateProgramScroll(s);
     if (s.checker) {
         DeleteObject(s.checker);
         s.checker = nullptr;
@@ -1457,6 +1557,7 @@ std::wstring ModeText(const ViewerState& s) {
     case Eff::Preview: return L"Vorschau";
     case Eff::Directory: return L"Verzeichnis";
     case Eff::Archive: return s.arcLoading ? L"Archiv (wird gelesen)" : L"Archiv";
+    case Eff::Program: return s.progLoading ? L"Programm (wird gelesen)" : L"Programm";
     default: return L"";
     }
 }
@@ -1542,6 +1643,160 @@ void PaintDirectory(ViewerState& s, HDC dc, const RECT& cr) {
     SelectObject(dc, oldFont);
 }
 
+// ---------- Eigenschaften einer Programmdatei ----------
+
+int ProgramMargin(ViewerState& s) { return DpiScale(s.hwnd, 12); }
+
+// Zeilen umbrechen und Lage berechnen (nur bei geänderter Breite)
+void EnsureProgramLayout(ViewerState& s, HDC dc) {
+    RECT cr = ContentRect(s);
+    int width = cr.right - cr.left;
+    if (width == s.progLayoutW && s.progTop.size() == s.progInfo.size()) return;
+    s.progLayoutW = width;
+    s.progTop.assign(s.progInfo.size(), 0);
+    s.progH.assign(s.progInfo.size(), 0);
+    int m = ProgramMargin(s);
+    HGDIOBJ oldFont = SelectObject(dc, s.uiFont);
+    int labelW = 0;
+    for (auto& x : s.progInfo) {
+        if (x.heading) continue;
+        SIZE sz{};
+        GetTextExtentPoint32W(dc, x.label.c_str(), (int)x.label.size(), &sz);
+        labelW = std::max<int>(labelW, sz.cx);
+    }
+    labelW = std::min<int>(labelW + DpiScale(s.hwnd, 16), std::max(DpiScale(s.hwnd, 60), (width - 2 * m) * 2 / 5));
+    s.progLabelW = labelW;
+    int valueW = std::max(DpiScale(s.hwnd, 40), width - 2 * m - labelW);
+    int lineH = s.lineH + DpiScale(s.hwnd, 4);
+    s.progIconH = s.progIcon ? DpiScale(s.hwnd, 48) + DpiScale(s.hwnd, 8) : 0;
+    int y = m + s.progIconH;
+    for (size_t i = 0; i < s.progInfo.size(); ++i) {
+        auto& x = s.progInfo[i];
+        if (x.heading) {
+            if (i > 0) y += DpiScale(s.hwnd, 10);
+            s.progTop[i] = y;
+            s.progH[i] = lineH + DpiScale(s.hwnd, 3);
+        } else {
+            RECT r{0, 0, valueW, 0};
+            DrawTextW(dc, x.value.c_str(), (int)x.value.size(), &r,
+                      DT_CALCRECT | DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX);
+            RECT lr{0, 0, labelW - DpiScale(s.hwnd, 8), 0};
+            DrawTextW(dc, x.label.c_str(), (int)x.label.size(), &lr,
+                      DT_CALCRECT | DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX);
+            s.progTop[i] = y;
+            s.progH[i] = std::max<int>(lineH, std::max(r.bottom - r.top, lr.bottom - lr.top) + DpiScale(s.hwnd, 4));
+        }
+        y += s.progH[i];
+    }
+    s.progTotal = y + m;
+    SelectObject(dc, oldFont);
+}
+
+void UpdateProgramScroll(ViewerState& s) {
+    if (s.eff != Eff::Program) return;
+    if (!s.progScrollBar) {   // immer sichtbar (ggf. gesperrt), damit sich die Breite beim Laden nicht ändert
+        s.progScrollBar = true;
+        ShowScrollBar(s.hwnd, SB_VERT, TRUE);
+    }
+    HDC dc = GetDC(s.hwnd);
+    EnsureProgramLayout(s, dc);
+    ReleaseDC(s.hwnd, dc);
+    RECT cr = ContentRect(s);
+    int page = std::max<int>(1, cr.bottom - cr.top);
+    s.progScroll = std::clamp(s.progScroll, 0, std::max(0, s.progTotal - page));
+    SCROLLINFO si{sizeof(si)};
+    si.fMask = SIF_ALL | SIF_DISABLENOSCROLL;
+    si.nMin = 0;
+    si.nMax = std::max(0, s.progTotal - 1);
+    si.nPage = (UINT)page;
+    si.nPos = s.progScroll;
+    SetScrollInfo(s.hwnd, SB_VERT, &si, TRUE);
+}
+
+void ProgramScrollTo(ViewerState& s, int pos) {
+    RECT cr = ContentRect(s);
+    int page = std::max<int>(1, cr.bottom - cr.top);
+    pos = std::clamp(pos, 0, std::max(0, s.progTotal - page));
+    if (pos == s.progScroll) return;
+    s.progScroll = pos;
+    SetScrollPos(s.hwnd, SB_VERT, pos, TRUE);
+    InvalidateRect(s.hwnd, nullptr, FALSE);
+}
+
+void PaintProgram(ViewerState& s, HDC dc, const RECT& cr) {
+    if (s.progLoading) {
+        PaintMessage(s, dc, cr, L"Eigenschaften werden gelesen …");
+        return;
+    }
+    FillRect(dc, &cr, GetSysColorBrush(COLOR_WINDOW));
+    EnsureProgramLayout(s, dc);
+    int save = SaveDC(dc);
+    IntersectClipRect(dc, cr.left, cr.top, cr.right, cr.bottom);
+    HGDIOBJ oldFont = SelectObject(dc, s.uiFont);
+    SetBkMode(dc, TRANSPARENT);
+    int m = ProgramMargin(s);
+    int top = cr.top - s.progScroll;
+    if (s.progIcon) {
+        int sz = DpiScale(s.hwnd, 48);
+        DrawIconEx(dc, cr.left + m, top + m, s.progIcon, sz, sz, 0, nullptr, DI_NORMAL);
+        // daneben: Dateibeschreibung (sonst Dateiname) und Firma
+        std::wstring title = PathFileName(s.path), sub;
+        for (auto& x : s.progInfo) {
+            if (x.heading) continue;
+            if (x.label == L"Dateibeschreibung" && title == PathFileName(s.path)) title = x.value;
+            if (x.label == L"Firma" && sub.empty()) sub = x.value;
+        }
+        RECT tr{cr.left + m + sz + DpiScale(s.hwnd, 12), top + m, cr.right - m, top + m + sz};
+        SelectObject(dc, s.uiBold);
+        SetTextColor(dc, GetSysColor(COLOR_WINDOWTEXT));
+        RECT r1 = tr;
+        r1.bottom = tr.top + sz / 2;
+        DrawTextW(dc, title.c_str(), (int)title.size(), &r1, DT_SINGLELINE | DT_BOTTOM | DT_NOPREFIX | DT_END_ELLIPSIS);
+        if (!sub.empty()) {
+            SelectObject(dc, s.uiFont);
+            SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
+            RECT r2 = tr;
+            r2.top = tr.top + sz / 2 + DpiScale(s.hwnd, 2);
+            DrawTextW(dc, sub.c_str(), (int)sub.size(), &r2, DT_SINGLELINE | DT_TOP | DT_NOPREFIX | DT_END_ELLIPSIS);
+        }
+        SelectObject(dc, s.uiFont);
+    }
+    HPEN pen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_3DLIGHT));
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    for (size_t i = 0; i < s.progInfo.size() && i < s.progTop.size(); ++i) {
+        int y = top + s.progTop[i], h = s.progH[i];
+        if (y + h < cr.top) continue;
+        if (y > cr.bottom) break;
+        auto& x = s.progInfo[i];
+        if (x.heading) {
+            SelectObject(dc, s.uiBold);
+            SetTextColor(dc, GetSysColor(COLOR_WINDOWTEXT));
+            RECT r{cr.left + m, y, cr.right - m, y + h - DpiScale(s.hwnd, 3)};
+            DrawTextW(dc, x.label.c_str(), (int)x.label.size(), &r, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+            MoveToEx(dc, cr.left + m, y + h - DpiScale(s.hwnd, 2), nullptr);
+            LineTo(dc, cr.right - m, y + h - DpiScale(s.hwnd, 2));
+            SelectObject(dc, s.uiFont);
+            continue;
+        }
+        int pad = DpiScale(s.hwnd, 2);
+        RECT lr{cr.left + m, y + pad, cr.left + m + s.progLabelW - DpiScale(s.hwnd, 8), y + h};
+        RECT vr{cr.left + m + s.progLabelW, y + pad, cr.right - m, y + h};
+        SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
+        DrawTextW(dc, x.label.c_str(), (int)x.label.size(), &lr, DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX);
+        SetTextColor(dc, GetSysColor(COLOR_WINDOWTEXT));
+        DrawTextW(dc, x.value.c_str(), (int)x.value.size(), &vr, DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX);
+    }
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+    SelectObject(dc, oldFont);
+    RestoreDC(dc, save);
+}
+
+void ProgramCopy(ViewerState& s) {
+    if (s.eff != Eff::Program || s.progInfo.empty()) return;
+    ClipboardSetText(s.hwnd, ProgramPropertiesText(s.path, s.progInfo));
+}
+
 void Paint(ViewerState& s, HDC target) {
     RECT rc;
     GetClientRect(s.hwnd, &rc);
@@ -1567,6 +1822,7 @@ void Paint(ViewerState& s, HDC target) {
         }
         break;
     case Eff::Directory: PaintDirectory(s, dc, cr); break;
+    case Eff::Program: PaintProgram(s, dc, cr); break;
     case Eff::Archive:
         if (s.arcLoading)
             PaintMessage(s, dc, cr, L"Archiv wird gelesen …\n\nEsc bricht ab");
@@ -1797,6 +2053,28 @@ void OnViewerKeyDown(ViewerState& s, WPARAM vk, LPARAM lp) {
     case VK_TAB:
         if (HWND p = GetParent(s.hwnd)) SendMessageW(p, WM_KEYDOWN, vk, lp);
         return;
+    default: break;
+    }
+    if (s.eff == Eff::Program) {
+        RECT cr = ContentRect(s);
+        int page = std::max<int>(s.lineH, (int)(cr.bottom - cr.top) - s.lineH);
+        int line = s.lineH + DpiScale(s.hwnd, 4);
+        switch (vk) {
+        case VK_UP: ProgramScrollTo(s, s.progScroll - line); break;
+        case VK_DOWN: ProgramScrollTo(s, s.progScroll + line); break;
+        case VK_PRIOR: ProgramScrollTo(s, s.progScroll - page); break;
+        case VK_NEXT: ProgramScrollTo(s, s.progScroll + page); break;
+        case VK_HOME: ProgramScrollTo(s, 0); break;
+        case VK_END: ProgramScrollTo(s, s.progTotal); break;
+        case 'C':
+        case VK_INSERT:
+            if (ctrl) ProgramCopy(s);
+            break;
+        default: break;
+        }
+        return;
+    }
+    switch (vk) {
     case VK_NEXT:
     case VK_PRIOR:
         if (s.navigate && (s.eff == Eff::Image || s.eff == Eff::Directory || s.eff == Eff::Message ||
@@ -1873,6 +2151,7 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DPICHANGED_AFTERPARENT: UpdateFonts(*s); return 0;
     case WM_SIZE:
         Layout(*s);
+        UpdateProgramScroll(*s);
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_ERASEBKGND: return 1;
@@ -1890,6 +2169,45 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_QF_IMAGEDONE: OnImageDone(*s, (UINT)wp); return 0;
     case WM_QF_ARCHIVEDONE: OnArchiveDone(*s, (UINT)wp); return 0;
+    case WM_QF_PROGRAMDONE: OnProgramDone(*s, (UINT)wp); return 0;
+    case WM_VSCROLL:
+        if (s->eff == Eff::Program) {
+            SCROLLINFO si{sizeof(si)};
+            si.fMask = SIF_ALL;
+            GetScrollInfo(hwnd, SB_VERT, &si);
+            int line = s->lineH + DpiScale(hwnd, 4), pos = s->progScroll;
+            switch (LOWORD(wp)) {
+            case SB_LINEUP: pos -= line; break;
+            case SB_LINEDOWN: pos += line; break;
+            case SB_PAGEUP: pos -= (int)si.nPage; break;
+            case SB_PAGEDOWN: pos += (int)si.nPage; break;
+            case SB_THUMBTRACK:
+            case SB_THUMBPOSITION: pos = si.nTrackPos; break;
+            case SB_TOP: pos = 0; break;
+            case SB_BOTTOM: pos = s->progTotal; break;
+            default: break;
+            }
+            ProgramScrollTo(*s, pos);
+            return 0;
+        }
+        break;
+    case WM_CONTEXTMENU:
+        if (s->eff == Eff::Program && !s->progInfo.empty()) {
+            HMENU m = CreatePopupMenu();
+            AppendMenuW(m, MF_STRING, 1, L"Eigenschaften &kopieren\tStrg+C");
+            int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+            if (x == -1 && y == -1) {
+                POINT pt{0, 0};
+                ClientToScreen(hwnd, &pt);
+                x = pt.x;
+                y = pt.y;
+            }
+            int c = (int)TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0, hwnd, nullptr);
+            DestroyMenu(m);
+            if (c == 1) ProgramCopy(*s);
+            return 0;
+        }
+        break;
     case WM_QF_MEDIAPROGRESS:
         if ((UINT)wp == s->gen && s->job) {
             std::lock_guard<std::mutex> lock(s->job->m);
@@ -1908,6 +2226,14 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         // Benachrichtigungen der Kindfenster (HexView-Status, EN_*) werden hier nicht benötigt.
         return 0;
     case WM_MOUSEWHEEL: {
+        if (s->eff == Eff::Program) {
+            UINT lines = 3;
+            SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+            if (lines == WHEEL_PAGESCROLL) lines = 20;
+            int line = s->lineH + DpiScale(hwnd, 4);
+            ProgramScrollTo(*s, s->progScroll - GET_WHEEL_DELTA_WPARAM(wp) * (int)lines * line / WHEEL_DELTA);
+            return 0;
+        }
         if (s->eff != Eff::Image || !s->img) break;
         int delta = GET_WHEEL_DELTA_WPARAM(wp);
         if (GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) {

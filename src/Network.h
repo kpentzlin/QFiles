@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace qf {
 
@@ -34,5 +35,11 @@ std::shared_ptr<NetworkScan> StartNetworkScan(const std::wstring& location, bool
 // Rechner/Freigaben aus verbundenen Netzlaufwerken (sofort, ohne Netzwerkzugriff) – z. B. für die Anzeige
 // des Netzlaufwerks im Baum: "N:" -> "\\fritz.box\FRITZ.NAS\media1". Leer bei lokalen Laufwerken.
 std::wstring MappedDriveTarget(const std::wstring& driveRoot);
+
+// Linux (WSL): installierte Distributionen (aus HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss), leer ohne WSL.
+// Sie erscheinen im Explorer unter „Linux“ und sind über \\wsl$\<Distribution> erreichbar.
+std::vector<std::wstring> WslDistributions();
+extern const wchar_t* const kWslRoot;   // "\\wsl$"
+bool IsWslServer(const std::wstring& server);   // "wsl$" oder "wsl.localhost"
 
 } // namespace qf

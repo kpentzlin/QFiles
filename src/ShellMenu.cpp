@@ -814,7 +814,7 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dirIn, const std::vecto
     for (int i = 0; i < extraCount; ++i) {
         wchar_t text[256] = {};
         MENUITEMINFOW mi{sizeof(mi)};
-        mi.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STRING | MIIM_STATE | MIIM_SUBMENU;
+        mi.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STRING | MIIM_STATE | MIIM_SUBMENU | MIIM_BITMAP;
         mi.dwTypeData = text;
         mi.cch = 255;
         GetMenuItemInfoW(extra, i, TRUE, &mi);
@@ -839,7 +839,7 @@ int ShowShellContextMenu(HWND owner, const std::wstring& dirIn, const std::vecto
         for (int i = 0; i < extraCount; ++i) {
             wchar_t text[256] = {};
             MENUITEMINFOW mi{sizeof(mi)};
-            mi.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STRING | MIIM_STATE;
+            mi.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STRING | MIIM_STATE | MIIM_BITMAP;
             mi.dwTypeData = text;
             mi.cch = 255;
             GetMenuItemInfoW(extra, i, TRUE, &mi);

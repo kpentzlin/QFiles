@@ -1,4 +1,4 @@
-# Erzeugt Funktionsvergleich.pdf: QFiles im Vergleich mit Idoswin Pro und SpeedCommander.
+# Erzeugt „QFiles Funktionsvergleich.pdf“: QFiles im Vergleich mit Idoswin Pro und SpeedCommander.
 # Aufruf: python tools/funktionsvergleich.py [Ausgabedatei]   (benötigt reportlab und die Schrift DejaVu Sans)
 #
 # Je Zeile: Funktion, QFiles, Idoswin Pro, SpeedCommander, Bemerkung, abweichend (True/False).
@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.9"
+QF_VERSION = "0.1.10"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -61,6 +61,7 @@ DATA = [
         ("Lesezeichen farbig nach Art (Standard-, Cloud-, FTP-, Netzwerkordner)", "ja", "–", "–", "", False),
         ("Lesezeichen nach Art sortieren", "ja", "–", "–", "", False),
         ("Cloud-Speicher-Ordner erkennen und als Lesezeichen anlegen", "ja", "–", "–", "Dropbox, Google Drive, OneDrive (mehrere Konten)", False),
+        ("Linux-Distributionen (WSL) als Lesezeichen unter „Netzwerk“", "ja", "–", "–", "neu in QFiles 0.1.10", False),
         ("Dateien auf ein Lesezeichen ziehen", "ja", "?", "teilw.", "SC: QuickDrop-Symbole als Ziel", False),
         ("Laufwerksleiste je Liste", "ja", "ja", "ja", "Idoswin: Option „Zwei Laufwerkssymbolleisten“", False),
         ("Laufwerkssymbole nach Art (lokal, subst, Netz, CD, extern, RAM-Disk)", "ja", "–", "–", "mit Tooltip (Art, Ziel, Bezeichnung)", False),
@@ -76,7 +77,7 @@ DATA = [
         ("Tastenkürzel frei belegen", "–", "–", "ja", "SC: auch zweistufige Kürzel", False),
         ("Statusleiste mit belegtem und freiem Speicher", "ja", "ja", "ja", "", False),
         ("Infotips in der Liste", "teilw.", "ja", "?", "QFiles: Name, Datum, Größe; Idoswin: erweitert (PDF, MP3, Ordnergröße)", A),
-        ("Nicht aktive Listen grau hinterlegen", "ja", "–", "–", "", False),
+        ("Nicht aktive Listen grau hinterlegen", "ja", "–", "–", "je Liste in einer anderen Graustufe", False),
         ("Gestreifte Liste (abwechselnde Zeilenfarben)", "ja", "?", "ja", "", False),
         ("Gitternetz-/Trennlinien in der Detailansicht", "ja", "?", "ja", "", False),
         ("Designs, dunkler Modus, Farbschemata", "–", "–", "ja", "", False),
@@ -216,6 +217,9 @@ DATA = [
         ("NTFS-Sicherheitsattribute übertragen", "–", "–", "ja", "", False),
         ("Synchronisationsprotokoll, Kommandozeilen-Werkzeug", "–", "–", "ja", "", False),
         ("Textdateien zeilenweise nebeneinander vergleichen", "ja", "ja", "–", "SC: externes Vergleichsprogramm", False),
+        ("Externes Vergleichsprogramm (Beyond Compare) aufrufen", "ja", "?", "ja",
+         "neu in QFiles 0.1.10: Kontextmenü „Mit anderer Liste vergleichen“ bei gleichnamiger Datei in einer anderen "
+         "Liste; Richtung am Symbol", False),
         ("Zeichengenaue Hervorhebung der Unterschiede", "ja", "–", "–", "", False),
         ("Vergleich wahlweise übereinander", "–", "ja", "–", "", False),
         ("Binärdateien vergleichen", "ja", "ja", "–", "", False),
@@ -244,7 +248,9 @@ DATA = [
         ("Video: Einzelbilder als Übersicht mit Auflösung und Dauer", "ja", "–", "–", "", False),
         ("Audio und Video abspielen", "–", "ja", "ja", "", False),
         ("Office, HTML, RTF (Vorschauhandler)", "ja", "ja", "ja", "", False),
-        ("Programmdatei-Viewer (Importe, Exporte, Zertifikate)", "–", "–", "ja", "", False),
+        ("Programmdatei-Viewer (Importe, Exporte, Zertifikate)", "ja", "–", "ja",
+         "neu in QFiles 0.1.10: F11 auf .exe/.dll – Programmsymbol, Versionsinfo, PE-Kopf, Manifest, Signatur, "
+         "Importe/Exporte, Windows-Eigenschaften", False),
         ("Zeilenfilter in der Anzeige", "–", "–", "ja", "", False),
         ("Hex-Ansicht und Hex-Editor", "ja", "ja", "ja", "", False),
         ("Hex-Editor: Bytes einfügen/löschen", "–", "?", "?", "QFiles: nur Überschreibmodus", False),
@@ -424,4 +430,4 @@ def main(out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "Funktionsvergleich.pdf")
+    main(sys.argv[1] if len(sys.argv) > 1 else "QFiles Funktionsvergleich.pdf")

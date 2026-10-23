@@ -118,6 +118,8 @@ enum : int {
     ShowDirSizes,      // Ansicht: Verzeichnisgrößen anzeigen (Option)
     PrivateMode,       // Privater Modus (kein Verlauf speichern) ein/aus
     ClearHistory,      // Verlauf löschen
+    CompareWithPane0 = 40580,  // Mit anderer Liste vergleichen (Beyond Compare): + Index der anderen Liste (0–3)
+    CompareWithPane3 = 40583,
 
     // Hilfe
     Shortcuts = 40600,

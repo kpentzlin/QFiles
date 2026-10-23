@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(QFiles VERSION 0.1.9 LANGUAGES C CXX RC)
+project(QFiles VERSION 0.1.10 LANGUAGES C CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -65,7 +65,7 @@ target_compile_definitions(QFiles PRIVATE
 target_link_libraries(QFiles PRIVATE
     comctl32 shell32 shlwapi ole32 oleaut32 uuid
     gdi32 user32 comdlg32 advapi32 windowscodecs propsys version msimg32 uxtheme dbghelp bcrypt
-    qf_libssh2 ws2_32 crypt32 netapi32 mpr winhttp
+    qf_libssh2 ws2_32 crypt32 netapi32 mpr winhttp wintrust
 )
 
 if(MSVC)

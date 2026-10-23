@@ -135,6 +135,18 @@ bool ScanShares(const std::wstring& server, bool includeHidden, const std::share
                 const std::function<void(const NetworkItem&)>& found, DWORD* errorOut) {
     Deduplicator dedup;
     bool any = false;
+    // Linux (WSL): Distributionen aus der Registrierung (NetShareEnum kennt \\wsl$ nicht)
+    if (IsWslServer(server)) {
+        for (auto& d : WslDistributions())
+            if (dedup.Add(d)) {
+                found({d, L"Linux (WSL)"});
+                any = true;
+            }
+        if (any) {
+            if (errorOut) *errorOut = 0;
+            return true;
+        }
+    }
     // Freigaben verbundener Netzlaufwerke dieses Rechners (auch WebDAV, das NetShareEnum nicht kennt)
     for (auto& m : MappedShares())
         if (EqualsI(m.first, server) && !m.second.empty() && dedup.Add(m.second)) {
@@ -189,6 +201,29 @@ bool ScanShares(const std::wstring& server, bool includeHidden, const std::share
 }
 
 } // namespace
+
+const wchar_t* const kWslRoot = L"\\\\wsl$";
+
+bool IsWslServer(const std::wstring& server) { return EqualsI(server, L"wsl$") || EqualsI(server, L"wsl.localhost"); }
+
+std::vector<std::wstring> WslDistributions() {
+    std::vector<std::wstring> r;
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Lxss", 0, KEY_READ, &key) != ERROR_SUCCESS)
+        return r;
+    for (DWORD i = 0;; ++i) {
+        wchar_t sub[256];
+        DWORD n = 256;
+        if (RegEnumKeyExW(key, i, sub, &n, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+        wchar_t name[256] = {};
+        DWORD cb = sizeof(name) - sizeof(wchar_t);
+        if (RegGetValueW(key, sub, L"DistributionName", RRF_RT_REG_SZ, nullptr, name, &cb) == ERROR_SUCCESS && name[0])
+            r.push_back(name);
+    }
+    RegCloseKey(key);
+    std::sort(r.begin(), r.end(), [](const std::wstring& a, const std::wstring& b) { return CompareI(a, b) < 0; });
+    return r;
+}
 
 std::wstring MappedDriveTarget(const std::wstring& driveRoot) {
     if (driveRoot.size() < 2 || driveRoot[1] != L':') return L"";

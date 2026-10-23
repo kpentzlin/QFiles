@@ -885,6 +885,103 @@ void DrawPrivateP(HDC dc, const RECT& rc, bool on) {
     DeleteObject(font);
 }
 
+
+// Beyond Compare: Pfad von BCompare.exe ("" = nicht installiert). QFILES_BCOMPARE (Umgebung) ersetzt die Suche (Tests).
+std::wstring BeyondComparePath() {
+    wchar_t env[MAX_PATH * 2] = {};
+    if (GetEnvironmentVariableW(L"QFILES_BCOMPARE", env, MAX_PATH * 2) && FileExists(env)) return env;
+    const wchar_t* keys[] = {L"SOFTWARE\\Scooter Software\\Beyond Compare 5", L"SOFTWARE\\Scooter Software\\Beyond Compare 4",
+                             L"SOFTWARE\\Scooter Software\\Beyond Compare 3", L"SOFTWARE\\Scooter Software\\Beyond Compare"};
+    for (HKEY root : {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE})
+        for (auto k : keys)
+            for (REGSAM view : {(REGSAM)KEY_WOW64_64KEY, (REGSAM)KEY_WOW64_32KEY}) {
+                HKEY h = nullptr;
+                if (RegOpenKeyExW(root, k, 0, KEY_READ | view, &h) != ERROR_SUCCESS) continue;
+                for (auto v : {L"ExePath", L"ExePath64"}) {
+                    wchar_t buf[MAX_PATH * 2] = {};
+                    DWORD cb = sizeof(buf) - sizeof(wchar_t);
+                    if (RegGetValueW(h, nullptr, v, RRF_RT_REG_SZ, nullptr, buf, &cb) == ERROR_SUCCESS && FileExists(buf)) {
+                        RegCloseKey(h);
+                        return buf;
+                    }
+                }
+                RegCloseKey(h);
+            }
+    {
+        wchar_t buf[MAX_PATH * 2] = {};
+        DWORD cb = sizeof(buf) - sizeof(wchar_t);
+        if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\BCompare.exe", nullptr,
+                         RRF_RT_REG_SZ, nullptr, buf, &cb) == ERROR_SUCCESS) {
+            std::wstring p = buf;
+            if (p.size() >= 2 && p.front() == L'"' && p.back() == L'"') p = p.substr(1, p.size() - 2);
+            if (FileExists(p)) return p;
+        }
+    }
+    for (auto base : {GetKnownFolder(FOLDERID_ProgramFiles), GetKnownFolder(FOLDERID_ProgramFilesX86)})
+        for (auto dir : {L"Beyond Compare 5", L"Beyond Compare 4", L"Beyond Compare 3"}) {
+            std::wstring p = PathCombine(PathCombine(base, dir), L"BCompare.exe");
+            if (!base.empty() && FileExists(p)) return p;
+        }
+    return L"";
+}
+
+// Symbol „Mit anderer Liste vergleichen“: schwarzer Kreis, zur Hälfte bzw. zum Viertel grau in Richtung der anderen
+// Liste (dx/dy: -1 links/oben, 1 rechts/unten). 32 Bit mit vormultipliziertem Alpha (Menübild).
+HBITMAP CompareDirectionBitmap(int size, int dx, int dy) {
+    std::vector<uint32_t> px((size_t)size * size, 0);
+    RenderAlphaCell(px.data(), size, 0, size, [&](HDC d, const RECT& r) {
+        int sz = r.right - r.left;
+        int in = std::max(1, sz / 16);
+        int l = in, t = in, rr = sz - in, b = sz - in;
+        int cx = sz / 2, cy = sz / 2;
+        HBRUSH black = CreateSolidBrush(RGB(0, 0, 0));
+        HGDIOBJ ob = SelectObject(d, black), op = SelectObject(d, GetStockObject(NULL_PEN));
+        Ellipse(d, l, t, rr + 1, b + 1);
+        HBRUSH gray = CreateSolidBrush(RGB(175, 175, 175));
+        SelectObject(d, gray);
+        int g = std::max(1, sz / 9);   // schwarzer Rand
+        int gl = l + g, gt = t + g, gr = rr - g + 1, gb = b - g + 1;
+        // Pie zeichnet gegen den Uhrzeigersinn vom ersten zum zweiten Punkt
+        POINT top{cx, gt - 2}, bottom{cx, gb + 2}, left{gl - 2, cy}, right{gr + 2, cy};
+        POINT a{}, e{};
+        if (dx != 0 && dy != 0) {          // Viertel
+            if (dx > 0 && dy < 0) a = right, e = top;
+            else if (dx < 0 && dy < 0) a = top, e = left;
+            else if (dx < 0 && dy > 0) a = left, e = bottom;
+            else a = bottom, e = right;
+        } else if (dx != 0) {              // Hälfte links/rechts
+            if (dx < 0) a = top, e = bottom;
+            else a = bottom, e = top;
+        } else {                           // Hälfte oben/unten
+            if (dy < 0) a = right, e = left;
+            else a = left, e = right;
+        }
+        Pie(d, gl, gt, gr, gb, a.x, a.y, e.x, e.y);
+        SelectObject(d, ob);
+        SelectObject(d, op);
+        DeleteObject(black);
+        DeleteObject(gray);
+    });
+    BITMAPINFO bi{};
+    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), size, -size, 1, 32, BI_RGB};
+    void* bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bmp || !bits) return bmp;
+    auto* out = (uint32_t*)bits;
+    for (size_t i = 0; i < px.size(); ++i) {
+        uint32_t c = px[i], al = c >> 24;
+        uint32_t r = ((c >> 16) & 0xFF) * al / 255, g = ((c >> 8) & 0xFF) * al / 255, b = (c & 0xFF) * al / 255;
+        out[i] = (al << 24) | (r << 16) | (g << 8) | b;
+    }
+    return bmp;
+}
+
+std::wstring DirectionText(int dx, int dy) {
+    std::wstring h = dx < 0 ? L"links" : dx > 0 ? L"rechts" : L"";
+    std::wstring v = dy < 0 ? L"oben" : dy > 0 ? L"unten" : L"";
+    return h.empty() ? v : v.empty() ? h : h + L" " + v;
+}
+
 } // namespace
 
 void MainWindow::BuildToolbar() {
@@ -1730,9 +1827,40 @@ void MainWindow::OnPaneContextMenu(FilePane* p, POINT pt, bool onItems) {
         AddItem(extra, cmd::Refresh, L"&Aktualisieren\tF5");
         AddItem(extra, cmd::BookmarkAdd, L"Den &Lesezeichen hinzufügen\tStrg+D");
     }
+    // Mit anderer Liste vergleichen (Beyond Compare): einzelne Datei, gleichnamige Datei im Verzeichnis einer anderen
+    // sichtbaren Liste; mehrere Listen unterscheidbar am Symbol (Richtung der anderen Liste)
+    std::vector<HBITMAP> menuBitmaps;
+    if (onItems && names.size() == 1 && !p->FocusedIsDir()) {
+        std::wstring mine = PathCombine(p->Dir(), names[0]);
+        std::vector<int> others;
+        if (FileExists(mine) && !BeyondComparePath().empty())
+            for (int i = 0; i < 4; ++i) {
+                if (i == p->Index() || !PaneVisible(i) || (quickView_ && i == quickViewPane_)) continue;
+                FilePane& o = *panes_[i];
+                if (o.IsVirtual() || o.IsFavorites() || o.Dir().empty()) continue;
+                std::wstring other = PathCombine(o.Dir(), PathFileName(mine));
+                if (FileExists(other) && !EqualsI(CanonicalPath(other), CanonicalPath(mine))) others.push_back(i);
+            }
+        if (!others.empty()) AppendMenuW(extra, MF_SEPARATOR, 0, nullptr);
+        int iconSize = DpiScale(hwnd_, 16);
+        for (int i : others) {
+            int dx = i % 2 - p->Index() % 2, dy = i / 2 - p->Index() / 2;
+            std::wstring text = L"Mit anderer Liste &vergleichen";
+            if (others.size() > 1) text += L" (" + DirectionText(dx, dy) + L")";
+            HBITMAP bmp = CompareDirectionBitmap(iconSize, dx, dy);
+            menuBitmaps.push_back(bmp);
+            MENUITEMINFOW mi{sizeof(mi)};
+            mi.fMask = MIIM_ID | MIIM_STRING | MIIM_BITMAP;
+            mi.wID = cmd::CompareWithPane0 + i;
+            mi.dwTypeData = text.data();
+            mi.hbmpItem = bmp;
+            InsertMenuItemW(extra, GetMenuItemCount(extra), TRUE, &mi);
+        }
+    }
     bool rename = false;
     int id = ShowShellContextMenu(hwnd_, p->Dir(), names, pt, extra, &rename);
     DestroyMenu(extra);
+    for (HBITMAP b : menuBitmaps) DeleteObject(b);
     if (rename) p->BeginRename();
     else if (id) OnCommand(id);
     else ReloadVisible();
@@ -3037,6 +3165,20 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::PrivateMode: SetPrivateMode(!App::Opt().privateMode); break;
+    case cmd::CompareWithPane0: case cmd::CompareWithPane0 + 1: case cmd::CompareWithPane0 + 2: case cmd::CompareWithPane3: {
+        // Beyond Compare: die Datei der weiter links (bzw. oben) stehenden Liste links
+        int o = id - cmd::CompareWithPane0;
+        std::wstring bc = BeyondComparePath();
+        std::wstring mine = a.FocusedPath();
+        if (bc.empty() || mine.empty() || o == active_) break;
+        std::wstring other = PathCombine(panes_[o]->Dir(), PathFileName(mine));
+        if (!FileExists(other)) break;
+        bool otherFirst = (o % 2 < active_ % 2) || (o % 2 == active_ % 2 && o / 2 < active_ / 2);
+        std::wstring left = otherFirst ? other : mine, right = otherFirst ? mine : other;
+        RunProcess(Quote(bc) + L" " + Quote(left) + L" " + Quote(right), PathParent(mine));
+        LogOperation(L"Vergleich mit Beyond Compare: " + left + L" ↔ " + right);
+        break;
+    }
     case cmd::ClearHistory: ClearAllHistory(); break;
 
     // ---- Favoriten ----

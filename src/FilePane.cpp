@@ -711,7 +711,7 @@ bool FilePane::IsCutItem(const Item& it) const {
 // Hintergrund nicht aktiver Listen: etwas heller als Kopf- und Fußleiste, leicht abgestuft von hell nach dunkel:
 // rechts oben (Liste 2), links oben (Liste 1), rechts unten (Liste 4), links unten (Liste 3)
 COLORREF FilePane::InactiveBack() const {
-    static const int lighten[4] = {80, 105, 30, 55};   // Liste 1, 2, 3, 4
+    static const int lighten[4] = {140, 190, 30, 85};   // Liste 1, 2, 3, 4 (Liste 3 = dunkelstes Grau)
     return Blend(GetSysColor(COLOR_BTNFACE), RGB(255, 255, 255), lighten[index_ & 3]);
 }
 

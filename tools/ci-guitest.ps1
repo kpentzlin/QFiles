@@ -633,6 +633,67 @@ else {
   "Namenskonflikt beim Kopieren nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
+# ---- Programmdateien (F11 auf .exe/.dll: Eigenschaften mit Symbol) und „Mit anderer Liste vergleichen“
+#      (Beyond Compare über QFILES_BCOMPARE vorgetäuscht; das Kontextmenü wird nur gezeigt, nicht ausgeführt) ----
+$prgA = "C:\QFilesProgramme"; $prgB = "C:\QFilesProgramme2"
+New-Item -ItemType Directory -Force -Path $prgA, $prgB | Out-Null
+foreach ($f in "cmd.exe", "explorer.exe", "kernel32.dll") {
+  $src = if ($f -eq "explorer.exe") { "$env:SystemRoot\explorer.exe" } else { "$env:SystemRoot\System32\$f" }
+  Copy-Item $src "$prgA\$f" -Force
+}
+Copy-Item "$env:SystemRoot\System32\cmd.exe" "$prgB\cmd.exe" -Force
+Remove-Item $viewLog -ErrorAction SilentlyContinue
+$env:QFILES_TEST_VIEWERLOG = $viewLog
+$env:QFILES_BCOMPARE = "$env:SystemRoot\System32\cmd.exe"
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $prgA + '"'),('"' + $prgB + '"') -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Programme)"
+$mainH = [W]::FindWindow("QFilesMain", [NullString]::Value)
+[W]::SetForegroundWindow($mainH) | Out-Null
+$best = [IntPtr]::Zero; $bestKey = [int]::MaxValue; $h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($mainH, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $key = $r.L + $r.T * 10
+  if ($key -lt $bestKey) { $bestKey = $key; $best = $h }
+}
+$plist = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
+$prc = New-Object W+RECT; [W]::GetWindowRect($plist, [ref]$prc) | Out-Null
+[W]::Click($prc.L + 60, $prc.T + 24 + 1 * 20 + 10, $false); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("{HOME}{DOWN}"); Start-Sleep -Milliseconds 400
+[W]::Key(0x5D); Start-Sleep -Seconds 2   # Kontextmenü von cmd.exe: mit Eintrag „Mit anderer Liste vergleichen“
+Shot "screenshot26.png"
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 600
+Remove-Item Env:\QFILES_BCOMPARE
+[System.Windows.Forms.SendKeys]::SendWait("{F11}")
+Wait-ViewerLog 1
+Check-Alive "Dateianzeige Programm 1"
+Shot "screenshot27.png"   # cmd.exe: Symbol, Versionsinfo
+for ($i = 1; $i -le 2; $i++) {
+  [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+  Wait-ViewerLog ($i + 1)
+  Check-Alive "Dateianzeige Programm $($i + 1)"
+}
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+Remove-Item Env:\QFILES_TEST_VIEWERLOG
+$pgl = @()
+if (Test-Path $viewLog) { $pgl = @(Get-Content $viewLog -Encoding UTF8) }
+$pgl | ForEach-Object { Write-Output $_ }
+$pgOk = @($pgl | Where-Object { $_ -match '^(cmd\.exe|explorer\.exe|kernel32\.dll) \| Programm \| \d+ Zeilen \|.*Format=PE32\+' }).Count
+$pgIcon = @($pgl | Where-Object { $_ -match '^(cmd|explorer)\.exe \| Programm \|.*Symbol ja' }).Count
+if ($pgOk -eq 3 -and $pgIcon -eq 2) { Write-Output ("::notice title=Programmdateien::" + ($pgl -join ' / ')) }
+else {
+  Write-Output ("::error title=Programmdateien::" + ($pgl -join ' / '))
+  "Eigenschaften von Programmdateien nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+if (@($pgl | Where-Object { $_ -match 'Signatur=gültig' }).Count -lt 3) {
+  Write-Output "::warning title=Signaturprüfung::Nicht alle Systemdateien als gültig signiert erkannt"
+}
+
 # ---- Favoriten und privater Modus: Liste 1 zeigt die Favoriten (hellgelb, Spalte „Verzeichnis“), eine nicht mehr
 #      vorhandene Datei entfällt stillschweigend; Kopfzeilen im privaten Modus grün ----
 $favLog = "$PWD\favoriten-log.txt"

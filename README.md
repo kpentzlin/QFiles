@@ -17,7 +17,7 @@ ebenfalls unterstützt.
 ## Abweichungen von Idoswin Pro
 
 Eine nummerierte Gegenüberstellung der Funktionen von QFiles, Idoswin Pro und SpeedCommander steht in
-[`Funktionsvergleich.pdf`](Funktionsvergleich.pdf) (erzeugt mit `tools/funktionsvergleich.py`).
+[`QFiles Funktionsvergleich.pdf`](QFiles%20Funktionsvergleich.pdf) (erzeugt mit `tools/funktionsvergleich.py`).
 
 | Bereich | Umsetzung in QFiles |
 |---|---|
@@ -98,6 +98,18 @@ Für beide gilt:
 - Fehlt Windows.Data.Pdf, zeigt QFiles PDFs wie bisher über den Vorschauhandler. Fehlt Media Foundation (z. B. auf
   Windows Server ohne das Feature „Media Foundation“), wird das gemeldet.
 
+**Programmdateien** (.exe, .dll) zeigt die Dateianzeige mit sämtlichen Eigenschaften: oben das Programmsymbol (falls
+die Datei eines enthält) mit Dateibeschreibung und Firma, darunter in Abschnitten die Dateiangaben, alle Einträge der
+Versionsressource (Zahlen, Kennzeichen, Sprachen und alle Texte wie Firma, Copyright, Produktname), der PE-Kopf
+(Format 32/64 Bit, Prozessor, Art, Subsystem, Linker- und Mindestversionen, Erstellungszeit, Sicherheitsmerkmale wie
+ASLR, DEP und Control Flow Guard, .NET-Laufzeit, PDB-Datei, Abschnitte, Ressourcen, angehängte Daten), das Manifest
+(Ausführungsebene, DPI, lange Pfade, unterstützte Windows-Versionen), die digitale Signatur (eingebettet oder über einen
+Windows-Katalog, mit Signierer, Aussteller, Gültigkeit und Zeitstempel), die importierten DLLs mit der Zahl der
+Funktionen, die exportierten Funktionen und zuletzt alle Windows-Eigenschaften, die auch der Explorer kennt. Bildlauf
+mit Mausrad, Bildlaufleiste und Pfeil-/Bildtasten; **Strg+C** (oder Kontextmenü) kopiert alles als Text. Das Lesen läuft
+im Hintergrund (die Signaturprüfung kann bei großen Dateien etwas dauern). Text- und Hex-Ansicht bleiben über das Menü
+des Anzeigefensters wählbar.
+
 **Archive** erscheinen als Liste wie ein Verzeichnis: blassgelb hinterlegt, solange die Archivliste aktiv ist (den
 Tastaturfokus hat), sonst – bei eingeschalteter Option „Nicht aktive Listen grau hinterlegen“ – in dunklerem,
 abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
@@ -138,7 +150,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   - Eigene Schrift einstellbar (*Optionen → Anzeige → Schrift der Lesezeichenliste*; „Standard“ = Oberflächenschrift).
   - Hintergrundfarben: Windows-Standardverzeichnisse (Desktop, Dokumente, Downloads, Bilder, Musik, Videos,
     Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, Cloud-Speicher (Dropbox, Google Drive,
-    OneDrive) **hell-lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
+    OneDrive) **lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
     Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**.
   - **Lesezeichen → Sortieren…** (nach Rückfrage): zuerst „Netzwerk“, dann die Standardverzeichnisse, die
     Cloud-Speicher, die FTP/SFTP/WebDAV-Zugänge (gemeinsam), die übrigen Netzwerkpfade und zuletzt die lokalen
@@ -146,6 +158,10 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   - **Lesezeichen → Cloud-Speicher hinzufügen…** findet die Ordner der Desktop-Programme von Dropbox, Google Drive und
     Microsoft OneDrive (auch mehrere Konten, z. B. „OneDrive – Firma“) und legt sie als Lesezeichen an.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
+  - Sind Linux-Distributionen des Windows-Subsystems für Linux (WSL) installiert, steht direkt unter „Netzwerk“ das
+    Lesezeichen **Linux** (gleiche Hintergrundfarbe, Symbol wie im Explorer). Es öffnet `\\wsl$` mit den
+    Distributionen; der Tooltip nennt sie. Die Distributionen stehen in der Registrierung
+    (`HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`); ohne WSL fehlt der Eintrag.
   - Ganz oben steht **Favoriten** (dunkelroter Asterisk, hellgelb), sobald mindestens eine Datei als Favorit
     gekennzeichnet ist (siehe „Favoriten“).
   - Umbenennen mit F2, Entfernen mit Entf, Verschieben mit Alt+↑/↓, Pfad über das Kontextmenü ändern.
@@ -183,8 +199,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
 - Spalte „Typ“: Endung der Datei; bei Verzeichnissen bleibt sie leer.
 - Optional (*Optionen → Anzeige → „Nicht aktive Listen grau hinterlegen“*) erscheinen die nicht aktiven
-  Listen mit hellgrauem Hintergrund, etwas heller als Kopf- und Fußleiste und je Liste ganz leicht abgestuft (von hell
-  nach dunkel: rechts oben, links oben, rechts unten, links unten).
+  Listen mit hellgrauem Hintergrund, je Liste deutlich abgestuft (von hell nach dunkel: rechts oben, links oben,
+  rechts unten, links unten; das dunkelste Grau ist etwas heller als Kopf- und Fußleiste).
 - Optional (*Optionen → Anzeige → „Listenanzeige gestreift“*) ist in der aktiven Liste jede zweite Zeile
   in diesem Hellgrau hinterlegt (Ansichten Details, Liste und Mit Unterverzeichnissen; in der Archivliste im
   abgetönten Gelb).
@@ -262,6 +278,13 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   in mittelgrauer Schrift (und mit blassem Symbol), solange „Einfügen“ sie verschieben würde – also bis sie eingefügt
   sind oder etwas anderes in die Zwischenablage kommt (auch aus dem Explorer).
 - Explorer-Kontextmenü, „Öffnen mit“, Eigenschaften (Alt+Eingabe).
+- **Mit anderer Liste vergleichen** (Kontextmenü einer einzelnen Datei): erscheint, wenn Beyond Compare installiert
+  ist und eine andere sichtbare Liste eine gleichnamige Datei enthält. Beyond Compare zeigt dann beide Dateien
+  (die Datei der weiter links bzw. oben stehenden Liste links). Das Symbol, ein schwarzer Kreis, ist zur Hälfte
+  (Liste daneben bzw. darüber/darunter) oder zu einem Viertel (Liste schräg gegenüber) grau gefüllt – auf der Seite, in
+  der die andere Liste liegt. Kommt die Datei in mehreren Listen vor, gibt es je Liste einen Eintrag (mit Richtung im
+  Text). Beyond Compare 3–5 wird über die Registrierung (Scooter Software, App Paths) und die Programmverzeichnisse
+  gefunden; die Umgebungsvariable `QFILES_BCOMPARE` kann einen anderen Pfad vorgeben.
 - Attribute und Zeitstempel ändern, auch rekursiv. Das Datum lässt sich aus dem EXIF-Aufnahmedatum übernehmen.
 - Verzeichnisgrößen berechnen (Leertaste auf einem Verzeichnis oder Alt+Umschalt+Eingabe für alle). Mit der Option
   **„Verzeichnisgrößen anzeigen“** (*Optionen → Anzeige* oder *Ansicht*) berechnen die Listen die Größen aller
@@ -511,6 +534,7 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `WebDavClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP/WebDAV: Zugänge, Verbindungen, Übertragungen |
 | `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
 | `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
+| `src/ProgramInfo.*` | Eigenschaften von Programmdateien (Versionsressource, PE-Kopf, Signatur, Shell-Eigenschaften) |
 | `src/ArchiveView.cpp`, `ArchiveCore.h` | Archivliste der Dateianzeige (Lesen und Entpacken in `Archive.cpp`) |
 | `src/Drives.*` | Laufwerksarten und -symbole (lokal, subst, Netzwerk, CD/DVD, extern, RAM-Disk) |
 | `third_party/libssh2` | libssh2 1.11.1 (BSD-Lizenz) für SFTP, gebaut mit der Windows-Kryptografie |
