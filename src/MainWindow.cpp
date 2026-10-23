@@ -1690,7 +1690,9 @@ void MainWindow::UpdateStatusBar() {
     std::wstring left;
     std::wstring p = a.FocusedPath();
     DirEntry fe;
-    if (a.IsVirtual() && a.FocusedEntry(fe)) {
+    if (a.IsRecycleBin()) {
+        left = a.RecycleStatusText();
+    } else if (a.IsVirtual() && a.FocusedEntry(fe)) {
         left = fe.name;
         if (!a.IsNetworkLevel()) {
             if (!fe.IsDir()) left += L"   " + FormatSizeBytes(fe.size) + L" Bytes";

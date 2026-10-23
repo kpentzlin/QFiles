@@ -82,6 +82,7 @@ public:
     bool IsFavorites() const;           // Favoritenliste (Dateien aus verschiedenen Verzeichnissen, vollständige Pfade)
     bool IsRecycleBin() const;          // Papierkorb (gelöschte Elemente, vollständige Pfade der $R-Dateien)
     bool IsSpecialList() const { return IsFavorites() || IsRecycleBin(); }   // kein gewöhnliches Verzeichnis
+    std::wstring RecycleStatusText() const;   // Papierkorb: Angaben zum fokussierten Element für die Statusleiste
     // Arbeitsverzeichnis für Programme: Verzeichnis der Liste; Favoriten: Verzeichnis der Fokusdatei; sonst ""
     std::wstring WorkingDir() const;
     bool ScanRunning() const { return netScanning_ || walkRunning_; }

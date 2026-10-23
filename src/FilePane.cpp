@@ -1711,6 +1711,15 @@ std::wstring FilePane::FocusedName() const {
     return RelName(items_[i]);
 }
 
+std::wstring FilePane::RecycleStatusText() const {
+    int i = ListView_GetNextItem(list_, -1, LVNI_FOCUSED);
+    if (!IsRecycleBin() || i < 0 || i >= (int)items_.size() || items_[i].isParent) return L"";
+    const Item& it = items_[i];
+    uint64_t size = it.e.IsDir() ? (it.dirSize == UINT64_MAX ? 0 : it.dirSize) : it.e.size;
+    return DispName(it) + L"   " + FormatSizeBytes(size) + L" Bytes   gelöscht am " + FormatFileTime(it.e.created, true) +
+           L"   aus " + DispDir(it);
+}
+
 std::wstring FilePane::FocusedPath() const {
     std::wstring n = FocusedName();
     return n.empty() ? L"" : Combine(n);
@@ -2696,7 +2705,11 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
         if (ti->iItem >= 0 && ti->iItem < (int)items_.size() && !items_[ti->iItem].isParent) {
             const Item& it = items_[ti->iItem];
             std::wstring s = it.e.name;
-            if (it.netKind) {
+            if (IsRecycleBin()) {
+                s = DispName(it) + L"\n" + DispDir(it) + L"\nGelöscht am " + FormatFileTime(it.e.created, true);
+                uint64_t size = it.e.IsDir() ? (it.dirSize == UINT64_MAX ? 0 : it.dirSize) : it.e.size;
+                s += L"\n" + FormatSizeBytes(size) + L" Bytes";
+            } else if (it.netKind) {
                 auto c = netComments_.find(ToLower(it.e.name));
                 s = Combine(it.e.name);
                 if (c != netComments_.end() && !c->second.empty()) s += L"\n" + c->second;
