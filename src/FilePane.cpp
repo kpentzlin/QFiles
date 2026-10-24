@@ -381,7 +381,7 @@ void FilePane::ApplyViewStyle() {
         ListView_SetImageList(list_, thumbList_, LVSIL_NORMAL);
         ListView_SetView(list_, LV_VIEW_ICON);
         ListView_SetIconSpacing(list_, size + ToPx(24), size + ToPx(40));
-        labelWidth_ = size + ToPx(24) - ToPx(12);
+        labelWidth_ = size + ToPx(24) - ToPx(18);   // etwas schmaler als die Beschriftungsfläche der Liste
         ++labelKey_;
         break;
     }
@@ -2345,7 +2345,7 @@ void FilePane::PrefetchThumbs() {
     }
 }
 
-// Kachelbeschriftung: passt der Name nicht in zwei Zeilen, wird der Namensteil gekürzt („…“) und die Endung bleibt
+// Kachelbeschriftung: einzeilig; passt der Name nicht, wird der Namensteil gekürzt („…“) und die Endung bleibt
 std::wstring FilePane::TileLabel(Item& it) {
     const std::wstring& name = DispName(it);
     if (it.labelKey == labelKey_) return it.label;
@@ -2354,13 +2354,10 @@ std::wstring FilePane::TileLabel(Item& it) {
     if (labelWidth_ <= 0) return it.label;
     HDC dc = GetDC(list_);
     HGDIOBJ old = SelectObject(dc, (HFONT)SendMessageW(list_, WM_GETFONT, 0, 0));
-    TEXTMETRICW tm{};
-    GetTextMetricsW(dc, &tm);
-    int lineH = tm.tmHeight + tm.tmExternalLeading;
     auto fits = [&](const std::wstring& t) {
-        RECT r{0, 0, labelWidth_, 0};
-        DrawTextW(dc, t.c_str(), (int)t.size(), &r, DT_CALCRECT | DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX | DT_CENTER);
-        return r.bottom <= 2 * lineH + 1 && r.right <= labelWidth_;
+        SIZE sz{};
+        GetTextExtentPoint32W(dc, t.c_str(), (int)t.size(), &sz);
+        return sz.cx <= labelWidth_;
     };
     if (!fits(name)) {
         std::wstring ext = it.e.IsDir() ? L"" : ExtOf(name);

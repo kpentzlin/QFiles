@@ -31,6 +31,10 @@ def main():
         r, g, b = colorsys.hsv_to_rgb((i * 0.07) % 1.0, 0.6, 0.9)
         name = "Urlaubsfoto vom Strand in Italien Nummer %03d.png" % i if i % 3 else "Bild %03d.png" % i
         png(os.path.join(out, name), 120 + (i % 5) * 20, 90, (int(r * 255), int(g * 255), int(b * 255)))
+    # Handy-Dateinamen ohne Leerzeichen (GUID): Beschriftung einzeilig, Name gekürzt, Endung bleibt
+    for i, guid in enumerate(["3BADD6DD-ED1C-4F1E-BC1C-336024F6A1B2", "3BADD6DD-ED1C-4F1E-BC1C-336024F6A1B3",
+                              "5BB0B9C8-2F0D-4349-A1D7-4DF152902C44"]):
+        png(os.path.join(out, guid + ".png"), 160, 120, (200, 140 + 30 * i, 60))
     media.make_avi(os.path.join(out, "Video mit einem recht langen Namen.avi"), 192, 108, 10, 2)
     media.make_avi(os.path.join(out, "Kurz.avi"), 108, 192, 10, 1)
     shutil.copy(os.path.join(HERE, "testdata", "exif-vorschau.heic"), os.path.join(out, "Handyfoto.heic"))

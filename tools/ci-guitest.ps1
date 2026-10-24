@@ -779,7 +779,7 @@ $krc = New-Object W+RECT; [W]::GetWindowRect($klist, [ref]$krc) | Out-Null
 Shot "screenshot30.png"   # Kacheln (Anfang)
 # Vorausladen: ohne Blättern müssen nach kurzer Zeit alle Miniaturen geladen sein
 for ($t = 0; $t -lt 60; $t++) {
-  if ((Test-Path $thumbLog) -and @(Get-Content $thumbLog -Encoding UTF8).Count -ge 153) { break }
+  if ((Test-Path $thumbLog) -and @(Get-Content $thumbLog -Encoding UTF8).Count -ge 156) { break }
   Start-Sleep -Milliseconds 500
 }
 [System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 800
@@ -802,8 +802,8 @@ $byHow = ($tl | ForEach-Object { ($_ -split ' \| ')[1] } | Group-Object | ForEac
 $heic = ($tl | Where-Object { $_ -match '^Handyfoto\.heic' }) -join ''
 $iniNow = Get-Content $ini -Raw -Encoding UTF8
 $tbOk = $iniNow -match 'Schaltflaechen=[^\r\n]*Aktualisieren'
-$kInfo = "Miniaturen: $($tl.Count) von 153 ($byHow); HEIC: $heic; Werkzeugleiste angepasst: $tbOk"
-if ($tl.Count -ge 153 -and $tbOk) { Write-Output "::notice title=Kacheln/Werkzeugleiste::$kInfo" }
+$kInfo = "Miniaturen: $($tl.Count) von 156 ($byHow); HEIC: $heic; Werkzeugleiste angepasst: $tbOk"
+if ($tl.Count -ge 156 -and $tbOk) { Write-Output "::notice title=Kacheln/Werkzeugleiste::$kInfo" }
 else {
   Write-Output "::error title=Kacheln/Werkzeugleiste::$kInfo"
   "Kachelansicht bzw. Werkzeugleiste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
