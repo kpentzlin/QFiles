@@ -1,0 +1,44 @@
+﻿===== 2026-10-24 07:47:23 =====
+Aufruf: QueryContextMenu (Aufbau des Kontextmenüs)
+Ausnahme: 0xE06D7363 (C++-Ausnahme)
+Fehleradresse: KERNELBASE.dll+0xC7D9A
+Typ: class std::runtime_error < class std::exception
+Text: Testausnahme einer simulierten Erweiterung
+Vermutlich verursacht von: (nicht ermittelbar)
+Verzeichnis: C:\QFilesDemo
+Elemente: liesmich.txt
+Aufrufstapel:
+  KERNELBASE.dll+0xC7D9A
+  QFiles.exe+0x2230D9
+  QFiles.exe+0x19C166
+  QFiles.exe+0x196DC9
+  QFiles.exe+0x19ABF3
+  QFiles.exe+0x108C4C
+  QFiles.exe+0xB02A0
+  QFiles.exe+0xB26CF
+  USER32.dll+0x174F6
+  USER32.dll+0x16FBC
+  COMCTL32.dll+0x2CEC8
+  COMCTL32.dll+0x2CBC4
+  COMCTL32.dll+0x2CEC8
+  COMCTL32.dll+0x2CC9F
+  USER32.dll+0x174F6
+  USER32.dll+0x16803
+  USER32.dll+0x165B4
+  USER32.dll+0x1639F
+  COMCTL32.dll+0x11C8A
+  COMCTL32.dll+0x437FE
+  COMCTL32.dll+0x7144F
+  COMCTL32.dll+0x700FE
+  USER32.dll+0x174F6
+  USER32.dll+0x16FBC
+  COMCTL32.dll+0x2CEC8
+Beteiligte Module:
+  C:\Windows\System32\KERNELBASE.dll
+  D:\a\QFiles\QFiles\build\Release\QFiles.exe
+  C:\Windows\System32\user32.dll
+  C:\Windows\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.33648_none_ee38cd5ddaee2cd9\comctl32.dll
+  C:\Windows\System32\kernel32.dll
+  C:\Windows\System32\ntdll.dll
+Windows 10.0 Build 26100, QFiles 0.1.13
+

@@ -1,0 +1,37 @@
+Testverzeichnis: C:\Users\RUNNER~1\AppData\Local\Temp\QFilesTest ✓ 406171
+Einstellungsdatei (Standard): C:\ProgramData\QFiles\QFiles.ini
+FEHLER: Ein Dateiname darf keines der folgenden Zeichen enthalten:
+\ / : * ? " < > |
+Archiv-Fehlermeldung: Das Format wird nicht unterstützt oder die Datei ist beschädigt.
+
+tar.exe: Error opening archive: Unrecognized archive format
+RAR über Pfad
+RAR-Einträge: Alt; Bilder; Quellen; Quellen\Unter; liesmich.txt; Grüße €.txt; Quellen\main.cpptar.exe: Archive entry has empty or unreadable filename ... skipping; Bilder\leer.txt; Alt\BEIN08.TXTtar.exe: Error exit delayed from previous errors; 
+WARNUNG: tar.exe liest Namen außerhalb der Systemcodepage nicht – RAR-Prüfung übersprungen
+RAR über Standardeingabe
+RAR-Einträge: Alt; Bilder; Quellen; Quellen\Unter; liesmich.txt; Grüße €.txt; Quellen\main.cpptar.exe: Archive entry has empty or unreadable filename ... skipping; Bilder\leer.txt; Alt\BEIN08.TXTtar.exe: Error exit delayed from previous errors; 
+WARNUNG: tar.exe liest Namen außerhalb der Systemcodepage nicht – RAR-Prüfung übersprungen
+Laufwerke: C: – Lokales Laufwerk – Windows | D: – Lokales Laufwerk – Temp | 
+subst: Q: – subst-Laufwerk → C:\Users\RUNNER~1\AppData\Local\Temp\QFilesTest ✓ 406171 – Windows
+Server-Test: ftp://test@127.0.0.1:2121/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: dav://test@127.0.0.1:8090/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: dav://test@127.0.0.1:8091/ (schreibend)
+  Startverzeichnis: /
+  0 Einträge in /
+  Server-Test beendet.
+Server-Test: ftp://demo@test.rebex.net/ (lesend)
+  Startverzeichnis: /
+  2 Einträge in /
+  heruntergeladen: readme.txt (379 Bytes)
+Server-Test: sftp://demo@test.rebex.net/ (lesend)
+  Hostschlüssel test.rebex.net:22: ecdsa-sha2-nistp256 SHA256:OzvpQxRUzSfV9F/ECMXbQ7B7zbK0aTngrhFCBUno65c
+  Startverzeichnis: /
+  2 Einträge in /
+  heruntergeladen: readme.txt (379 Bytes)
+Bestanden: 272, fehlgeschlagen: 0

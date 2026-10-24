@@ -1,0 +1,4 @@
+Liste 1 | Papierkorb | C:\Users\runneradmin\AppData\Local\Temp\QFilesTest ✓ 406171\Ziel Ünïcödé\Unterverzeichnis, C:\Users\runneradmin\AppData\Local\Temp\QFilesTest ✓ 406171\Ziel Ünïcödé\Datei €.txt, C:\QFilesPapierkorb\weg ✓ 2066.txt, C:\Users\runneradmin\AppData\Local\Temp\QFilesTest ✓ 406171\Ziel Ünïcödé\😀 Emoji.txt | 4 Elemente im Papierkorb (44 B)
+Liste 2 | C:\QFilesPapierkorb |  | 0 Verz., 0 Dateien (0 B)  –  belegt: 122 GB, frei: 28.3 GB
+Liste 3 | C:\Users\runneradmin | .cargo, .docker, .dotnet, .rustup, .templateengine, Contacts, Desktop, Documents, Downloads, Favorites, Links, Music, Pictures, Saved Games, Searches, source, Videos, query | 17 Verz., 1 Dateien (7 B)  –  belegt: 122 GB, frei: 28.3 GB
+Liste 4 | C:\Users\runneradmin\Downloads |  | 0 Verz., 0 Dateien (0 B)  –  belegt: 122 GB, frei: 28.3 GB

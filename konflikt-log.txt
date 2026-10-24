@@ -1,0 +1,2 @@
+Hauptfenster: 459424; Listen: 3
+Eingabefeld Kopieren: True; Konfliktdialog: True; Listen: 3
