@@ -567,8 +567,8 @@ else {
 }
 
 # ---- Markieren durch Ziehen (Details, wie Idoswin Pro), Ziehen aus der Liste heraus, mittlere Maustaste ----
-# Zeilen links: .., Unter, m01 … m12. 1) Ziehen von m03 bis m07 markiert 5 Dateien. 2) Ziehen von m10 (nicht markiert)
-# waagrecht in die rechte Liste: Drag & Drop verschiebt m10. 3) „Mit Unterverzeichnissen“, mittlere Maustaste auf
+# Zeilen links: .., Unter, m01 … m12. 1) Ziehen von m03 bis m07 markiert 5 Dateien. 2) Ziehen von m01 (nicht markiert)
+# waagrecht in die rechte Liste: Drag & Drop verschiebt m01. 3) „Mit Unterverzeichnissen“, mittlere Maustaste auf
 # Unter\x.txt: Liste wechselt nach „Unter“ und markiert x.txt.
 $mBase = "C:\QFilesMarkieren"
 Remove-Item $mBase -Recurse -Force -ErrorAction SilentlyContinue
@@ -596,16 +596,25 @@ $zr = New-Object W+RECT; [W]::GetWindowRect($zList, [ref]$zr) | Out-Null
 [W]::Click($mr.L + 60, $mr.B - 30, $false); Start-Sleep -Milliseconds 500
 [System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
 [W]::GetWindowRect($mList, [ref]$mr) | Out-Null
-function RowY([int]$row) { return $mr.T + 24 + $row * 20 + 10 }
+# Zeilenhöhe aus LVM_APPROXIMATEVIEWRECT (Höhe für 1 bzw. 11 Elemente), erste Zeile unter der Spaltenüberschrift
+$hv1 = ([W]::SendMessage($mList, 0x1040, [IntPtr]1, [IntPtr]-1)).ToInt64()
+$hv11 = ([W]::SendMessage($mList, 0x1040, [IntPtr]11, [IntPtr]-1)).ToInt64()
+$rowH = [int]((($hv11 -shr 16) -band 0xFFFF) - (($hv1 -shr 16) -band 0xFFFF)) / 10
+$mHdr = [W]::FindWindowEx($mList, [IntPtr]::Zero, "SysHeader32", $null)
+$hr = New-Object W+RECT; [W]::GetWindowRect($mHdr, [ref]$hr) | Out-Null
+if ($rowH -lt 10 -or $rowH -gt 60) { $rowH = 20 }
+Write-Output "Markieren durch Ziehen: Zeilenhöhe $rowH, Überschrift bis $($hr.B)"
+function RowY([int]$row) { return [int]($hr.B + $row * $rowH + $rowH / 2) }
 [W]::Drag($mr.L + 40, (RowY 4), $mr.L + 45, (RowY 8)); Start-Sleep -Milliseconds 800
 $selCount1 = ([W]::SendMessage($mList, 0x1032, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETSELECTEDCOUNT
 Shot "screenshot34.png"   # m03–m07 durch Ziehen markiert
-[W]::Drag($mr.L + 40, (RowY 11), $zr.L + 120, (RowY 11)); Start-Sleep -Seconds 3
+# m01 (Zeile 2) waagrecht in die leere obere rechte Liste ziehen
+[W]::Drag($mr.L + 40, (RowY 2), $zr.L + 120, (RowY 2)); Start-Sleep -Seconds 3
 Check-Alive "Ziehen aus der Liste heraus"
-$moved = (Test-Path "$mBase\Ziel\m10.txt") -and -not (Test-Path "$mBase\Liste\m10.txt")
+$moved = (Test-Path "$mBase\Ziel\m01.txt") -and -not (Test-Path "$mBase\Liste\m01.txt")
 [W]::Click($mr.L + 60, $mr.B - 30, $false); Start-Sleep -Milliseconds 500
 [System.Windows.Forms.SendKeys]::SendWait("^+5"); Start-Sleep -Seconds 2
-# Zeilen: .., m01 … m12 ohne m10 (11), Unter\x.txt
+# Zeilen: .., m02 … m12 (11), Unter\x.txt
 [W]::SetCursorPos($mr.L + 40, (RowY 12)) | Out-Null; Start-Sleep -Milliseconds 200
 [W]::mouse_event(0x0020, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
 [W]::mouse_event(0x0040, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 2
@@ -617,7 +626,7 @@ $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $midOk = ($mTitle -match 'Liste\\Unter$') -and $selCount3 -eq 1
-$mInfo = "Ziehen markiert: $selCount1 (erwartet 5); Ziehen heraus verschiebt m10: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3"
+$mInfo = "Ziehen markiert: $selCount1 (erwartet 5); Ziehen heraus verschiebt m01: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3"
 if ($selCount1 -eq 5 -and $moved -and $midOk) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
 else {
   Write-Output "::error title=Markieren durch Ziehen::$mInfo"
