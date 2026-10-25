@@ -17,6 +17,7 @@
 #include <windowsx.h>
 #include <uxtheme.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -1691,15 +1692,11 @@ void FilePane::UpdateStatus() {
         size_t n = files + dirs;
         s = IntToStr((long long)n) + (n == 1 ? L" Element im Papierkorb (" : L" Elemente im Papierkorb (") +
             FormatSize(total) + L")";
-        if (selFiles + selDirs)
-            s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
     } else if (IsFavorites()) {
         s = IntToStr((long long)files) + (files == 1 ? L" Favorit (" : L" Favoriten (") + FormatSize(total) + L")";
     } else if (view_ == PaneView::Recursive && !IsVirtual()) {
         s = IntToStr((long long)files) + L" Dateien in " + IntToStr((long long)walkDirs_ + 1) + L" Verzeichnissen (" +
             FormatSize(total) + L")";
-        if (selFiles + selDirs)
-            s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
         if (walkRunning_) s += L"  –  Unterverzeichnisse werden gelesen … (Esc bricht ab)";
         else if (walkCancelled_) s += L"  –  Lesen abgebrochen";
     } else if (IsNetworkVirtual(dir_)) {
@@ -2376,6 +2373,180 @@ std::wstring FilePane::TileLabel(Item& it) {
     return it.label;
 }
 
+// ===================== Markieren durch Ziehen, mittlere Maustaste =====================
+//
+// Liste/Details/„Mit Unterverzeichnissen“ (Option „Ziehen über nicht markierte Dateien markiert sie“): Linke Maustaste
+// auf einer nicht markierten Datei drücken und ziehen markiert alle Dateien zwischen Anfang und Mauszeiger (Strg:
+// zusätzlich zur bisherigen Markierung). Am Rand der Liste wird weitergeblättert. Verlässt die Maus dabei die Liste
+// seitlich (oder weit nach oben/unten), beginnt Drag & Drop mit den markierten Dateien. Ziehen auf einer bereits
+// markierten Datei ist wie bisher Drag & Drop.
+
+namespace { constexpr UINT_PTR kDragMarkTimer = 0x514D; }
+
+bool FilePane::DragMarkBegin(POINT pt, WPARAM keys) {
+    if (!App::Opt().dragMark || (keys & MK_SHIFT)) return false;
+    if (view_ != PaneView::List && view_ != PaneView::Details && view_ != PaneView::Recursive) return false;
+    LVHITTESTINFO ht{};
+    ht.pt = pt;
+    int i = ListView_HitTest(list_, &ht);
+    if (i < 0 || i >= (int)items_.size() || !(ht.flags & LVHT_ONITEM) || items_[i].isParent) return false;
+    if (ListView_GetItemState(list_, i, LVIS_SELECTED) & LVIS_SELECTED) return false;   // Drag & Drop
+    if (GetFocus() != list_) SetFocus(list_);
+    bool ctrl = (keys & MK_CONTROL) != 0;
+    dmBase_.assign(items_.size(), 0);
+    if (ctrl) {
+        for (int j = ListView_GetNextItem(list_, -1, LVNI_SELECTED); j >= 0; j = ListView_GetNextItem(list_, j, LVNI_SELECTED))
+            if (j < (int)dmBase_.size()) dmBase_[j] = 1;
+    } else {
+        ListView_SetItemState(list_, -1, 0, LVIS_SELECTED);
+    }
+    ListView_SetItemState(list_, -1, 0, LVIS_FOCUSED);
+    ListView_SetItemState(list_, i, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    ListView_SetSelectionMark(list_, i);
+    dmActive_ = true;
+    dmMoved_ = false;
+    dmAnchor_ = dmCur_ = i;
+    dmStart_ = pt;
+    SetCapture(list_);
+    SetTimer(list_, kDragMarkTimer, 50, nullptr);
+    return true;
+}
+
+// Index unter dem Punkt (Client-Koordinaten der Liste), auf die vorhandenen Elemente begrenzt.
+// scroll: um so viele Elemente soll weitergeblättert werden (Maus am bzw. jenseits des Rands)
+int FilePane::DragMarkIndexAt(POINT pt, int& scroll) {
+    scroll = 0;
+    int n = (int)items_.size();
+    if (n <= 0) return -1;
+    RECT cr{};
+    GetClientRect(list_, &cr);
+    if (view_ == PaneView::List) {
+        // spaltenweise angeordnet: Spalte aus x, Zeile aus y
+        RECT r0{};
+        ListView_GetItemRect(list_, 0, &r0, LVIR_BOUNDS);
+        int w = std::max(1, (int)(r0.right - r0.left)), h = std::max(1, (int)(r0.bottom - r0.top));
+        int rows = std::max(1, (int)((cr.bottom - r0.top) / h));
+        RECT rr{};
+        while (rows > 1 && rows - 1 < n && ListView_GetItemRect(list_, rows - 1, &rr, LVIR_BOUNDS) && rr.left != r0.left)
+            --rows;
+        while (rows < n && ListView_GetItemRect(list_, rows, &rr, LVIR_BOUNDS) && rr.left == r0.left) ++rows;
+        int edge = ToPx(16);
+        if (pt.x < cr.left + edge) scroll = -rows;
+        else if (pt.x >= cr.right - edge) scroll = rows;
+        int x = std::clamp((int)pt.x, (int)cr.left, (int)cr.right - 1);
+        int col = (int)std::floor((double)(x - r0.left) / w);
+        int row = std::clamp((int)std::floor((double)(pt.y - r0.top) / h), 0, rows - 1);
+        return std::clamp(col * rows + row, 0, n - 1);
+    }
+    // Details: Zeile aus y
+    int top = std::clamp(ListView_GetTopIndex(list_), 0, n - 1);
+    RECT rt{};
+    if (!ListView_GetItemRect(list_, top, &rt, LVIR_BOUNDS)) return -1;
+    int h = std::max(1, (int)(rt.bottom - rt.top));
+    if (pt.y < rt.top) scroll = -(1 + (rt.top - pt.y) / (2 * h));
+    else if (pt.y >= cr.bottom) scroll = 1 + (pt.y - cr.bottom) / (2 * h);
+    int y = std::clamp((int)pt.y, (int)rt.top, (int)cr.bottom - 1);
+    return std::clamp(top + (int)std::floor((double)(y - rt.top) / h), 0, n - 1);
+}
+
+void FilePane::DragMarkSetRange(int cur) {
+    int n = (int)items_.size();
+    if (cur < 0 || cur >= n || dmAnchor_ < 0 || dmAnchor_ >= n || dmCur_ < 0 || dmCur_ >= n) return;
+    int oldLo = std::min(dmAnchor_, dmCur_), oldHi = std::max(dmAnchor_, dmCur_);
+    int lo = std::min(dmAnchor_, cur), hi = std::max(dmAnchor_, cur);
+    // nur die Elemente anfassen, deren Zustand sich ändern kann
+    for (int i = std::min(lo, oldLo); i <= std::max(hi, oldHi); ++i) {
+        bool want = !items_[i].isParent && ((i >= lo && i <= hi) || (i < (int)dmBase_.size() && dmBase_[i]));
+        bool has = (ListView_GetItemState(list_, i, LVIS_SELECTED) & LVIS_SELECTED) != 0;
+        if (want != has) ListView_SetItemState(list_, i, want ? LVIS_SELECTED : 0, LVIS_SELECTED);
+    }
+    if (cur != dmCur_) {
+        ListView_SetItemState(list_, dmCur_, 0, LVIS_FOCUSED);
+        ListView_SetItemState(list_, cur, LVIS_FOCUSED, LVIS_FOCUSED);
+    }
+    dmCur_ = cur;
+    ListView_EnsureVisible(list_, cur, FALSE);
+}
+
+void FilePane::DragMarkMove(bool timer) {
+    if (!dmActive_) return;
+    if (GetAsyncKeyState(GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON) >= 0) {   // Loslassen verpasst
+        DragMarkEnd();
+        return;
+    }
+    POINT pt{};
+    GetCursorPos(&pt);
+    ScreenToClient(list_, &pt);
+    if (!dmMoved_) {
+        if (std::abs(pt.x - dmStart_.x) <= GetSystemMetrics(SM_CXDRAG) &&
+            std::abs(pt.y - dmStart_.y) <= GetSystemMetrics(SM_CYDRAG))
+            return;
+        dmMoved_ = true;
+    }
+    // Liste seitlich (oder weit nach oben/unten) verlassen: Drag & Drop mit den markierten Dateien
+    RECT cr{};
+    GetClientRect(list_, &cr);
+    RECT r0{};
+    int h = items_.empty() || !ListView_GetItemRect(list_, ListView_GetTopIndex(list_), &r0, LVIR_BOUNDS)
+                ? ToPx(18) : (int)(r0.bottom - r0.top);
+    bool outH = pt.x < cr.left || pt.x >= cr.right;
+    bool outV = pt.y < cr.top - 3 * h || pt.y >= cr.bottom + 3 * h;
+    if ((outH || outV) && !(IsVirtual() && !IsRemote())) {
+        DragMarkEnd();
+        StartDragOfSelection();
+        return;
+    }
+    int scroll = 0;
+    int cur = DragMarkIndexAt(pt, scroll);
+    if (cur < 0) return;
+    if (scroll != 0) {
+        if (!timer) return;   // Weiterblättern im Takt des Zeitgebers
+        if (view_ == PaneView::List && ++dmTick_ % 6 != 0) return;   // Liste: eine Spalte je 0,3 s
+        cur = std::clamp(dmCur_ + scroll, 0, (int)items_.size() - 1);
+    }
+    if (cur != dmCur_) DragMarkSetRange(cur);
+}
+
+void FilePane::DragMarkEnd() {
+    if (!dmActive_) return;
+    dmActive_ = false;
+    KillTimer(list_, kDragMarkTimer);
+    dmBase_.clear();
+    if (GetCapture() == list_) ReleaseCapture();
+    UpdateStatus();
+    if (host_) host_->OnPaneFocusItemChanged(this);
+}
+
+void FilePane::StartDragOfSelection() {
+    auto names = SelectedNames();
+    if (names.empty() || (IsVirtual() && !IsRemote())) return;
+    StartFileDrag(hwnd_, dir_, names);
+    Reload();
+    if (host_) host_->OnPaneFilesDropped(this);
+}
+
+bool FilePane::OpenContainingDir(int index) {
+    if (index < 0 || index >= (int)items_.size() || items_[index].isParent) return false;
+    const Item& it = items_[index];
+    std::wstring path = ItemFullPath(it), dir, name;
+    if (IsFavorites()) {
+        dir = PathParent(path);
+        name = PathFileName(path);
+    } else if (view_ == PaneView::Recursive && !IsSpecialList() && !it.sub.empty()) {
+        dir = Combine(it.sub);
+        name = it.e.name;
+    } else {
+        return false;
+    }
+    if (dir.empty()) return false;
+    if (GetFocus() != list_) SetFocus(list_);
+    if (!Navigate(dir, name, true, true)) return true;
+    if (IsRemote()) SelectNames({name});
+    else MarkPaths({path}, false, false);
+    if (host_) host_->OnPaneFocusItemChanged(this);
+    return true;
+}
+
 // ===================== Verzeichnisüberwachung =====================
 
 void FilePane::StartWatch() {
@@ -2639,6 +2810,38 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
     case WM_SETFOCUS:
         if (self->host_) self->host_->OnPaneActivated(self);
         break;
+    case WM_LBUTTONDOWN:
+        if (self->DragMarkBegin(POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}, wp)) return 0;
+        break;
+    case WM_MOUSEMOVE:
+        if (self->dmActive_) {
+            self->DragMarkMove(false);
+            return 0;
+        }
+        break;
+    case WM_TIMER:
+        if (wp == kDragMarkTimer) {
+            self->DragMarkMove(true);
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (self->dmActive_) {
+            self->DragMarkEnd();
+            return 0;
+        }
+        break;
+    case WM_CAPTURECHANGED:
+        if (self->dmActive_ && (HWND)lp != h) self->DragMarkEnd();
+        break;
+    case WM_MBUTTONDOWN: {
+        // Favoriten bzw. „Mit Unterverzeichnissen“: enthaltendes Verzeichnis öffnen und die Datei dort markieren
+        LVHITTESTINFO ht{};
+        ht.pt = POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        int i = ListView_HitTest(h, &ht);
+        if (i >= 0 && (ht.flags & LVHT_ONITEM) && self->OpenContainingDir(i)) return 0;
+        break;
+    }
     case WM_NCDESTROY:
         RevokeFileDropTarget(h);
         RemoveWindowSubclass(h, ListSubclass, 1);

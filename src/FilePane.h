@@ -233,6 +233,19 @@ private:
     void RequestThumb(int index, bool background = false);
     void PrefetchThumbs();          // weitere Miniaturen im Hintergrund laden (Blättern ohne Wartezeit)
     std::wstring TileLabel(Item& it);   // Kachelbeschriftung: Name gekürzt („…“), Endung immer sichtbar
+    // Markieren durch Ziehen (Liste/Details/„Mit Unterverzeichnissen“, wie Idoswin Pro)
+    bool DragMarkBegin(POINT pt, WPARAM keys);
+    void DragMarkMove(bool timer);
+    void DragMarkEnd();
+    int DragMarkIndexAt(POINT pt, int& scroll);   // scroll: Elemente, um die weitergeblättert werden soll
+    void DragMarkSetRange(int cur);
+    void StartDragOfSelection();
+    // Mittlere Maustaste (Favoriten, „Mit Unterverzeichnissen“): enthaltendes Verzeichnis öffnen, Datei markieren
+    bool OpenContainingDir(int index);
+    bool dmActive_ = false, dmMoved_ = false;
+    int dmAnchor_ = -1, dmCur_ = -1, dmTick_ = 0;
+    POINT dmStart_{};
+    std::vector<char> dmBase_;   // Markierung vor dem Ziehen (Strg: wird ergänzt)
     void StopThumbWorker();
     void OnThumbReady(WPARAM wp, LPARAM lp);
     int AddThumbnail(HBITMAP bmp);

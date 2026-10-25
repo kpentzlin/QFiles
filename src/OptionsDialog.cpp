@@ -152,6 +152,7 @@ constexpr int kHistoryLabel = 1111;
 constexpr int kHistoryEdit = 1112;
 constexpr int kHistorySpin = 1113;
 constexpr int kPrivateMode = 1114;
+constexpr int kDragMark = 1115;
 // ---- Seite 2: Dateianzeige ----
 constexpr int kQvGroup = 1201;
 constexpr int kQvOther = 1202;
@@ -251,6 +252,7 @@ protected:
         SetText(kTextExt, opt.textExtensions);
         InitSpin(kHistorySpin, kHistoryEdit, 5, 500, opt.historySize);
         SetCheck(kPrivateMode, opt.privateMode);
+        SetCheck(kDragMark, opt.dragMark);
         // Dateianzeige
         CheckRadioButton(hwnd_, kQvOther, kQvWindow,
                          opt.quickViewTarget == QuickViewTarget::Window ? kQvWindow : kQvOther);
@@ -469,6 +471,7 @@ private:
         if (!ext.empty()) opt.textExtensions = ext;
         opt.historySize = SpinValue(kHistoryEdit, 5, 500, opt.historySize);
         opt.privateMode = IsChecked(kPrivateMode);
+        opt.dragMark = IsChecked(kDragMark);
 
         opt.quickViewTarget = IsChecked(kQvWindow) ? QuickViewTarget::Window : QuickViewTarget::OtherPane;
 
@@ -549,6 +552,8 @@ bool ShowOptionsDialog(HWND owner) {
     t.UpDown(kHistorySpin, 0, 0, 10, 13);
     t.Check(kPrivateMode, L"Privater M&odus: Verlauf nicht speichern (auch Schaltfläche „P“ in der Kopfzeile der Listen)",
             px, py + 152, pw, 10);
+    t.Check(kDragMark, L"&Ziehen über nicht markierte Dateien markiert sie (Liste und Details, wie Idoswin Pro)",
+            px, py + 166, pw, 10);
 
     // ---- Dateianzeige ----
     t.Group(kQvGroup, L"Dateianzeige (Schnellansicht)", px - 4, py, pw + 8, 50);

@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.12"
+QF_VERSION = "0.1.14"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -144,6 +144,10 @@ DATA = [
     ]),
     ("Markieren", [
         ("Markieren mit Leertaste/Einfg und Maus", "ja", "ja", "ja", "", False),
+        ("Markieren durch Ziehen über die Dateien (Liste/Details)", "ja", "ja", "ja",
+         "neu in QFiles 0.1.14: wie Idoswin Pro; SC: Auswahlrahmen", False),
+        ("Mittlere Maustaste: Verzeichnis der Datei öffnen (Favoriten, mit Unterverzeichnissen)", "ja", "?", "?",
+         "neu in QFiles 0.1.14; Datei wird dort markiert", False),
         ("Gruppe markieren/abwählen/umkehren (Muster)", "ja", "ja", "ja", "", False),
         ("Markieren über Verzeichnisvergleich", "ja", "ja", "ja", "", False),
         ("Auswahl speichern und wiederherstellen", "–", "–", "ja", "", False),

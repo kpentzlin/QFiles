@@ -566,6 +566,64 @@ else {
   "Ablageziel beim Ziehen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
+# ---- Markieren durch Ziehen (Details, wie Idoswin Pro), Ziehen aus der Liste heraus, mittlere Maustaste ----
+# Zeilen links: .., Unter, m01 … m12. 1) Ziehen von m03 bis m07 markiert 5 Dateien. 2) Ziehen von m10 (nicht markiert)
+# waagrecht in die rechte Liste: Drag & Drop verschiebt m10. 3) „Mit Unterverzeichnissen“, mittlere Maustaste auf
+# Unter\x.txt: Liste wechselt nach „Unter“ und markiert x.txt.
+$mBase = "C:\QFilesMarkieren"
+Remove-Item $mBase -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path "$mBase\Liste\Unter", "$mBase\Ziel" | Out-Null
+foreach ($i in 1..12) { Set-Content -Path ("$mBase\Liste\m{0:D2}.txt" -f $i) -Value $i -Encoding UTF8 }
+Set-Content -Path "$mBase\Liste\Unter\x.txt" -Value "x" -Encoding UTF8
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + "$mBase\Liste" + '"'), ('"' + "$mBase\Ziel" + '"') -PassThru
+Start-Sleep -Seconds 8
+Check-Alive "Start (Markieren durch Ziehen)"
+[W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+$panes = @()
+$h = [IntPtr]::Zero
+while ($true) {
+  $h = [W]::FindWindowEx($p.MainWindowHandle, $h, "QFilesPane", $null)
+  if ($h -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($h)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+  $panes += [pscustomobject]@{ H = $h; L = $r.L; T = $r.T }
+}
+$panes = @($panes | Sort-Object T, L)
+$mList = [W]::FindWindowEx($panes[0].H, [IntPtr]::Zero, "SysListView32", $null)
+$zList = [W]::FindWindowEx($panes[1].H, [IntPtr]::Zero, "SysListView32", $null)
+$mr = New-Object W+RECT; [W]::GetWindowRect($mList, [ref]$mr) | Out-Null
+$zr = New-Object W+RECT; [W]::GetWindowRect($zList, [ref]$zr) | Out-Null
+[W]::Click($mr.L + 60, $mr.B - 30, $false); Start-Sleep -Milliseconds 500
+[System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
+[W]::GetWindowRect($mList, [ref]$mr) | Out-Null
+function RowY([int]$row) { return $mr.T + 24 + $row * 20 + 10 }
+[W]::Drag($mr.L + 40, (RowY 4), $mr.L + 45, (RowY 8)); Start-Sleep -Milliseconds 800
+$selCount1 = ([W]::SendMessage($mList, 0x1032, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETSELECTEDCOUNT
+Shot "screenshot34.png"   # m03–m07 durch Ziehen markiert
+[W]::Drag($mr.L + 40, (RowY 11), $zr.L + 120, (RowY 11)); Start-Sleep -Seconds 3
+Check-Alive "Ziehen aus der Liste heraus"
+$moved = (Test-Path "$mBase\Ziel\m10.txt") -and -not (Test-Path "$mBase\Liste\m10.txt")
+[W]::Click($mr.L + 60, $mr.B - 30, $false); Start-Sleep -Milliseconds 500
+[System.Windows.Forms.SendKeys]::SendWait("^+5"); Start-Sleep -Seconds 2
+# Zeilen: .., m01 … m12 ohne m10 (11), Unter\x.txt
+[W]::SetCursorPos($mr.L + 40, (RowY 12)) | Out-Null; Start-Sleep -Milliseconds 200
+[W]::mouse_event(0x0020, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
+[W]::mouse_event(0x0040, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 2
+Shot "screenshot35.png"   # nach mittlerer Maustaste: Verzeichnis „Unter“, x.txt markiert
+$p.Refresh()
+$mTitle = $p.MainWindowTitle
+$selCount3 = ([W]::SendMessage($mList, 0x1032, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$midOk = ($mTitle -match 'Liste\\Unter$') -and $selCount3 -eq 1
+$mInfo = "Ziehen markiert: $selCount1 (erwartet 5); Ziehen heraus verschiebt m10: $moved; mittlere Maustaste: Titel „$mTitle“, markiert $selCount3"
+if ($selCount1 -eq 5 -and $moved -and $midOk) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
+else {
+  Write-Output "::error title=Markieren durch Ziehen::$mInfo"
+  "Markieren durch Ziehen bzw. mittlere Maustaste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
 # ---- Kopieren einer einzelnen Datei, deren Name im Ziel vorhanden ist: „Mit neuem Namen ablegen“ (vorbelegt „x (1).txt“) ----
 $cfLog = "$PWD\konflikt-log.txt"
 trap {

@@ -248,6 +248,7 @@ void Options::Load(const Config& c) {
     historySize = c.GetInt(S, L"Verlaufslaenge", d.historySize);
     saveOnExit = c.GetBool(S, L"BeimBeendenSpeichern", d.saveOnExit);
     privateMode = c.GetBool(S, L"PrivaterModus", d.privateMode);
+    dragMark = c.GetBool(S, L"ZiehenMarkiert", d.dragMark);
     if (thumbnailSize < 32) thumbnailSize = 32;
     if (thumbnailSize > 256) thumbnailSize = 256;
     if (editorTabWidth < 1 || editorTabWidth > 16) editorTabWidth = 4;
@@ -306,6 +307,7 @@ void Options::Save(Config& c) const {
     c.SetInt(S, L"Verlaufslaenge", historySize);
     c.SetBool(S, L"BeimBeendenSpeichern", saveOnExit);
     c.SetBool(S, L"PrivaterModus", privateMode);
+    c.SetBool(S, L"ZiehenMarkiert", dragMark);
 }
 
 std::vector<Bookmark> LoadBookmarks(const Config& c) {

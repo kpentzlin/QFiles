@@ -1,4 +1,4 @@
-# Erzeugt res/QFiles.ico: grüne Sammelmappe, volle Breite, transparenter Hintergrund, deutliche Unterkante.
+# Erzeugt das frühere Programmsymbol (bis 0.1.13; seit 0.1.14 ist res/QFiles.ico vorgegeben – nicht überschreiben): grüne Sammelmappe, volle Breite, transparenter Hintergrund, deutliche Unterkante.
 # Aufruf: python tools/make-icon.py [Ausgabe.ico] [Vorschau.png]
 import os
 import sys

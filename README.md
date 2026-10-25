@@ -21,7 +21,7 @@ Eine nummerierte Gegenüberstellung der Funktionen von QFiles, Idoswin Pro und S
 
 | Bereich | Umsetzung in QFiles |
 |---|---|
-| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: grüne Sammelmappe mit transparentem Hintergrund (`res/QFiles.ico`, erzeugt mit `tools/make-icon.py`) |
+| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: grüne Sammelmappe mit Lupe und Hammer auf gelbem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
 | Unicode | Vollständig Unicode (UTF-16 intern), insbesondere Anzeige und Bearbeitung von Dateinamen |
 | Texteditor | Neue und **leere Dateien werden standardmäßig als UTF-8 ohne BOM** gespeichert; vorhandene Dateien behalten ihre Kodierung |
 | Disketten | Alle diskettenbezogenen Funktionen entfallen (keine Diskettenlaufwerke A:/B:, kein Formatieren/Kopieren von Disketten, keine Diskettengrößen beim Teilen) |
@@ -200,6 +200,14 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   anzeigen“ durchsucht, Verknüpfungspunkte (Junctions/symbolische Links) nicht. Kopieren, Verschieben, Löschen,
   Umbenennen, Anzeigen und Bearbeiten wirken auf die Dateien in ihren Unterverzeichnissen. Für lokale Verzeichnisse
   und Netzwerkfreigaben; auf FTP/SFTP/WebDAV-Servern und in der Netzwerkübersicht zeigt sie den normalen Inhalt.
+  **Mittlere Maustaste** auf einer Datei in einem Unterverzeichnis: Die Liste wechselt in dieses Verzeichnis und
+  markiert die Datei dort.
+- **Markieren durch Ziehen** (Ansichten Liste, Details und Mit Unterverzeichnissen, wie Idoswin Pro): Linke Maustaste
+  auf einer nicht markierten Datei drücken und ziehen markiert alle Dateien bis zum Mauszeiger; mit **Strg**
+  zusätzlich zur bisherigen Markierung. Am oberen/unteren (Liste: linken/rechten) Rand wird weitergeblättert. Verlässt
+  die Maus dabei die Liste seitlich (oder weit nach oben/unten), beginnt Drag & Drop mit den markierten Dateien –
+  so lässt sich eine einzelne Datei weiterhin in einem Zug in die andere Liste ziehen. Auf einer bereits markierten
+  Datei beginnt Drag & Drop sofort. Abschaltbar unter *Optionen → Bedienung*.
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
   (beides unter *Optionen → Anzeige*).
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
@@ -244,7 +252,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   Dateien auf einem gerade nicht erreichbaren Server (oder ohne Zugriffsrecht) bleiben gespeichert und erscheinen
   wieder, sobald der Server erreichbar ist.
 - In der Favoritenliste steht im Kontextmenü statt „Als Favorit kennzeichnen“ **Aus Favoriten entfernen**, dazu „Zum
-  Verzeichnis der Datei wechseln“. Anzeigen, Bearbeiten, Öffnen, Kopieren/Verschieben in die andere Liste,
+  Verzeichnis der Datei wechseln“; die **mittlere Maustaste** auf einem Favoriten öffnet dessen Verzeichnis in derselben
+  Liste und markiert die Datei dort. Anzeigen, Bearbeiten, Öffnen, Kopieren/Verschieben in die andere Liste,
   Umbenennen, Löschen, Attribute und Eigenschaften wirken auf die Dateien an ihrem Ort. Umbenennen und Verschieben
   mit QFiles führen die Favoriten nach. Neue Dateien/Verzeichnisse, Einfügen, Suchen, Vergleichen und
   Synchronisieren gibt es in den Favoriten nicht.
