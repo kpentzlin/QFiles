@@ -617,7 +617,7 @@ $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $midOk = ($mTitle -match 'Liste\\Unter$') -and $selCount3 -eq 1
-$mInfo = "Ziehen markiert: $selCount1 (erwartet 5); Ziehen heraus verschiebt m10: $moved; mittlere Maustaste: Titel „$mTitle“, markiert $selCount3"
+$mInfo = "Ziehen markiert: $selCount1 (erwartet 5); Ziehen heraus verschiebt m10: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3"
 if ($selCount1 -eq 5 -and $moved -and $midOk) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
 else {
   Write-Output "::error title=Markieren durch Ziehen::$mInfo"
