@@ -1,0 +1,246 @@
+MSBuild version 18.11.1-1.26513.3+940033be3 for .NET Framework
+
+  Checking File Globs
+  1>Checking Build System
+  Building Custom Rule D:/a/QFiles/QFiles/CMakeLists.txt
+  Building Custom Rule D:/a/QFiles/QFiles/CMakeLists.txt
+  agent.c
+  TestShellExt.cpp
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/agent.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  bcrypt_pbkdf.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/bcrypt_pbkdf.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  channel.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/channel.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  comp.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/comp.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  chacha.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/chacha.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  cipher-chachapoly.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/cipher-chachapoly.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  crypt.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/crypt.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  crypto.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/crypto.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  global.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/global.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  hostkey.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/hostkey.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  keepalive.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/keepalive.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  kex.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/kex.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  knownhost.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/knownhost.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  mac.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/mac.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  misc.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/misc.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  packet.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/packet.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  pem.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/pem.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  poly1305.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/poly1305.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  publickey.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/publickey.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  scp.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/scp.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  Generating Code...
+  Compiling...
+  session.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/session.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  sftp.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/sftp.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  transport.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/transport.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  userauth.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/userauth.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  userauth_kbd_packet.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/userauth_kbd_packet.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+     Creating library D:/a/QFiles/QFiles/build/Release/QFilesTestExt.lib and object D:/a/QFiles/QFiles/build/Release/QFilesTestExt.exp
+  version.c
+D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9): warning C4005: 'LIBSSH2_LIBRARY': macro redefinition [D:\a\QFiles\QFiles\build\qf_libssh2.vcxproj]
+  (compiling source file '../third_party/libssh2/src/version.c')
+      D:\a\QFiles\QFiles\third_party\libssh2\src\libssh2_priv.h(53,9):
+      'LIBSSH2_LIBRARY' previously declared on the command line
+  
+  QFilesTestExt.vcxproj -> D:\a\QFiles\QFiles\build\Release\QFilesTestExt.dll
+  Generating Code...
+  qf_libssh2.vcxproj -> D:\a\QFiles\QFiles\build\Release\qf_libssh2.lib
+  Building Custom Rule D:/a/QFiles/QFiles/CMakeLists.txt
+  Building Custom Rule D:/a/QFiles/QFiles/CMakeLists.txt
+  App.cpp
+  Archive.cpp
+  ArchiveView.cpp
+  Attributes.cpp
+  QFilesTests.cpp
+  Util.cpp
+  BatchRename.cpp
+  BookmarkList.cpp
+  Cloud.cpp
+  Dialog.cpp
+  CompareDirs.cpp
+  CompareFiles.cpp
+  CrashHandler.cpp
+  Settings.cpp
+  Dialog.cpp
+  App.cpp
+  DirTree.cpp
+  DocText.cpp
+  Drives.cpp
+  Encoding.cpp
+  Duplicates.cpp
+  Encoding.cpp
+  FileOps.cpp
+  Favorites.cpp
+  FileOps.cpp
+  FilePane.cpp
+  FindFiles.cpp
+  RecycleBin.cpp
+  FtpClient.cpp
+  FunctionKeys.cpp
+  Location.cpp
+  RemoteCommon.cpp
+  Glyphs.cpp
+  HexView.cpp
+  Location.cpp
+  MainWindow.cpp
+  FtpClient.cpp
+  MediaPreview.cpp
+  Network.cpp
+  SftpClient.cpp
+D:\a\QFiles\QFiles\src\MainWindow.cpp(3910,26): warning C4457: declaration of 'msg' hides function parameter [D:\a\QFiles\QFiles\build\QFiles.vcxproj]
+      D:\a\QFiles\QFiles\src\MainWindow.cpp(3726,31):
+      see declaration of 'msg'
+  
+  OptionsDialog.cpp
+  WebDavClient.cpp
+  PdfText.cpp
+  PrintList.cpp
+  ProgramInfo.cpp
+  MediaPreview.cpp
+  RecycleBin.cpp
+  Remote.cpp
+  DocText.cpp
+  RemoteCommon.cpp
+  PdfText.cpp
+  Settings.cpp
+  SftpClient.cpp
+  ShellMenu.cpp
+  Thumbnail.cpp
+  SplitJoin.cpp
+  SyncDirs.cpp
+  TextEditor.cpp
+  Archive.cpp
+  Thumbnail.cpp
+  Drives.cpp
+  Tools.cpp
+  Util.cpp
+  Viewer.cpp
+  Generating Code...
+  WebDavClient.cpp
+  Wipe.cpp
+  main.cpp
+  QFiles.vcxproj -> D:\a\QFiles\QFiles\build\Release\QFiles.exe
+  QFilesTests.vcxproj -> D:\a\QFiles\QFiles\build\Release\QFilesTests.exe
+  Building Custom Rule D:/a/QFiles/QFiles/CMakeLists.txt
