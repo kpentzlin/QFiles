@@ -3283,7 +3283,10 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::SelectAll: a.SelectAll(); break;
-    case cmd::SelectNone: a.SelectNone(); break;
+    case cmd::SelectNone:   // hebt auch die Farben eines Verzeichnisvergleichs in dieser Liste auf
+        a.SelectNone();
+        a.ClearMarks();
+        break;
     case cmd::InvertSelection: a.InvertSelection(); break;
     case cmd::SelectGroup:
     case cmd::DeselectGroup: {

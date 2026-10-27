@@ -567,13 +567,16 @@ else {
 }
 
 # ---- Markieren durch Ziehen (Details, wie Idoswin Pro), Ziehen aus der Liste heraus, mittlere Maustaste ----
-# Zeilen links: .., Unter, m01 … m12. 1) Ziehen von m03 bis m07 markiert 5 Dateien. 2) Ziehen von m01 (nicht markiert)
-# waagrecht in die rechte Liste: Drag & Drop verschiebt m01. 3) „Mit Unterverzeichnissen“, mittlere Maustaste auf
-# Unter\x.txt: Liste wechselt nach „Unter“ und markiert x.txt.
+# Zeilen links: .., Unter, m01 … m12, „m13 mit einem deutlich längeren Namen“. 1) Auswahlrahmen rechts neben den Namen
+# über m03 bis m07 bis in die Namen hinein markiert 5 Dateien. 2) Schmaler Rahmen rechts der kurzen Namen über alle
+# Zeilen erfasst nur den langen Namen. 3) Ziehen auf dem Namen m01 (nicht markiert) waagrecht in die rechte Liste:
+# Drag & Drop wie bisher verschiebt m01. 4) „Mit Unterverzeichnissen“, mittlere Maustaste auf Unter\x.txt: Liste
+# wechselt nach „Unter“ und markiert x.txt.
 $mBase = "C:\QFilesMarkieren"
 Remove-Item $mBase -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path "$mBase\Liste\Unter", "$mBase\Ziel" | Out-Null
 foreach ($i in 1..12) { Set-Content -Path ("$mBase\Liste\m{0:D2}.txt" -f $i) -Value $i -Encoding UTF8 }
+Set-Content -Path "$mBase\Liste\m13 mit einem deutlich längeren Namen.txt" -Value "13" -Encoding UTF8
 Set-Content -Path "$mBase\Liste\Unter\x.txt" -Value "x" -Encoding UTF8
 $script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + "$mBase\Liste" + '"'), ('"' + "$mBase\Ziel" + '"') -PassThru
 Start-Sleep -Seconds 8
@@ -596,6 +599,8 @@ $zr = New-Object W+RECT; [W]::GetWindowRect($zList, [ref]$zr) | Out-Null
 [W]::Click($mr.L + 60, $mr.B - 30, $false); Start-Sleep -Milliseconds 500
 [System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
 [W]::GetWindowRect($mList, [ref]$mr) | Out-Null
+[W]::SendMessage($mList, 0x101E, [IntPtr]::Zero, [IntPtr]300) | Out-Null   # Namensspalte 300 px
+Start-Sleep -Milliseconds 300
 # Zeilenhöhe aus LVM_APPROXIMATEVIEWRECT (Höhe für 1 bzw. 11 Elemente), erste Zeile unter der Spaltenüberschrift
 $hv1 = ([W]::SendMessage($mList, 0x1040, [IntPtr]1, [IntPtr]-1)).ToInt64()
 $hv11 = ([W]::SendMessage($mList, 0x1040, [IntPtr]11, [IntPtr]-1)).ToInt64()
@@ -605,17 +610,20 @@ $hr = New-Object W+RECT; [W]::GetWindowRect($mHdr, [ref]$hr) | Out-Null
 if ($rowH -lt 10 -or $rowH -gt 60) { $rowH = 20 }
 Write-Output "Markieren durch Ziehen: Zeilenhöhe $rowH, Überschrift bis $($hr.B)"
 function RowY([int]$row) { return [int]($hr.B + $row * $rowH + $rowH / 2) }
-[W]::Drag($mr.L + 40, (RowY 4), $mr.L + 45, (RowY 8)); Start-Sleep -Milliseconds 800
+[W]::Drag($mr.L + 200, (RowY 4), $mr.L + 40, (RowY 8)); Start-Sleep -Milliseconds 800
 $selCount1 = ([W]::SendMessage($mList, 0x1032, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETSELECTEDCOUNT
 Shot "screenshot34.png"   # m03–m07 durch Ziehen markiert
+[W]::Drag($mr.L + 160, (RowY 2), $mr.L + 175, (RowY 14)); Start-Sleep -Milliseconds 800
+$selCount2 = ([W]::SendMessage($mList, 0x1032, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+Shot "screenshot36.png"   # schmaler Rahmen: nur der lange Name
 # m01 (Zeile 2) waagrecht in die leere obere rechte Liste ziehen
 [W]::Drag($mr.L + 40, (RowY 2), $zr.L + 120, (RowY 2)); Start-Sleep -Seconds 3
 Check-Alive "Ziehen aus der Liste heraus"
 $moved = (Test-Path "$mBase\Ziel\m01.txt") -and -not (Test-Path "$mBase\Liste\m01.txt")
 [W]::Click($mr.L + 60, $mr.B - 30, $false); Start-Sleep -Milliseconds 500
 [System.Windows.Forms.SendKeys]::SendWait("^+5"); Start-Sleep -Seconds 2
-# Zeilen: .., m02 … m12 (11), Unter\x.txt
-[W]::SetCursorPos($mr.L + 40, (RowY 12)) | Out-Null; Start-Sleep -Milliseconds 200
+# Zeilen: .., m02 … m12 (11), m13 …, Unter\x.txt
+[W]::SetCursorPos($mr.L + 40, (RowY 13)) | Out-Null; Start-Sleep -Milliseconds 200
 [W]::mouse_event(0x0020, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
 [W]::mouse_event(0x0040, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 2
 Shot "screenshot35.png"   # nach mittlerer Maustaste: Verzeichnis „Unter“, x.txt markiert
@@ -626,8 +634,8 @@ $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $midOk = ($mTitle -match 'Liste\\Unter$') -and $selCount3 -eq 1
-$mInfo = "Ziehen markiert: $selCount1 (erwartet 5); Ziehen heraus verschiebt m01: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3"
-if ($selCount1 -eq 5 -and $moved -and $midOk) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
+$mInfo = "Rahmen markiert: $selCount1 (erwartet 5); schmaler Rahmen: $selCount2 (erwartet 1); Ziehen auf dem Namen verschiebt m01: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3"
+if ($selCount1 -eq 5 -and $selCount2 -eq 1 -and $moved -and $midOk) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
 else {
   Write-Output "::error title=Markieren durch Ziehen::$mInfo"
   "Markieren durch Ziehen bzw. mittlere Maustaste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1

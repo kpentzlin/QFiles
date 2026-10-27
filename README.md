@@ -202,12 +202,14 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   und Netzwerkfreigaben; auf FTP/SFTP/WebDAV-Servern und in der Netzwerkübersicht zeigt sie den normalen Inhalt.
   **Mittlere Maustaste** auf einer Datei in einem Unterverzeichnis: Die Liste wechselt in dieses Verzeichnis und
   markiert die Datei dort.
-- **Markieren durch Ziehen** (Ansichten Liste, Details und Mit Unterverzeichnissen, wie Idoswin Pro): Linke Maustaste
-  auf einer nicht markierten Datei drücken und ziehen markiert alle Dateien bis zum Mauszeiger; mit **Strg**
-  zusätzlich zur bisherigen Markierung. Am oberen/unteren (Liste: linken/rechten) Rand wird weitergeblättert. Verlässt
-  die Maus dabei die Liste seitlich (oder weit nach oben/unten), beginnt Drag & Drop mit den markierten Dateien –
-  so lässt sich eine einzelne Datei weiterhin in einem Zug in die andere Liste ziehen. Auf einer bereits markierten
-  Datei beginnt Drag & Drop sofort. Abschaltbar unter *Optionen → Bedienung*.
+- **Markieren durch Ziehen** (Ansichten Liste, Details und Mit Unterverzeichnissen, wie Idoswin Pro): Beginnt das
+  Ziehen mit der linken Maustaste **neben** einem Namen (rechts vom letzten angezeigten Zeichen, in einer anderen
+  Spalte oder im leeren Bereich), zieht QFiles einen Auswahlrahmen auf. Markiert werden die Dateien, deren Name
+  (Symbol und Text) in den Rahmen ragt – ein schmaler Rahmen rechts der Namen erfasst also nur die Dateien mit
+  längeren Namen. Mit **Strg** zusätzlich zur bisherigen Markierung; am Rand wird weitergeblättert. Beginnt das Ziehen
+  **auf** einem Namen (auf dem letzten angezeigten Zeichen oder links davon), gilt Drag & Drop wie gewohnt. Ein Klick
+  ohne Ziehen neben einem Namen markiert die Zeile, im leeren Bereich hebt er die Markierung auf. Abschaltbar unter
+  *Optionen → Bedienung*.
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
   (beides unter *Optionen → Anzeige*).
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
@@ -400,7 +402,7 @@ Browser-Anmeldung erfordern und ist nicht eingebaut.
 | Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI sowie in Office-Dokumenten (.docx, .xlsx, .pptx, OpenDocument .odt/.ods/.odp, EPUB) und **PDF** (Text der Seiten, Formulare/Kommentare und Dokumenteigenschaften; auch mit leerem Benutzerkennwort verschlüsselte PDFs – RC4, AES-128, AES-256; gescannte Seiten ohne Textebene enthalten keinen Text), Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“; **Schließen und markieren** markiert die gefundenen Dateien in der aktiven Liste, **Schließen und invers markieren** alle übrigen Dateien (die Liste wechselt dazu ggf. ins durchsuchte Verzeichnis und, wenn Treffer in Unterverzeichnissen liegen bzw. invers mit Unterverzeichnissen gesucht wurde, in die Ansicht „Mit Unterverzeichnissen“); Fenstergröße, -position und Spaltenbreiten bleiben erhalten |
 | Doppelte Dateien | Gleicher Inhalt: Größe, dann Hash, dann byteweiser Vergleich |
 | Dateien vergleichen (Strg+K) | Text zeilenweise nebeneinander mit Farbmarkierung und zeichengenauer Hervorhebung; Binärvergleich |
-| Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); markiert gleiche, unterschiedliche, neuere und fehlende Dateien farbig und wählt sie zum Kopieren aus |
+| Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); hinterlegt unterschiedliche (gelb), neuere (grün), ältere (lachsfarben) und fehlende (blau) Dateien farbig, gleiche bleiben ohne Farbe; markiert je nach Auswahl neuere und fehlende, unterschiedliche oder gleiche Dateien. Die Farben verschwinden mit „Markierung aufheben“ (Num /) oder „Vergleichsmarkierungen entfernen“ |
 | Verzeichnisse synchronisieren (Strg+Umschalt+Y) | In eine oder beide Richtungen, mit Vorschau, Filter, Spiegeln |
 | Datei teilen / zusammenfügen | Mit CRC-Prüfsumme und Batchdatei zum Zusammenfügen ohne QFiles |
 | Archive | ZIP anzeigen, entpacken und erstellen (Windows-Shell); 7z, RAR, TAR, CAB, ISO u. a. anzeigen und entpacken über das Windows-eigene `tar.exe`; Archivliste in der Dateianzeige (F11, siehe oben) |

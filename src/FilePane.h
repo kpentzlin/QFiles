@@ -233,19 +233,25 @@ private:
     void RequestThumb(int index, bool background = false);
     void PrefetchThumbs();          // weitere Miniaturen im Hintergrund laden (Blättern ohne Wartezeit)
     std::wstring TileLabel(Item& it);   // Kachelbeschriftung: Name gekürzt („…“), Endung immer sichtbar
-    // Markieren durch Ziehen (Liste/Details/„Mit Unterverzeichnissen“, wie Idoswin Pro)
+    // Markieren durch Ziehen (Liste/Details/„Mit Unterverzeichnissen“, wie Idoswin Pro): Auswahlrahmen, der neben den
+    // Namen beginnt und die Dateien erfasst, deren Name (Symbol und Text) in den Rahmen ragt
     bool DragMarkBegin(POINT pt, WPARAM keys);
     void DragMarkMove(bool timer);
-    void DragMarkEnd();
-    int DragMarkIndexAt(POINT pt, int& scroll);   // scroll: Elemente, um die weitergeblättert werden soll
-    void DragMarkSetRange(int cur);
-    void StartDragOfSelection();
+    void DragMarkEnd(bool click);
+    void DragMarkUpdate();
+    bool NameExtent(int index, int& left, int& right, RECT& row);   // Name in Client-Koordinaten der Liste
+    POINT ContentOffset() const;                                    // Bildlaufversatz (Lage von Element 0)
+    RECT DragMarkClientRect() const;
+    void DrawDragMarkRect(HDC dc);
     // Mittlere Maustaste (Favoriten, „Mit Unterverzeichnissen“): enthaltendes Verzeichnis öffnen, Datei markieren
     bool OpenContainingDir(int index);
-    bool dmActive_ = false, dmMoved_ = false;
-    int dmAnchor_ = -1, dmCur_ = -1, dmTick_ = 0;
-    POINT dmStart_{};
+    bool dmActive_ = false, dmMoved_ = false, dmCtrl_ = false;
+    int dmTick_ = 0;
+    POINT dmStart_{};            // Anfangspunkt (Inhaltskoordinaten: unabhängig vom Bildlauf)
+    POINT dmCurPt_{};            // aktueller Punkt (Inhaltskoordinaten)
+    RECT dmShown_{};             // zuletzt gezeichneter Rahmen (Client-Koordinaten)
     std::vector<char> dmBase_;   // Markierung vor dem Ziehen (Strg: wird ergänzt)
+    std::vector<int> dmIn_;      // derzeit vom Rahmen erfasste Elemente
     void StopThumbWorker();
     void OnThumbReady(WPARAM wp, LPARAM lp);
     int AddThumbnail(HBITMAP bmp);

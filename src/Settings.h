@@ -106,8 +106,8 @@ struct Options {
     // Privater Modus: Der Verlauf (Zurück/Vor, Verzeichnisverlauf, Befehlszeile, Such- und Umbenennungsmuster) wird
     // beim Einschalten festgehalten und bis zum Ausschalten nicht mehr gespeichert
     bool privateMode = false;
-    // Liste/Details: Ziehen mit der linken Maustaste über nicht markierte Dateien markiert sie (wie Idoswin Pro);
-    // Drag & Drop beginnt auf einer markierten Datei oder wenn die Maus beim Markieren die Liste verlässt
+    // Liste/Details: Ziehen mit der linken Maustaste neben den Namen zieht einen Auswahlrahmen auf (wie Idoswin Pro);
+    // markiert werden die Dateien, deren Name in den Rahmen ragt. Ziehen auf einem Namen: Drag & Drop wie bisher
     bool dragMark = true;
 
     void Load(const Config& c);
