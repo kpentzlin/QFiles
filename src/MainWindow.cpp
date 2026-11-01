@@ -681,7 +681,6 @@ void MainWindow::BuildMenu() {
     AddSep(m);
     AddItem(m, cmd::CompareFiles, L"Dateien &vergleichen…\tStrg+K");
     AddItem(m, cmd::CompareDirs, L"Ver&zeichnisse vergleichen…\tF7");
-    AddItem(m, cmd::ClearCompareMarks, L"Vergleichsmarkierungen &entfernen");
     AddItem(m, cmd::SyncDirs, L"Verzeichnisse s&ynchronisieren…\tStrg+Umschalt+Y");
     AddSep(m);
     AddItem(m, cmd::DirSizes, L"Verzeichnis&größen berechnen\tAlt+Umschalt+Eingabe");
@@ -3531,8 +3530,11 @@ void MainWindow::OnCommand(int id) {
         CompareMarks ml, mr;
         std::vector<std::wstring> sl, sr;
         if (CompareDirectories(hwnd_, left->Dir(), right->Dir(), ml, mr, sl, sr)) {
-            left->SetMarks(ml);
-            right->SetMarks(mr);
+            // Ergebnis nur als Markierung (wie mit der Maus gewählt) je nach „Nach dem Vergleich markieren“; keine
+            // farbigen Hintergründe mehr – die hellblaue Farbe fehlender Dateien sah wie eine Markierung aus, die sich
+            // nicht aufheben ließ
+            left->ClearMarks();
+            right->ClearMarks();
             left->SelectNames(sl);
             right->SelectNames(sr);
         }

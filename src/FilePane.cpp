@@ -1303,7 +1303,18 @@ void FilePane::GoUp() {
     if (dir_.empty()) return;
     std::wstring parent = LocationParent(dir_);
     if (parent.empty()) return;
-    Navigate(parent, LocationFileName(dir_));
+    // das bisherige Verzeichnis in der übergeordneten Liste fokussieren und markieren
+    std::wstring child = LocationFileName(dir_);
+    if (Navigate(parent, child) && !child.empty()) {
+        int i = FindItem(child);
+        if (i >= 0 && !items_[i].isParent) {
+            ListView_SetItemState(list_, -1, 0, LVIS_SELECTED);
+            ListView_SetItemState(list_, i, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            ListView_SetSelectionMark(list_, i);
+            ListView_EnsureVisible(list_, i, FALSE);
+            UpdateStatus();
+        }
+    }
 }
 
 void FilePane::GoRoot() {

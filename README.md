@@ -177,7 +177,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     Bezeichnung; der Verzeichnisbaum zeigt bei subst-Laufwerken das Ziel.
   - Verzeichnis-Textfeld mit Verlauf und Autovervollständigung; Umgebungsvariablen wie `%USERPROFILE%` sind erlaubt.
   - Zurück/Vor, Übergeordnet, **„\“** (oberste Verzeichnisebene des Laufwerks bzw. der Freigabe, Strg+Rücktaste),
-    Verzeichnis wählen. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der zuletzt aufgerufenen Verzeichnisse
+    Verzeichnis wählen. Nach „Übergeordnet“ (Pfeil, Rücktaste, „..“) ist das bisherige Verzeichnis markiert. Ein Rechtsklick auf Zurück bzw. Vor öffnet eine Liste der zuletzt aufgerufenen Verzeichnisse
     (neueste oben); die Zurück/Vor-Liste wird gespeichert und gilt auch nach einem Neustart (nicht im privaten Modus).
     Die Maustasten **„Zurück“ und „Vor“** einer 5-Tasten-Maus (sowie die Browser-Tasten der Tastatur) wirken wie
     „<“ bzw. „>“ der aktiven Liste.
@@ -402,7 +402,7 @@ Browser-Anmeldung erfordern und ist nicht eingebaut.
 | Dateien suchen (F3) | Name, Text in UTF-8/UTF-16/ANSI sowie in Office-Dokumenten (.docx, .xlsx, .pptx, OpenDocument .odt/.ods/.odp, EPUB) und **PDF** (Text der Seiten, Formulare/Kommentare und Dokumenteigenschaften; auch mit leerem Benutzerkennwort verschlüsselte PDFs – RC4, AES-128, AES-256; gescannte Seiten ohne Textebene enthalten keinen Text), Größe, Datum, Attribute; Ergebnisliste mit „Gehe zu“; **Schließen und markieren** markiert die gefundenen Dateien in der aktiven Liste, **Schließen und invers markieren** alle übrigen Dateien (die Liste wechselt dazu ggf. ins durchsuchte Verzeichnis und, wenn Treffer in Unterverzeichnissen liegen bzw. invers mit Unterverzeichnissen gesucht wurde, in die Ansicht „Mit Unterverzeichnissen“); Fenstergröße, -position und Spaltenbreiten bleiben erhalten |
 | Doppelte Dateien | Gleicher Inhalt: Größe, dann Hash, dann byteweiser Vergleich |
 | Dateien vergleichen (Strg+K) | Text zeilenweise nebeneinander mit Farbmarkierung und zeichengenauer Hervorhebung; Binärvergleich |
-| Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben); hinterlegt unterschiedliche (gelb), neuere (grün), ältere (lachsfarben) und fehlende (blau) Dateien farbig, gleiche bleiben ohne Farbe; markiert je nach Auswahl neuere und fehlende, unterschiedliche oder gleiche Dateien. Die Farben verschwinden mit „Markierung aufheben“ (Num /) oder „Vergleichsmarkierungen entfernen“ |
+| Verzeichnisse vergleichen (F7) | Vergleicht die aktive Liste mit einer anderen (bei Split mit Auswahlfrage, z. B. links oben mit links unten oder rechts oben). Das Ergebnis ist eine gewöhnliche Markierung in beiden Listen, wie mit der Maus gewählt – je nach „Nach dem Vergleich markieren“: neuere und fehlende, unterschiedliche, gleiche oder keine Dateien |
 | Verzeichnisse synchronisieren (Strg+Umschalt+Y) | In eine oder beide Richtungen, mit Vorschau, Filter, Spiegeln |
 | Datei teilen / zusammenfügen | Mit CRC-Prüfsumme und Batchdatei zum Zusammenfügen ohne QFiles |
 | Archive | ZIP anzeigen, entpacken und erstellen (Windows-Shell); 7z, RAR, TAR, CAB, ISO u. a. anzeigen und entpacken über das Windows-eigene `tar.exe`; Archivliste in der Dateianzeige (F11, siehe oben) |

@@ -315,8 +315,9 @@ bool ResolveSingleConflict(HWND owner, CopyJob& job, unsigned& flags, bool move)
     t.Label(kConflictInfo, L"", 7, 28, 286, 18);
     t.Label(-1, L"&Neuer Name:", 7, 53, 50, 10);
     t.Edit(kConflictName, 60, 51, 233, 13);
-    t.DefButton(kConflictNewName, L"&Mit neuem Namen ablegen", 7, 75, 110, 14);
-    t.Button(kConflictReplace, (ta & FILE_ATTRIBUTE_DIRECTORY) ? L"&Zusammenführen…" : L"&Ersetzen", 123, 75, 80, 14);
+    // Reihenfolge: links Ersetzen, in der Mitte „Mit neuem Namen ablegen“ (Standardschaltfläche), rechts Abbrechen
+    t.Button(kConflictReplace, (ta & FILE_ATTRIBUTE_DIRECTORY) ? L"&Zusammenführen…" : L"&Ersetzen", 7, 75, 80, 14);
+    t.DefButton(kConflictNewName, L"&Mit neuem Namen ablegen", 93, 75, 114, 14);
     t.Button(IDCANCEL, L"Abbrechen", 213, 75, 80, 14);
     dlg.DoModal(owner, t);
     if (dlg.choice == kConflictNewName) {
