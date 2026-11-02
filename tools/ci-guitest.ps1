@@ -641,6 +641,28 @@ else {
   "Markieren durch Ziehen bzw. mittlere Maustaste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
+# ---- Hängererkennung: QFILES_TEST_HANG=9 blockiert den Haupt-Thread nach 3 s für 9 s; der Wächter muss den
+#      Aufrufstapel (mit Sleep) und das Ende des Hängers nach QFiles-Haenger.txt schreiben ----
+$hangTxt = "C:\ProgramData\QFiles\QFiles-Haenger.txt"
+Remove-Item $hangTxt, "C:\ProgramData\QFiles\QFiles-Haenger.dmp" -ErrorAction SilentlyContinue
+$env:QFILES_TEST_HANG = "9"
+$script:p = Start-Process -FilePath $Exe -ArgumentList '"C:\Windows"' -PassThru
+Start-Sleep -Seconds 20
+Remove-Item Env:\QFILES_TEST_HANG
+Check-Alive "Hängererkennung"
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$hl = if (Test-Path $hangTxt) { Get-Content $hangTxt -Raw -Encoding UTF8 } else { "" }
+$hl | Out-File -FilePath "$PWD\haenger-log.txt" -Encoding UTF8
+$hangOk = ($hl -match 'Probe 1') -and ($hl -match 'Sleep') -and ($hl -match 'Ende:') -and (Test-Path "C:\ProgramData\QFiles\QFiles-Haenger.dmp")
+$hangInfo = ($hl -split "`r?`n" | Select-Object -First 14) -join ' / '
+if ($hangOk) { Write-Output "::notice title=Hängererkennung::$hangInfo" }
+else {
+  Write-Output "::error title=Hängererkennung::$hangInfo"
+  "Hängererkennung nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
 # ---- Kopieren einer einzelnen Datei, deren Name im Ziel vorhanden ist: „Mit neuem Namen ablegen“ (vorbelegt „x (1).txt“) ----
 $cfLog = "$PWD\konflikt-log.txt"
 trap {
