@@ -19,6 +19,7 @@
 namespace qf {
 bool MainWindowPreTranslate(MSG* msg);
 void InstallCrashHandler(const std::wstring& reportDir);
+void StartHangWatch(const std::wstring& reportDir);
 }
 
 using namespace qf;
@@ -101,6 +102,16 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         return 1;
     }
     if (firstRun) App::SaveSettings();
+    // Hängererkennung: Aufrufstapel nach QFiles-Haenger.txt, wenn das Hauptfenster länger nicht reagiert
+    StartHangWatch(PathParent(cfgPath));
+    // Nur für automatische Tests: QFILES_TEST_HANG=<Sekunden> blockiert den Haupt-Thread einmal nach 3 Sekunden
+    if (wchar_t v[16] = {}; GetEnvironmentVariableW(L"QFILES_TEST_HANG", v, 16)) {
+        static DWORD hangMs = (DWORD)_wtoi(v) * 1000;
+        SetTimer(nullptr, 0, 3000, [](HWND, UINT, UINT_PTR id, DWORD) {
+            KillTimer(nullptr, id);
+            Sleep(hangMs);
+        });
+    }
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
