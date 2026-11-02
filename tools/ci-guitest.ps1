@@ -655,7 +655,7 @@ Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $hl = if (Test-Path $hangTxt) { Get-Content $hangTxt -Raw -Encoding UTF8 } else { "" }
 $hl | Out-File -FilePath "$PWD\haenger-log.txt" -Encoding UTF8
-$hangOk = ($hl -match 'Probe 1') -and ($hl -match 'Sleep') -and ($hl -match 'Ende:') -and (Test-Path "C:\ProgramData\QFiles\QFiles-Haenger.dmp")
+$hangOk = ($hl -match 'Probe 1') -and ($hl -match 'Sleep') -and ($hl -match 'Ende:')
 $hangInfo = ($hl -split "`r?`n" | Select-Object -First 14) -join ' / '
 if ($hangOk) { Write-Output "::notice title=Hängererkennung::$hangInfo" }
 else {

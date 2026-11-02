@@ -4,11 +4,12 @@
 // übersetzt (so bleibt der Wächter auch dann frei, wenn der Haupt-Thread gerade eine Sperre hält). Proben nach 5, 15
 // und 30 Sekunden, dazu Beginn, Ende und Dauer des Hängers:
 //   %ProgramData%\QFiles\QFiles-Haenger.txt (neueste Einträge am Ende, ältere werden gekürzt)
-//   %ProgramData%\QFiles\QFiles-Haenger.dmp (Minidump aller Threads zur ersten Probe des letzten Hängers)
+// (Kein Minidump: MiniDumpWriteDump im eigenen Prozess blieb im Test hängen.)
 // Funktionsnamen von QFiles erscheinen, wenn QFiles.pdb neben der exe liegt; bei Windows-DLLs genügen die Exporte.
 
 #include <windows.h>
 #include <dbghelp.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -123,16 +124,6 @@ void AppendReport(const std::wstring& text) {
     WriteFileBytes(path, s.data(), s.size());
 }
 
-void WriteDump() {
-    std::wstring path = PathCombine(g_hangDir, L"QFiles-Haenger.dmp");
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return;
-    MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), f,
-                      (MINIDUMP_TYPE)(MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules), nullptr,
-                      nullptr, nullptr);
-    CloseHandle(f);
-}
-
 DWORD WINAPI WatchThread(void*) {
     const DWORD kProbeMs = 1000;        // Abstand der Prüfungen
     const DWORD kAnswerMs = 1000;       // so lange darf eine Prüfung dauern
@@ -172,7 +163,6 @@ DWORD WINAPI WatchThread(void*) {
                        L")\r\n";
             text += Format(L"Probe %d nach %u s – Aufrufstapel des Haupt-Threads:\r\n", samples + 1, secs) + Symbolize(pcs, n);
             AppendReport(text);
-            if (samples == 0) WriteDump();
             ++samples;
         }
     }
