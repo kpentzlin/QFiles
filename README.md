@@ -643,3 +643,10 @@ Standard-Kontextmenü der Shell einmal an.
   und Speicher belegen (Esc bricht ab).
 - Welche Rechner unter „Netzwerk“ erscheinen, hängt von der Netzwerkerkennung von Windows ab.
 - Die Oberfläche ist deutsch; eine Sprachumschaltung gibt es nicht.
+
+## Hängererkennung
+
+Reagiert das Hauptfenster länger als 5 Sekunden nicht, schreibt QFiles den Aufrufstapel des Haupt-Threads (Proben nach
+5, 15 und 30 Sekunden, dazu Beginn und Dauer) nach `%ProgramData%\QFiles\QFiles-Haenger.txt` und einen Minidump nach
+`QFiles-Haenger.dmp`. Liegt `QFiles.pdb` (im Download-Paket enthalten) neben `QFiles.exe`, stehen auch die
+Funktionsnamen von QFiles im Bericht.

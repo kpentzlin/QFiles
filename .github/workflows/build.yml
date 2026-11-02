@@ -93,6 +93,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item build\Release\QFiles.exe dist\
+          Copy-Item build\Release\QFiles.pdb dist\ -ErrorAction SilentlyContinue   # Funktionsnamen in Absturz-/Hängerberichten
           Copy-Item README.md dist\
           Compress-Archive -Path dist\* -DestinationPath QFiles-x64.zip -Force
 
@@ -102,6 +103,7 @@ jobs:
           name: QFiles-x64
           path: |
             build/Release/QFiles.exe
+            build/Release/QFiles.pdb
             QFiles-x64.zip
 
       - uses: actions/upload-artifact@v4
