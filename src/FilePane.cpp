@@ -1619,7 +1619,10 @@ const COLORREF kSystemHiddenText = RGB(140, 30, 170); // lila
 
 LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
     switch (cd->nmcd.dwDrawStage) {
-    case CDDS_PREPAINT: return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+    case CDDS_PREPAINT:
+        // Option „Zeile unter der Maus hervorheben“ aus: eine dennoch gesetzte heiße Zeile vor dem Zeichnen löschen
+        if (!App::Opt().hotTrack && ListView_GetHotItem(list_) != -1) ListView_SetHotItem(list_, -1);
+        return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
     case CDDS_POSTPAINT:
         DrawDragMarkRect(cd->nmcd.hdc);   // Auswahlrahmen beim Markieren durch Ziehen
         return CDRF_DODEFAULT;
@@ -2962,16 +2965,18 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
             self->DragMarkMove(false);
             return 0;
         }
-        if (!App::Opt().hotTrack) {
-            // Option „Zeile unter der Maus hervorheben“ aus: die Liste setzt die Zeile unter der Maus bei jeder
-            // Mausbewegung als „heiß“ (Explorer-Design: hellblau); gleich wieder zurücksetzen, bevor gezeichnet wird
+        [[fallthrough]];
+    case WM_MOUSEHOVER:
+    case WM_TIMER:
+        if (!App::Opt().hotTrack && (msg != WM_TIMER || wp != kDragMarkTimer)) {
+            // Option „Zeile unter der Maus hervorheben“ aus: die Liste setzt die Zeile unter der Maus bei
+            // Mausbewegung bzw. nach kurzem Verweilen (WM_MOUSEHOVER) als „heiß“ (Explorer-Design: hellblau);
+            // gleich wieder zurücksetzen, bevor gezeichnet wird
             LRESULT r = DefSubclassProc(h, msg, wp, lp);
             if (ListView_GetHotItem(h) != -1) ListView_SetHotItem(h, -1);
             return r;
         }
-        break;
-    case WM_TIMER:
-        if (wp == kDragMarkTimer) {
+        if (msg == WM_TIMER && wp == kDragMarkTimer) {
             self->DragMarkMove(true);
             return 0;
         }

@@ -733,6 +733,7 @@ $dOn = $script:hd; $hotOn = $script:hhot; $overOn = $script:hover
 $iniT = Get-Content $iniPath -Raw -Encoding UTF8
 $iniT = if ($iniT -match 'ZeileUnterMaus=') { $iniT -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=0' } else { $iniT -replace '\[Optionen\]', "[Optionen]`r`nZeileUnterMaus=0" }
 Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
+$script:hoverInfo += " | INI: " + ((Select-String -Path $iniPath -Pattern 'ZeileUnterMaus=' | ForEach-Object { $_.Line }) -join ',')
 try { HoverDiff "screenshot38.png" | Out-Null } catch { $script:hoverInfo += " | Fehler im zweiten Durchlauf: $($_.Exception.Message) ($($_.InvocationInfo.PositionMessage))"; $script:hd = 999 }
 $dOff = $script:hd; $hotOff = $script:hhot; $overOff = $script:hover
 $iniT = (Get-Content $iniPath -Raw -Encoding UTF8) -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=1'
