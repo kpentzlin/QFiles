@@ -2962,6 +2962,13 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
             self->DragMarkMove(false);
             return 0;
         }
+        if (!App::Opt().hotTrack) {
+            // Option „Zeile unter der Maus hervorheben“ aus: die Liste setzt die Zeile unter der Maus bei jeder
+            // Mausbewegung als „heiß“ (Explorer-Design: hellblau); gleich wieder zurücksetzen, bevor gezeichnet wird
+            LRESULT r = DefSubclassProc(h, msg, wp, lp);
+            if (ListView_GetHotItem(h) != -1) ListView_SetHotItem(h, -1);
+            return r;
+        }
         break;
     case WM_TIMER:
         if (wp == kDragMarkTimer) {

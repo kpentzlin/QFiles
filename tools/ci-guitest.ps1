@@ -20,6 +20,9 @@ public static class W {
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr h);
+  [StructLayout(LayoutKind.Sequential)] public struct PT { public int X, Y; }
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(PT p);
+  public static IntPtr WindowAt(int x, int y) { PT p; p.X = x; p.Y = y; return WindowFromPoint(p); }
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
   public static void Drag(int x1, int y1, int x2, int y2) {
     SetCursorPos(x1, y1); System.Threading.Thread.Sleep(200);
@@ -681,12 +684,16 @@ function HoverDiff([string]$shot) {
   if ($rh -lt 10 -or $rh -gt 60) { $rh = 20 }
   $yHot = [int]($hr2.B + 3 * $rh + $rh / 2)
   $yRef = [int]($hr2.B + 5 * $rh + $rh / 2)
-  [W]::SetCursorPos($x, $yHot) | Out-Null; Start-Sleep -Milliseconds 300
-  [W]::SetCursorPos($x + 2, $yHot) | Out-Null; Start-Sleep -Milliseconds 800
+  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 300
+  [W]::SetCursorPos($x - 6, $yHot) | Out-Null; Start-Sleep -Milliseconds 200
+  for ($k = 0; $k -lt 6; $k++) { [W]::mouse_event(0x0001, 1, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60 }
+  Start-Sleep -Milliseconds 800
+  $overList = [W]::WindowAt($x, $yHot) -eq $hl
+  $hot = ([W]::SendMessage($hl, 0x103D, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETHOTITEM
   $c1 = PixelAt $x ($yHot - [int]($rh / 2) + 3); $c2 = PixelAt $x ($yRef - [int]($rh / 2) + 3)
   Shot $shot
   $d = [Math]::Abs($c1.R - $c2.R) + [Math]::Abs($c1.G - $c2.G) + [Math]::Abs($c1.B - $c2.B)
-  $script:hoverInfo += " | $shot unter Maus $($c1.R),$($c1.G),$($c1.B) sonst $($c2.R),$($c2.G),$($c2.B)"
+  $script:hoverInfo += " | $shot Maus über Liste: $overList, heiße Zeile: $hot, unter Maus $($c1.R),$($c1.G),$($c1.B) sonst $($c2.R),$($c2.G),$($c2.B)"
   # mittlere Maustaste auf h04.txt (Zeile 4: .., h01 … ): „Öffnen mit“-Auswahl
   if ($shot -eq "screenshot37.png") {
     $yFile = [int]($hr2.B + 4 * $rh + $rh / 2)
@@ -706,18 +713,20 @@ function HoverDiff([string]$shot) {
   Start-Sleep -Seconds 3
   if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
   $script:hd = $d
+  $script:hhot = $hot
+  $script:hover = $overList
 }
 $script:hoverInfo = ""
 $iniPath = "C:\ProgramData\QFiles\QFiles.ini"
-HoverDiff "screenshot37.png" | Out-Null; $dOn = $script:hd
+HoverDiff "screenshot37.png" | Out-Null; $dOn = $script:hd; $hotOn = $script:hhot; $overOn = $script:hover
 $iniT = Get-Content $iniPath -Raw -Encoding UTF8
 $iniT = if ($iniT -match 'ZeileUnterMaus=') { $iniT -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=0' } else { $iniT -replace '\[Optionen\]', "[Optionen]`r`nZeileUnterMaus=0" }
 Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
-HoverDiff "screenshot38.png" | Out-Null; $dOff = $script:hd
+HoverDiff "screenshot38.png" | Out-Null; $dOff = $script:hd; $hotOff = $script:hhot; $overOff = $script:hover
 $iniT = (Get-Content $iniPath -Raw -Encoding UTF8) -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=1'
 Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
 $hvInfo = "Unterschied mit Hervorhebung: $dOn, ohne: $dOff; Öffnen mit: $owCount Einträge$hoverInfo"
-if ($dOn -ge 12 -and $dOff -lt 6 -and $owCount -ge 5) { Write-Output "::notice title=Zeile unter Maus / Öffnen mit::$hvInfo" }
+if ($overOn -and $overOff -and $hotOn -ge 0 -and $hotOff -eq -1 -and $dOn -ge 12 -and $dOff -lt 6 -and $owCount -ge 5) { Write-Output "::notice title=Zeile unter Maus / Öffnen mit::$hvInfo" }
 else {
   Write-Output "::error title=Zeile unter Maus / Öffnen mit::$hvInfo"
   "Zeile unter der Maus bzw. Öffnen mit nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
