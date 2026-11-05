@@ -736,6 +736,7 @@ Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
 $script:hoverInfo += " | INI: " + ((Select-String -Path $iniPath -Pattern 'ZeileUnterMaus=' | ForEach-Object { $_.Line }) -join ',')
 try { HoverDiff "screenshot38.png" | Out-Null } catch { $script:hoverInfo += " | Fehler im zweiten Durchlauf: $($_.Exception.Message) ($($_.InvocationInfo.PositionMessage))"; $script:hd = 999 }
 $dOff = $script:hd; $hotOff = $script:hhot; $overOff = $script:hover
+$script:hoverInfo += " | INI nach Lauf 2: " + ((Select-String -Path $iniPath -Pattern 'ZeileUnterMaus=|^\[Optionen\]' | ForEach-Object { "$($_.LineNumber):$($_.Line)" }) -join ',')
 $iniT = (Get-Content $iniPath -Raw -Encoding UTF8) -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=1'
 Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
 $hvInfo = "Unterschied mit Hervorhebung: $dOn, ohne: $dOff; Öffnen mit: $owCount Einträge$hoverInfo"

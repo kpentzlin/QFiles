@@ -203,7 +203,7 @@ bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
                                 LVS_EDITLABELS | LVS_SHAREIMAGELISTS | LVS_AUTOARRANGE,
                             0, 0, 100, 100, hwnd_, (HMENU)(INT_PTR)kIdList, App::Instance(), nullptr);
     SetWindowSubclass(list_, ListSubclass, 1, (DWORD_PTR)this);
-    SetWindowTheme(list_, L"Explorer", nullptr);
+    ApplyListTheme();
     ListView_SetImageList(list_, g_sysSmall, LVSIL_SMALL);
     ListView_SetImageList(list_, g_sysLarge, LVSIL_NORMAL);
     ListView_SetCallbackMask(list_, LVIS_CUT | LVIS_DROPHILITED);
@@ -392,7 +392,19 @@ void FilePane::ApplyViewStyle() {
     if (view_ == PaneView::Icons || view_ == PaneView::Thumbnails) ListView_Arrange(list_, LVA_DEFAULT);
 }
 
+// Explorer-Design (hellblaue Markierung, Zeile unter der Maus hellblau). Option „Zeile unter der Maus hervorheben“
+// aus: Standarddesign der Liste – dort gibt es keine Hervorhebung unter der Maus (das Explorer-Design zeichnet sie
+// unabhängig von der Zeichenbenachrichtigung und setzt die heiße Zeile selbst immer wieder)
+void FilePane::ApplyListTheme() {
+    bool explorer = App::Opt().hotTrack;
+    if (themeExplorer_ == (explorer ? 1 : 0)) return;
+    themeExplorer_ = explorer ? 1 : 0;
+    SetWindowTheme(list_, explorer ? L"Explorer" : nullptr, nullptr);
+    InvalidateRect(list_, nullptr, TRUE);
+}
+
 void FilePane::ApplyOptions() {
+    ApplyListTheme();
     CreateListFont();
     UpdateListColors();
     SetupColumns();

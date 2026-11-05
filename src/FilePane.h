@@ -245,6 +245,8 @@ private:
     void DrawDragMarkRect(HDC dc);
     // Mittlere Maustaste (Favoriten, „Mit Unterverzeichnissen“): enthaltendes Verzeichnis öffnen, Datei markieren
     bool OpenContainingDir(int index);
+    void ApplyListTheme();       // Explorer-Design je nach Option „Zeile unter der Maus hervorheben“
+    int themeExplorer_ = -1;
     bool dmActive_ = false, dmMoved_ = false, dmCtrl_ = false;
     int dmTick_ = 0;
     POINT dmStart_{};            // Anfangspunkt (Inhaltskoordinaten: unabhängig vom Bildlauf)
