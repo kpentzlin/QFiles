@@ -48,7 +48,7 @@ HBITMAP MenuBitmapFromIcon(HICON icon, int size) {
 HICON HandlerIcon(IAssocHandler* h) {
     LPWSTR iconPath = nullptr;
     int index = 0;
-    HICON small = nullptr;
+    HICON smallIcon = nullptr;
     if (SUCCEEDED(h->GetIconLocation(&iconPath, &index)) && iconPath) {
         std::wstring p = iconPath;
         CoTaskMemFree(iconPath);
@@ -57,9 +57,9 @@ HICON HandlerIcon(IAssocHandler* h) {
             wchar_t out[MAX_PATH] = {};
             if (SUCCEEDED(SHLoadIndirectString(p.c_str(), out, MAX_PATH, nullptr))) p = out;
         }
-        ExtractIconExW(p.c_str(), index, nullptr, &small, 1);
+        ExtractIconExW(p.c_str(), index, nullptr, &smallIcon, 1);
     }
-    return small;
+    return smallIcon;
 }
 
 } // namespace
