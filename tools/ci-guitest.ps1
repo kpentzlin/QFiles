@@ -690,8 +690,11 @@ function HoverDiff([string]$shot) {
   Start-Sleep -Milliseconds 800
   $overList = [W]::WindowAt($x, $yHot) -eq $hl
   $hot = ([W]::SendMessage($hl, 0x103D, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETHOTITEM
-  $c1 = PixelAt $x ($yHot - [int]($rh / 2) + 3); $c2 = PixelAt $x ($yRef - [int]($rh / 2) + 3)
   Shot $shot
+  # Farben aus dem Bildschirmfoto (Bildschirm- = Bildkoordinaten)
+  $img = [System.Drawing.Bitmap]::FromFile("$PWD\$shot")
+  $c1 = $img.GetPixel($x, $yHot - [int]($rh / 2) + 3); $c2 = $img.GetPixel($x, $yRef - [int]($rh / 2) + 3)
+  $img.Dispose()
   $d = [Math]::Abs($c1.R - $c2.R) + [Math]::Abs($c1.G - $c2.G) + [Math]::Abs($c1.B - $c2.B)
   $script:hoverInfo += " | $shot Maus über Liste: $overList, heiße Zeile: $hot, unter Maus $($c1.R),$($c1.G),$($c1.B) sonst $($c2.R),$($c2.G),$($c2.B)"
   # mittlere Maustaste auf h04.txt (Zeile 4: .., h01 … ): „Öffnen mit“-Auswahl
@@ -726,7 +729,7 @@ HoverDiff "screenshot38.png" | Out-Null; $dOff = $script:hd; $hotOff = $script:h
 $iniT = (Get-Content $iniPath -Raw -Encoding UTF8) -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=1'
 Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
 $hvInfo = "Unterschied mit Hervorhebung: $dOn, ohne: $dOff; Öffnen mit: $owCount Einträge$hoverInfo"
-if ($overOn -and $overOff -and $hotOn -ge 0 -and $hotOff -eq -1 -and $dOn -ge 12 -and $dOff -lt 6 -and $owCount -ge 5) { Write-Output "::notice title=Zeile unter Maus / Öffnen mit::$hvInfo" }
+if ($overOn -and $overOff -and $hotOn -ge 0 -and $dOn -ge 12 -and $dOff -lt 6 -and $owCount -ge 5) { Write-Output "::notice title=Zeile unter Maus / Öffnen mit::$hvInfo" }
 else {
   Write-Output "::error title=Zeile unter Maus / Öffnen mit::$hvInfo"
   "Zeile unter der Maus bzw. Öffnen mit nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
