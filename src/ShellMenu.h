@@ -23,6 +23,10 @@ void WarmUpShellContextMenu(const std::wstring& sampleFile);
 // Muss aus der Fensterprozedur des owner-Fensters aufgerufen werden (Untermenüs wie "Senden an", "Neu").
 bool HandleShellMenuMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT* result);
 
+// „Öffnen mit“-Auswahl für eine Datei (wie das Untermenü „Öffnen mit“ des Explorer-Kontextmenüs, dazu „Andere App
+// auswählen…“ und „Abbrechen“). Rückgabe: true, wenn ein Programm gestartet wurde.
+bool ShowOpenWithMenu(HWND owner, const std::wstring& path, POINT screenPt);
+
 // Eigenschaften (Explorer-Dialog) für ein oder mehrere Elemente.
 void ShowShellProperties(HWND owner, const std::wstring& dir, const std::vector<std::wstring>& names);
 

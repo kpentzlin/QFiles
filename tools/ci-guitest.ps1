@@ -19,6 +19,7 @@ public static class W {
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr h);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
   public static void Drag(int x1, int y1, int x2, int y2) {
     SetCursorPos(x1, y1); System.Threading.Thread.Sleep(200);
@@ -639,6 +640,87 @@ if ($selCount1 -eq 5 -and $selCount2 -eq 1 -and $moved -and $midOk) { Write-Outp
 else {
   Write-Output "::error title=Markieren durch Ziehen::$mInfo"
   "Markieren durch Ziehen bzw. mittlere Maustaste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
+# ---- Zeile unter der Maus (Option „ZeileUnterMaus“) und mittlere Maustaste: „Öffnen mit“-Auswahl ----
+$hBase = "C:\QFilesHover"
+Remove-Item $hBase -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $hBase | Out-Null
+foreach ($i in 1..8) { Set-Content -Path ("$hBase\h{0:D2}.txt" -f $i) -Value $i -Encoding UTF8 }
+function PixelAt([int]$x, [int]$y) {
+  $bmp = New-Object System.Drawing.Bitmap 1, 1
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size 1, 1))
+  $c = $bmp.GetPixel(0, 0); $g.Dispose(); $bmp.Dispose()
+  return $c
+}
+function HoverDiff([string]$shot) {
+  $script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $hBase + '"'), '"C:\Windows"' -PassThru
+  Start-Sleep -Seconds 7
+  Check-Alive "Start (Zeile unter der Maus)"
+  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+  $hh = [IntPtr]::Zero; $best = [IntPtr]::Zero; $bestKey = [int]::MaxValue
+  while ($true) {
+    $hh = [W]::FindWindowEx($p.MainWindowHandle, $hh, "QFilesPane", $null)
+    if ($hh -eq [IntPtr]::Zero) { break }
+    if (-not [W]::IsWindowVisible($hh)) { continue }
+    $r = New-Object W+RECT; [W]::GetWindowRect($hh, [ref]$r) | Out-Null
+    $key = $r.L + $r.T * 10
+    if ($key -lt $bestKey) { $bestKey = $key; $best = $hh }
+  }
+  $hl = [W]::FindWindowEx($best, [IntPtr]::Zero, "SysListView32", $null)
+  $lr = New-Object W+RECT; [W]::GetWindowRect($hl, [ref]$lr) | Out-Null
+  $x = $lr.R - 40
+  [W]::Click($lr.L + 60, $lr.B - 20, $false); Start-Sleep -Milliseconds 400   # Liste aktivieren (leerer Bereich)
+  [System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800   # Details
+  $hdr = [W]::FindWindowEx($hl, [IntPtr]::Zero, "SysHeader32", $null)
+  $hr2 = New-Object W+RECT; [W]::GetWindowRect($hdr, [ref]$hr2) | Out-Null
+  $v1 = ([W]::SendMessage($hl, 0x1040, [IntPtr]1, [IntPtr]-1)).ToInt64()
+  $v5 = ([W]::SendMessage($hl, 0x1040, [IntPtr]5, [IntPtr]-1)).ToInt64()
+  $rh = [int]((($v5 -shr 16) -band 0xFFFF) - (($v1 -shr 16) -band 0xFFFF)) / 4
+  if ($rh -lt 10 -or $rh -gt 60) { $rh = 20 }
+  $yHot = [int]($hr2.B + 3 * $rh + $rh / 2)
+  $yRef = [int]($hr2.B + 5 * $rh + $rh / 2)
+  [W]::SetCursorPos($x, $yHot) | Out-Null; Start-Sleep -Milliseconds 300
+  [W]::SetCursorPos($x + 2, $yHot) | Out-Null; Start-Sleep -Milliseconds 800
+  $c1 = PixelAt $x ($yHot - [int]($rh / 2) + 3); $c2 = PixelAt $x ($yRef - [int]($rh / 2) + 3)
+  Shot $shot
+  $d = [Math]::Abs($c1.R - $c2.R) + [Math]::Abs($c1.G - $c2.G) + [Math]::Abs($c1.B - $c2.B)
+  $script:hoverInfo += " | $shot unter Maus $($c1.R),$($c1.G),$($c1.B) sonst $($c2.R),$($c2.G),$($c2.B)"
+  # mittlere Maustaste auf h04.txt (Zeile 4: .., h01 … ): „Öffnen mit“-Auswahl
+  if ($shot -eq "screenshot37.png") {
+    $yFile = [int]($hr2.B + 4 * $rh + $rh / 2)
+    [W]::SetCursorPos($lr.L + 50, $yFile) | Out-Null; Start-Sleep -Milliseconds 200
+    [W]::mouse_event(0x0020, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
+    [W]::mouse_event(0x0040, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Seconds 2
+    $menuWnd = [W]::FindWindow("#32768", $null)
+    $script:owCount = -1
+    if ($menuWnd -ne [IntPtr]::Zero) {
+      $hm = [W]::SendMessage($menuWnd, 0x01E1, [IntPtr]::Zero, [IntPtr]::Zero)   # MN_GETHMENU
+      $script:owCount = [W]::GetMenuItemCount($hm)
+    }
+    Shot "screenshot39.png"   # „Öffnen mit“-Auswahl
+    [W]::Key(0x1B); Start-Sleep -Milliseconds 500
+  }
+  $p.CloseMainWindow() | Out-Null
+  Start-Sleep -Seconds 3
+  if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+  $script:hd = $d
+}
+$script:hoverInfo = ""
+$iniPath = "C:\ProgramData\QFiles\QFiles.ini"
+HoverDiff "screenshot37.png" | Out-Null; $dOn = $script:hd
+$iniT = Get-Content $iniPath -Raw -Encoding UTF8
+$iniT = if ($iniT -match 'ZeileUnterMaus=') { $iniT -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=0' } else { $iniT -replace '\[Optionen\]', "[Optionen]`r`nZeileUnterMaus=0" }
+Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
+HoverDiff "screenshot38.png" | Out-Null; $dOff = $script:hd
+$iniT = (Get-Content $iniPath -Raw -Encoding UTF8) -replace 'ZeileUnterMaus=\d', 'ZeileUnterMaus=1'
+Set-Content -Path $iniPath -Value $iniT -Encoding UTF8 -NoNewline
+$hvInfo = "Unterschied mit Hervorhebung: $dOn, ohne: $dOff; Öffnen mit: $owCount Einträge$hoverInfo"
+if ($dOn -ge 12 -and $dOff -lt 6 -and $owCount -ge 5) { Write-Output "::notice title=Zeile unter Maus / Öffnen mit::$hvInfo" }
+else {
+  Write-Output "::error title=Zeile unter Maus / Öffnen mit::$hvInfo"
+  "Zeile unter der Maus bzw. Öffnen mit nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
 # ---- Hängererkennung: QFILES_TEST_HANG=9 blockiert den Haupt-Thread nach 3 s für 9 s; der Wächter muss den

@@ -39,6 +39,9 @@ public:
     void SetFavoritesCount(size_t count);
 
 private:
+    void ApplyRecycleIcon();     // Symbol aus recycleFull_ setzen
+    int recycleFull_ = 0;        // zuletzt ermittelt: 1 = Papierkorb enthält Elemente
+    volatile LONG recycleQuery_ = 0;   // Abfrage läuft (im Hintergrund: SHQueryRecycleBin kann Laufwerke aufwecken)
     void Rebuild(int select);
     int Selected() const;          // Index in items_ (-1: nichts oder „Favoriten“)
     int SelectedRow() const;       // Zeile der ListView

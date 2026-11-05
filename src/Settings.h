@@ -65,6 +65,7 @@ struct Options {
     bool bookmarkFontItalic = false;
     bool sizeInBytes = false;          // Größe immer in Bytes statt automatischer Einheit
     bool fullRowSelect = true;
+    bool hotTrack = true;              // Zeile unter dem Mauszeiger hellblau hinterlegen (Dateilisten)
     bool showExtensionsColumn = true;
     bool showAttributesColumn = true;
     bool showCreatedColumn = false;    // zusätzliche Spalte Erstellungsdatum (neben Änderungsdatum)

@@ -173,6 +173,7 @@ int BookmarkList::IconColumnItemAt(POINT screenPt) const {
 void BookmarkList::Set(const std::vector<Bookmark>& b) {
     items_ = b;
     Rebuild(-1);
+    UpdateRecycleIcon();
 }
 
 void BookmarkList::SetFavoritesCount(size_t count) {
@@ -189,13 +190,34 @@ void BookmarkList::SetFavoritesCount(size_t count) {
     if (favSel && favRow_) ListView_SetItemState(list_, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 }
 
+namespace { constexpr UINT WM_QF_RECYCLESTATE = WM_APP + 0x361; }
+
+// Papierkorb leer/voll im Hintergrund abfragen: SHQueryRecycleBin fragt alle Laufwerke ab und blockierte dabei
+// (schlafende Platten, Netzlaufwerke) den Haupt-Thread mehrere Sekunden lang; das Ergebnis kommt per Nachricht
 void BookmarkList::UpdateRecycleIcon() {
-    uint64_t n = 0, bytes = 0;
+    bool any = false;
+    for (auto& b : items_)
+        if (IsRecycleBinLocation(b.path)) any = true;
+    if (!any || !list_ || InterlockedExchange(&recycleQuery_, 1)) return;
+    HWND target = list_;
+    HANDLE th = CreateThread(nullptr, 0, [](void* p) -> DWORD {
+        HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        uint64_t n = 0, bytes = 0;
+        bool full = QueryRecycleBin(n, bytes) && n > 0;
+        if (SUCCEEDED(co)) CoUninitialize();
+        PostMessageW((HWND)p, WM_QF_RECYCLESTATE, full ? 1 : 0, 0);
+        return 0;
+    }, target, 0, nullptr);
+    if (th) CloseHandle(th);
+    else InterlockedExchange(&recycleQuery_, 0);
+}
+
+void BookmarkList::ApplyRecycleIcon() {
     int icon = -1;
     for (size_t row = 0; row < rows_.size(); ++row) {
         int k = rows_[row];
         if (k < 0 || k >= (int)items_.size() || !IsRecycleBinLocation(items_[k].path)) continue;
-        if (icon < 0) icon = StockIndex(QueryRecycleBin(n, bytes) && n > 0 ? SIID_RECYCLERFULL : SIID_RECYCLER);
+        if (icon < 0) icon = StockIndex(recycleFull_ ? SIID_RECYCLERFULL : SIID_RECYCLER);
         if (icons_[k] == icon) continue;
         icons_[k] = icon;
         LVITEMW it{};
@@ -242,8 +264,7 @@ void BookmarkList::Rebuild(int select) {
                    : IsUncShareRoot(p) ? StockIndex(SIID_SERVERSHARE)
                    : (IsRootPath(p) ? StockIndex(SIID_DRIVENET) : folder);
         } else if (IsRecycleBinLocation(p)) {
-            uint64_t n = 0, bytes = 0;
-            icon = StockIndex(QueryRecycleBin(n, bytes) && n > 0 ? SIID_RECYCLERFULL : SIID_RECYCLER);
+            icon = StockIndex(recycleFull_ ? SIID_RECYCLERFULL : SIID_RECYCLER);   // aktueller Stand kommt nach
         } else if (IsRootPath(p)) {
             icon = drive;
         }
@@ -595,6 +616,11 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
 LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR ref) {
     auto* self = (BookmarkList*)ref;
     switch (msg) {
+    case WM_QF_RECYCLESTATE:
+        InterlockedExchange(&self->recycleQuery_, 0);
+        self->recycleFull_ = (int)wp;
+        self->ApplyRecycleIcon();
+        return 0;
     case WM_SYSKEYDOWN:
         if (wp == VK_UP) {
             self->MoveSelected(-1);

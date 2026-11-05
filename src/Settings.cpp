@@ -215,6 +215,7 @@ void Options::Load(const Config& c) {
     bookmarkFontItalic = c.GetBool(S, L"LesezeichenSchriftKursiv", d.bookmarkFontItalic);
     sizeInBytes = c.GetBool(S, L"GroesseInBytes", d.sizeInBytes);
     fullRowSelect = c.GetBool(S, L"GanzeZeileMarkieren", d.fullRowSelect);
+    hotTrack = c.GetBool(S, L"ZeileUnterMaus", d.hotTrack);
     showExtensionsColumn = c.GetBool(S, L"SpalteTyp", d.showExtensionsColumn);
     showAttributesColumn = c.GetBool(S, L"SpalteAttribute", d.showAttributesColumn);
     showCreatedColumn = c.GetBool(S, L"SpalteErstellt", d.showCreatedColumn);
@@ -274,6 +275,7 @@ void Options::Save(Config& c) const {
     c.SetBool(S, L"LesezeichenSchriftKursiv", bookmarkFontItalic);
     c.SetBool(S, L"GroesseInBytes", sizeInBytes);
     c.SetBool(S, L"GanzeZeileMarkieren", fullRowSelect);
+    c.SetBool(S, L"ZeileUnterMaus", hotTrack);
     c.SetBool(S, L"SpalteTyp", showExtensionsColumn);
     c.SetBool(S, L"SpalteAttribute", showAttributesColumn);
     c.SetBool(S, L"SpalteErstellt", showCreatedColumn);

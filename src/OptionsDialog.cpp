@@ -137,6 +137,7 @@ constexpr int kDisplayGroup3 = 1022;
 constexpr int kBmFontText = 1023;
 constexpr int kBmFontBtn = 1024;
 constexpr int kBmFontDefault = 1025;
+constexpr int kHotTrack = 1026;
 // ---- Seite 1: Bedienung ----
 constexpr int kConfirmDelete = 1101;
 constexpr int kRecycle = 1102;
@@ -224,6 +225,7 @@ protected:
         SetCheck(kStriped, opt.striped);
         SetCheck(kSizeBytes, opt.sizeInBytes);
         SetCheck(kFullRow, opt.fullRowSelect);
+        SetCheck(kHotTrack, opt.hotTrack);
         SetCheck(kColType, opt.showExtensionsColumn);
         SetCheck(kColAttr, opt.showAttributesColumn);
         SetCheck(kDateSeconds, opt.dateWithSeconds);
@@ -442,6 +444,7 @@ private:
         opt.striped = IsChecked(kStriped);
         opt.sizeInBytes = IsChecked(kSizeBytes);
         opt.fullRowSelect = IsChecked(kFullRow);
+        opt.hotTrack = IsChecked(kHotTrack);
         opt.showExtensionsColumn = IsChecked(kColType);
         opt.showAttributesColumn = IsChecked(kColAttr);
         opt.dateWithSeconds = IsChecked(kDateSeconds);
@@ -504,14 +507,14 @@ private:
 
 bool ShowOptionsDialog(HWND owner) {
     // Abmessungen in DLU
-    const int W = 340, H = 268;
+    const int W = 340, H = 280;
     const int px = 18, pw = W - 2 * px;   // Inhaltsbereich der Seiten
     const int py = 28;
     DialogTemplate t(L"Optionen", W, H);
-    t.Tab(kTab, 7, 7, W - 14, 206);
+    t.Tab(kTab, 7, 7, W - 14, 218);
 
     // ---- Anzeige ----
-    t.Group(kDisplayGroup1, L"Dateilisten", px - 4, py, pw + 8, 104);
+    t.Group(kDisplayGroup1, L"Dateilisten", px - 4, py, pw + 8, 116);
     t.Check(kShowHidden, L"&Versteckte Dateien anzeigen", px + 4, py + 12, 150, 10);
     t.Check(kShowSystem, L"&Systemdateien anzeigen", px + 4, py + 25, 150, 10);
     t.Check(kDirsFirst, L"Verzeichnisse &zuerst", px + 4, py + 38, 150, 10);
@@ -528,13 +531,14 @@ bool ShowOptionsDialog(HWND owner) {
     t.UpDown(kThumbSpin, 0, 0, 10, 13);
     t.Check(kGrayInactive, L"Nicht aktive Listen gra&u hinterlegen", px + 160, py + 80, 150, 10);
     t.Check(kStriped, L"Listenanzeige gest&reift", px + 160, py + 92, 150, 10);
-    t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 112, pw + 8, 34);
-    t.Edit(kListFontText, px + 4, py + 126, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
-    t.Button(kListFontBtn, L"Sc&hriftart …", px + 200, py + 125, 70, 14);
-    t.Group(kDisplayGroup3, L"Schrift der Lesezeichenliste", px - 4, py + 148, pw + 8, 34);
-    t.Edit(kBmFontText, px + 4, py + 162, 150, 13, ES_AUTOHSCROLL | ES_READONLY);
-    t.Button(kBmFontBtn, L"Schri&ft …", px + 160, py + 161, 70, 14);
-    t.Button(kBmFontDefault, L"Stan&dard", px + 234, py + 161, 50, 14);
+    t.Check(kHotTrack, L"Zeile unter der Maus herv&orheben", px + 160, py + 104, 150, 10);
+    t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 124, pw + 8, 34);
+    t.Edit(kListFontText, px + 4, py + 138, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
+    t.Button(kListFontBtn, L"Sc&hriftart …", px + 200, py + 137, 70, 14);
+    t.Group(kDisplayGroup3, L"Schrift der Lesezeichenliste", px - 4, py + 160, pw + 8, 34);
+    t.Edit(kBmFontText, px + 4, py + 174, 150, 13, ES_AUTOHSCROLL | ES_READONLY);
+    t.Button(kBmFontBtn, L"Schri&ft …", px + 160, py + 173, 70, 14);
+    t.Button(kBmFontDefault, L"Stan&dard", px + 234, py + 173, 50, 14);
 
     // ---- Bedienung ----
     t.Check(kConfirmDelete, L"&Löschen bestätigen", px, py, 150, 10);
@@ -599,9 +603,9 @@ bool ShowOptionsDialog(HWND owner) {
             px, py + 158, pw, 20);
 
     // ---- Unten: Einstellungsdatei ----
-    t.Label(kCfgLabel, L"Einstellungsdatei:", 7, 220, 70, 10);
-    t.Edit(kCfgPath, 78, 218, W - 78 - 72, 13, ES_AUTOHSCROLL | ES_READONLY);
-    t.Button(kCfgOpen, L"&Ordner öffnen", W - 67, 217, 60, 14);
+    t.Label(kCfgLabel, L"Einstellungsdatei:", 7, 232, 70, 10);
+    t.Edit(kCfgPath, 78, 230, W - 78 - 72, 13, ES_AUTOHSCROLL | ES_READONLY);
+    t.Button(kCfgOpen, L"&Ordner öffnen", W - 67, 229, 60, 14);
     t.Button(kExport, L"E&xportieren…", 7, H - 21, 60, 14);
     t.Button(kImport, L"&Importieren…", 71, H - 21, 60, 14);
     t.DefButton(IDOK, L"OK", W - 121, H - 21, 54, 14);

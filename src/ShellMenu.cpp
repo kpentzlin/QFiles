@@ -972,7 +972,8 @@ void WarmUpShellContextMenu(const std::wstring& sampleFile) {
             }
             RegCloseKey(h);
         }
-        // 2. Shell-Grundgerüst des Menüs (Namensraum, Standard-Kontextmenü) einmal anlegen, ohne Menüaufbau
+        // 2. Shell-Grundgerüst des Menüs (Namensraum, Standard-Kontextmenü) einmal anlegen
+        DWORD queryMs = 0;
         if (!sampleFile.empty()) {
             PIDLIST_ABSOLUTE pidl = nullptr;
             if (SUCCEEDED(SHParseDisplayName(sampleFile.c_str(), nullptr, &pidl, 0, nullptr))) {
@@ -980,8 +981,20 @@ void WarmUpShellContextMenu(const std::wstring& sampleFile) {
                 PCUITEMID_CHILD child = nullptr;
                 if (SUCCEEDED(SHBindToParent(pidl, IID_PPV_ARGS(&parent), &child))) {
                     IContextMenu* cm = nullptr;
-                    if (SUCCEEDED(parent->GetUIObjectOf(nullptr, 1, &child, IID_IContextMenu, nullptr, (void**)&cm)) && cm)
+                    if (SUCCEEDED(parent->GetUIObjectOf(nullptr, 1, &child, IID_IContextMenu, nullptr, (void**)&cm)) && cm) {
+                        // 3. Menü einmal unsichtbar aufbauen: Erweiterungen mit aufwendiger erster Initialisierung
+                        //    (z. B. .NET-Erweiterungen, die beim ersten Mal Laufzeit, Windows Forms und die Schriften
+                        //    über DirectWrite laden – beim Benutzer gut 10 s) erledigen das hier im Hintergrund statt
+                        //    beim ersten Rechtsklick im Haupt-Thread
+                        DWORD tq = GetTickCount();
+                        HMENU hm = CreatePopupMenu();
+                        if (hm) {
+                            RawQuery(cm, hm, 0, CMF_NORMAL | CMF_EXPLORE);
+                            DestroyMenu(hm);
+                        }
+                        queryMs = GetTickCount() - tq;
                         cm->Release();
+                    }
                     parent->Release();
                 }
                 CoTaskMemFree(pidl);
@@ -990,8 +1003,9 @@ void WarmUpShellContextMenu(const std::wstring& sampleFile) {
         // Testhilfe: Ergebnis protokollieren (QFILES_TEST_WARMUPLOG=<Datei>)
         wchar_t logPath[MAX_PATH] = {};
         if (GetEnvironmentVariableW(L"QFILES_TEST_WARMUPLOG", logPath, MAX_PATH)) {
-            std::string line = WideToUtf8(Format(L"Kontextmenü vorbereitet: %d Erweiterungs-DLLs geladen (%u ms)\r\n",
-                                                 loaded, (unsigned)(GetTickCount() - t0)));
+            std::string line = WideToUtf8(Format(L"Kontextmenü vorbereitet: %d Erweiterungs-DLLs geladen (%u ms, "
+                                                 L"Menüaufbau %u ms)\r\n",
+                                                 loaded, (unsigned)(GetTickCount() - t0), (unsigned)queryMs));
             WriteFileBytes(logPath, line.data(), line.size());
         }
         if (SUCCEEDED(co)) CoUninitialize();

@@ -202,6 +202,11 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   und Netzwerkfreigaben; auf FTP/SFTP/WebDAV-Servern und in der Netzwerkübersicht zeigt sie den normalen Inhalt.
   **Mittlere Maustaste** auf einer Datei in einem Unterverzeichnis: Die Liste wechselt in dieses Verzeichnis und
   markiert die Datei dort.
+- **Mittlere Maustaste** auf einer Datei (außer in den Favoriten und in der Ansicht „Mit Unterverzeichnissen“, wo sie
+  das Verzeichnis der Datei öffnet): Auswahl **Öffnen mit** – dieselben Programme wie im Untermenü „Öffnen mit“ des
+  Explorer-Kontextmenüs, dazu „Andere App auswählen…“ und „Abbrechen“.
+- Die hellblaue Hinterlegung der Zeile unter dem Mauszeiger lässt sich abschalten (*Optionen → Anzeige → Zeile unter
+  der Maus hervorheben*).
 - **Markieren durch Ziehen** (Ansichten Liste, Details und Mit Unterverzeichnissen, wie Idoswin Pro): Beginnt das
   Ziehen mit der linken Maustaste **neben** einem Namen (rechts vom letzten angezeigten Zeichen, in einer anderen
   Spalte oder im leeren Bereich), zieht QFiles einen Auswahlrahmen auf. Markiert werden die Dateien, deren Name
@@ -649,3 +654,8 @@ Standard-Kontextmenü der Shell einmal an.
 Reagiert das Hauptfenster länger als 5 Sekunden nicht, schreibt QFiles den Aufrufstapel des Haupt-Threads (Proben nach
 5, 15 und 30 Sekunden, dazu Beginn und Dauer) nach `%ProgramData%\QFiles\QFiles-Haenger.txt`. Liegt `QFiles.pdb` (im Download-Paket enthalten) neben `QFiles.exe`, stehen auch die
 Funktionsnamen von QFiles im Bericht.
+
+Die Berichte führten bisher zu diesen Änderungen (0.1.18): Der erste Aufbau des Explorer-Kontextmenüs läuft beim
+Programmstart unsichtbar im Hintergrund (eine .NET-Kontextmenü-Erweiterung brauchte beim ersten Rechtsklick gut 10 s,
+um Laufzeit, Windows Forms und Schriften zu laden); die Abfrage, ob der Papierkorb leer ist, läuft im Hintergrund
+(sie fragt alle Laufwerke ab und blockierte bis zu 7 s).

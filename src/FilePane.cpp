@@ -1624,6 +1624,8 @@ LRESULT FilePane::OnCustomDraw(NMLVCUSTOMDRAW* cd) {
         DrawDragMarkRect(cd->nmcd.hdc);   // Auswahlrahmen beim Markieren durch Ziehen
         return CDRF_DODEFAULT;
     case CDDS_ITEMPREPAINT: {
+        // Option „Zeile unter der Maus hervorheben“ aus: Hover-Zustand nicht zeichnen
+        if (!App::Opt().hotTrack) cd->nmcd.uItemState &= ~CDIS_HOT;
         int i = (int)cd->nmcd.dwItemSpec;
         if (i < 0 || i >= (int)items_.size()) return CDRF_DODEFAULT;
         const Item& it = items_[i];
@@ -2977,12 +2979,26 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         if (self->dmActive_ && (HWND)lp != h) self->DragMarkEnd(false);
         break;
     case WM_MBUTTONDOWN: {
-        // Favoriten bzw. „Mit Unterverzeichnissen“: enthaltendes Verzeichnis öffnen und die Datei dort markieren
         LVHITTESTINFO ht{};
         ht.pt = POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         int i = ListView_HitTest(h, &ht);
-        if (i >= 0 && (ht.flags & LVHT_ONITEM) && self->OpenContainingDir(i)) return 0;
-        break;
+        if (i < 0 || i >= (int)self->items_.size() || !(ht.flags & LVHT_ONITEM)) break;
+        // Favoriten bzw. „Mit Unterverzeichnissen“: enthaltendes Verzeichnis öffnen und die Datei dort markieren
+        if (self->IsFavorites() || self->view_ == PaneView::Recursive) {
+            if (self->OpenContainingDir(i)) return 0;
+            break;
+        }
+        // sonst: „Öffnen mit“-Auswahl für die Datei (wie im Explorer-Kontextmenü)
+        const Item& it = self->items_[i];
+        if (it.isParent || it.e.IsDir() || self->IsVirtual() || self->IsSpecialList()) break;
+        if (GetFocus() != h) SetFocus(h);
+        ListView_SetItemState(h, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_SetItemState(h, i, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_SetSelectionMark(h, i);
+        POINT sp = ht.pt;
+        ClientToScreen(h, &sp);
+        ShowOpenWithMenu(GetAncestor(h, GA_ROOT), self->ItemFullPath(it), sp);
+        return 0;
     }
     case WM_NCDESTROY:
         RevokeFileDropTarget(h);
