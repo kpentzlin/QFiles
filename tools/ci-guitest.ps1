@@ -661,10 +661,12 @@ function HoverDiff([string]$shot) {
   $script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $hBase + '"'), '"C:\Windows"' -PassThru
   Start-Sleep -Seconds 7
   Check-Alive "Start (Zeile unter der Maus)"
-  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+  $mw = [IntPtr]::Zero
+  for ($t = 0; $t -lt 20 -and $mw -eq [IntPtr]::Zero; $t++) { $mw = [W]::FindWindow("QFilesMain", [NullString]::Value); if ($mw -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+  [W]::SetForegroundWindow($mw) | Out-Null
   $hh = [IntPtr]::Zero; $best = [IntPtr]::Zero; $bestKey = [int]::MaxValue
   while ($true) {
-    $hh = [W]::FindWindowEx($p.MainWindowHandle, $hh, "QFilesPane", $null)
+    $hh = [W]::FindWindowEx($mw, $hh, "QFilesPane", $null)
     if ($hh -eq [IntPtr]::Zero) { break }
     if (-not [W]::IsWindowVisible($hh)) { continue }
     $r = New-Object W+RECT; [W]::GetWindowRect($hh, [ref]$r) | Out-Null
@@ -684,11 +686,11 @@ function HoverDiff([string]$shot) {
   if ($rh -lt 10 -or $rh -gt 60) { $rh = 20 }
   $yHot = [int]($hr2.B + 3 * $rh + $rh / 2)
   $yRef = [int]($hr2.B + 5 * $rh + $rh / 2)
-  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 300
+  [W]::SetForegroundWindow($mw) | Out-Null; Start-Sleep -Milliseconds 300
   [W]::SetCursorPos($x - 6, $yHot) | Out-Null; Start-Sleep -Milliseconds 200
   for ($k = 0; $k -lt 6; $k++) { [W]::mouse_event(0x0001, 1, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60 }
   Start-Sleep -Milliseconds 800
-  $overList = [W]::WindowAt($x, $yHot) -eq $hl
+  $overList = ($hl -ne [IntPtr]::Zero) -and ([W]::WindowAt($x, $yHot) -eq $hl)
   $hot = ([W]::SendMessage($hl, 0x103D, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETHOTITEM
   Shot $shot
   # Farben aus dem Bildschirmfoto (Bildschirm- = Bildkoordinaten)
