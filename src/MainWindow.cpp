@@ -347,14 +347,14 @@ bool MainWindow::Create(int nCmdShow) {
         },
         [this]() {});
     BookmarkList::Callbacks cb;
-    cb.navigate = [this](const std::wstring& p, bool other) {
+    cb.navigate = [this](const std::wstring& p, bool other, const std::wstring& filter) {
         FilePane* target = &Active();
         if (other) {
             // Die Gegenseite zeigt evtl. die Schnellansicht: dann nicht die verdeckte Liste umschalten
             if (quickView_) SetQuickView(false);
             if (FilePane* o = Other()) target = o;
         }
-        if (target->Navigate(p)) {
+        if (OpenBookmarkIn(*target, p, filter)) {
             SetActive(target->Index(), true);
         }
     };
@@ -743,7 +743,7 @@ void MainWindow::UpdateMenu(HMENU m) {
     check(cmd::ShowHidden, App::Opt().showHidden);
     check(cmd::ShowDirSizes, App::Opt().showDirSizes);
     check(cmd::PrivateMode, App::Opt().privateMode);
-    check(cmd::Filter, a.Filter().IsActive());
+    check(cmd::Filter, a.Filter().active);
     check(cmd::ToggleToolbar, showToolbar_);
     check(cmd::ToggleCommandLine, showCmdLine_);
     check(cmd::ToggleFKeyBar, showFKeys_);
@@ -2053,6 +2053,17 @@ void MainWindow::OnPaneSplitButton(FilePane* p) {
     SetSplit(col, !split_[col]);
 }
 
+// Lesezeichen öffnen; mit gespeichertem Filter diesen einschalten (mit Sortiervorgabe in der Ansicht „Details“)
+bool MainWindow::OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter) {
+    if (!pane.Navigate(path)) return false;
+    PaneFilter f;
+    if (!filter.empty() && PaneFilter::FromString(filter, f)) {
+        if (f.sort != 0 && pane.View() != PaneView::Details) pane.SetView(PaneView::Details);
+        pane.ApplyFilter(f);
+    }
+    return true;
+}
+
 void MainWindow::OnPaneBookmarkButton(FilePane* p) {
     SetActive(p->Index(), false);
     AddBookmarkFor(*p);
@@ -2074,11 +2085,18 @@ void MainWindow::AddBookmarkFor(FilePane& p) {
     if (existing >= 0)
         hint = L"Hinweis: Dieses Verzeichnis steht bereits als „" + bookmarks_.Get()[existing].name +
                L"“ in der Lesezeichenliste.";
-    if (!InputBox(hwnd_, L"Lesezeichen hinzufügen", L"Name des Lesezeichens für „" + LocationDisplay(dir) + L"“:", name, hint))
+    // aktiver Filter wird mit dem Lesezeichen gespeichert
+    std::wstring filter = p.Filter().active ? p.Filter().ToString() : std::wstring();
+    std::wstring what = LocationDisplay(dir);
+    if (!filter.empty()) {
+        what += L" – " + p.Filter().ShortText();
+        hint = (hint.empty() ? L"" : hint + L"\n") + std::wstring(L"Der aktive Filter wird mit dem Lesezeichen gespeichert.");
+    }
+    if (!InputBox(hwnd_, L"Lesezeichen hinzufügen", L"Name des Lesezeichens für „" + what + L"“:", name, hint))
         return;
     name = Trim(name);
     if (name.empty()) name = IsVirtualLocation(dir) ? LocationFileName(dir) : LastPathElement(dir);
-    bookmarks_.Append(name, dir);
+    bookmarks_.Append(name, dir, filter);
 }
 
 void MainWindow::OnPaneOpenItem(FilePane* p) { OpenFileItem(*p); }
@@ -3027,7 +3045,8 @@ void MainWindow::OnCommand(int id) {
     if (id >= cmd::BookmarkFirst && id <= cmd::BookmarkLast) {
         size_t i = (size_t)(id - cmd::BookmarkFirst);
         if (i < bookmarks_.Get().size()) {
-            a.Navigate(bookmarks_.Get()[i].path);
+            Bookmark b = bookmarks_.Get()[i];
+            OpenBookmarkIn(a, b.path, b.filter);
             a.FocusList();
         }
         return;
@@ -3348,11 +3367,9 @@ void MainWindow::OnCommand(int id) {
         App::Opt().showDirSizes = !App::Opt().showDirSizes;
         for (auto& p : panes_) p->UpdateDirSizesOption();
         break;
-    case cmd::Filter: {
-        PaneFilter f = a.Filter();
-        if (EditFilter(hwnd_, f)) a.SetFilter(f);
+    case cmd::Filter:
+        a.ToggleFilter();
         break;
-    }
     case cmd::Refresh:
         for (auto& p : panes_) p->UpdateDrives();
         tree_.Populate();

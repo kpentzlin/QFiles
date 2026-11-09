@@ -425,45 +425,154 @@ private:
 
 class FilterDlg : public DialogBase {
 public:
-    static constexpr int kInclude = 101;
-    static constexpr int kExclude = 102;
-    static constexpr int kDirs = 103;
-    static constexpr int kClear = 104;
+    enum : int {
+        kMask = 101, kExclude, kDirAll, kDirNone, kDirMask,
+        kModAny, kModRange, kModDays, kModFrom, kModTo, kModDaysVal,
+        kCrAny, kCrRange, kCrDays, kCrFrom, kCrTo, kCrDaysVal,
+        kSizeMin, kSizeMax, kAttrR, kAttrH, kAttrS, kAttrA, kGit, kGitInfo, kSort, kReset
+    };
     PaneFilter filter;
+    std::wstring dir;
+    bool gitFound = false;
+    std::wstring gitText;
 
 protected:
     BOOL OnInit() override {
-        const wchar_t* presets[] = {L"*",
-                                    L"*.txt;*.log",
-                                    L"*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tif;*.webp",
-                                    L"*.doc;*.docx;*.xls;*.xlsx;*.pdf",
-                                    L"*.exe;*.dll;*.msi",
-                                    L"*.zip;*.7z;*.rar"};
-        for (auto p : presets) ComboAdd(kInclude, p);
-        SetText(kInclude, filter.include.empty() ? L"*" : filter.include);
-        SetText(kExclude, filter.exclude);
-        SetCheck(kDirs, filter.applyToDirs);
-        SetFocus(Item(kInclude));
-        SendMessageW(Item(kInclude), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+        // Maskenverlauf
+        auto hist = App::Cfg().GetList(L"Filter", L"Masken");
+        const wchar_t* presets[] = {L"*.docx / *.xlsx / *.pptx / *.pdf", L"*.jpg / *.jpeg / *.png / *.gif / *.heic",
+                                    L"*.txt / *.md / *.log", L"*.cpp / *.h"};
+        for (auto& h : hist) ComboAdd(kMask, h);
+        for (auto p : presets) {
+            bool dup = false;
+            for (auto& h : hist) dup = dup || EqualsI(h, p);
+            if (!dup) ComboAdd(kMask, p);
+        }
+        const wchar_t* days[] = {L"1", L"2", L"3", L"7", L"14", L"30", L"90", L"365"};
+        for (auto d : days) {
+            ComboAdd(kModDaysVal, d);
+            ComboAdd(kCrDaysVal, d);
+        }
+        const wchar_t* sorts[] = {L"keine Vorgabe", L"Name aufsteigend", L"Name absteigend", L"Typ aufsteigend",
+                                  L"Typ absteigend", L"Größe aufsteigend", L"Größe absteigend",
+                                  L"Erstellt aufsteigend", L"Erstellt absteigend", L"Geändert aufsteigend",
+                                  L"Geändert absteigend"};
+        for (auto s : sorts) ComboAdd(kSort, s);
+        Load(filter);
+        SetText(kGitInfo, gitText);
+        Enable(kGit, gitFound);
+        SetFocus(Item(kMask));
+        SendMessageW(Item(kMask), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
         return FALSE;
     }
     BOOL OnCommand(int id, int code, HWND ctl) override {
         if (id == IDOK) {
-            filter.include = Trim(GetText(kInclude));
-            if (filter.include.empty()) filter.include = L"*";
-            filter.exclude = Trim(GetText(kExclude));
-            filter.applyToDirs = IsChecked(kDirs);
+            PaneFilter f;
+            if (!Store(f)) return TRUE;
+            f.active = true;
+            filter = f;
+            // Maskenverlauf (neueste zuerst, höchstens 20)
+            std::wstring m = Trim(f.masks);
+            if (!m.empty() && m != L"*") {
+                auto hist = App::Cfg().GetList(L"Filter", L"Masken");
+                hist.erase(std::remove_if(hist.begin(), hist.end(), [&](const std::wstring& h) { return EqualsI(h, m); }),
+                           hist.end());
+                hist.insert(hist.begin(), m);
+                if (hist.size() > 20) hist.resize(20);
+                App::Cfg().SetList(L"Filter", L"Masken", hist);
+            }
             End(IDOK);
             return TRUE;
         }
-        if (id == kClear) {
-            filter.include = L"*";
-            filter.exclude.clear();
-            filter.applyToDirs = false;
-            End(IDOK);
+        if (id == kReset) {
+            PaneFilter f;
+            Load(f);
+            return TRUE;
+        }
+        if (code == BN_CLICKED && (id == kModAny || id == kModRange || id == kModDays || id == kCrAny ||
+                                   id == kCrRange || id == kCrDays)) {
+            UpdateEnables();
             return TRUE;
         }
         return DialogBase::OnCommand(id, code, ctl);
+    }
+
+private:
+    static void SetDate(HWND dt, int ymd) {
+        if (!ymd) {
+            SendMessageW(dt, DTM_SETSYSTEMTIME, GDT_NONE, 0);
+            return;
+        }
+        SYSTEMTIME st{};
+        st.wYear = (WORD)(ymd / 10000);
+        st.wMonth = (WORD)(ymd / 100 % 100);
+        st.wDay = (WORD)(ymd % 100);
+        SendMessageW(dt, DTM_SETSYSTEMTIME, GDT_VALID, (LPARAM)&st);
+    }
+    static int GetDate(HWND dt) {
+        SYSTEMTIME st{};
+        if (SendMessageW(dt, DTM_GETSYSTEMTIME, 0, (LPARAM)&st) != GDT_VALID) return 0;
+        return st.wYear * 10000 + st.wMonth * 100 + st.wDay;
+    }
+    void Load(const PaneFilter& f) {
+        SetText(kMask, f.masks.empty() ? L"*" : f.masks);
+        SetText(kExclude, f.exclude);
+        CheckRadioButton(hwnd_, kDirAll, kDirMask, kDirAll + std::clamp(f.dirMode, 0, 2));
+        CheckRadioButton(hwnd_, kModAny, kModDays, kModAny + std::clamp(f.modMode, 0, 2));
+        CheckRadioButton(hwnd_, kCrAny, kCrDays, kCrAny + std::clamp(f.crMode, 0, 2));
+        int today = TodayNumber();
+        SetDate(Item(kModFrom), f.modMode == 1 ? f.modFrom : AddDays(today, -30));
+        SetDate(Item(kModTo), f.modMode == 1 ? f.modTo : 0);
+        SetDate(Item(kCrFrom), f.crMode == 1 ? f.crFrom : AddDays(today, -30));
+        SetDate(Item(kCrTo), f.crMode == 1 ? f.crTo : 0);
+        SetText(kModDaysVal, std::to_wstring(f.modDays > 0 ? f.modDays : 7));
+        SetText(kCrDaysVal, std::to_wstring(f.crDays > 0 ? f.crDays : 7));
+        SetText(kSizeMin, f.sizeMin >= 0 ? SizeShortText(f.sizeMin) : L"");
+        SetText(kSizeMax, f.sizeMax >= 0 ? SizeShortText(f.sizeMax) : L"");
+        const int ids[4] = {kAttrR, kAttrH, kAttrS, kAttrA};
+        for (int i = 0; i < 4; ++i)
+            CheckDlgButton(hwnd_, ids[i], f.attr[i] < 0 ? BST_INDETERMINATE : f.attr[i] ? BST_CHECKED : BST_UNCHECKED);
+        SetCheck(kGit, f.git && gitFound);
+        ComboSetSel(kSort, std::clamp(f.sort, 0, 10));
+        UpdateEnables();
+    }
+    void UpdateEnables() {
+        bool mr = IsChecked(kModRange), md = IsChecked(kModDays), cr = IsChecked(kCrRange), cd = IsChecked(kCrDays);
+        Enable(kModFrom, mr);
+        Enable(kModTo, mr);
+        Enable(kModDaysVal, md);
+        Enable(kCrFrom, cr);
+        Enable(kCrTo, cr);
+        Enable(kCrDaysVal, cd);
+    }
+    bool Store(PaneFilter& f) {
+        f.masks = Trim(GetText(kMask));
+        if (f.masks.empty()) f.masks = L"*";
+        f.exclude = Trim(GetText(kExclude));
+        f.dirMode = IsChecked(kDirNone) ? 1 : IsChecked(kDirMask) ? 2 : 0;
+        f.modMode = IsChecked(kModRange) ? 1 : IsChecked(kModDays) ? 2 : 0;
+        f.crMode = IsChecked(kCrRange) ? 1 : IsChecked(kCrDays) ? 2 : 0;
+        f.modFrom = GetDate(Item(kModFrom));
+        f.modTo = GetDate(Item(kModTo));
+        f.crFrom = GetDate(Item(kCrFrom));
+        f.crTo = GetDate(Item(kCrTo));
+        f.modDays = std::max(0, _wtoi(GetText(kModDaysVal).c_str()));
+        f.crDays = std::max(0, _wtoi(GetText(kCrDaysVal).c_str()));
+        if (f.modMode == 1 && !f.modFrom && !f.modTo) f.modMode = 0;
+        if (f.crMode == 1 && !f.crFrom && !f.crTo) f.crMode = 0;
+        if (!ParseSizeText(GetText(kSizeMin), f.sizeMin) || !ParseSizeText(GetText(kSizeMax), f.sizeMax)) {
+            MsgError(hwnd_, L"Die Größe ist ungültig. Beispiele: 500, 10 KB, 1,5 MB, 2 GB.");
+            SetFocus(Item(kSizeMin));
+            return false;
+        }
+        const int ids[4] = {kAttrR, kAttrH, kAttrS, kAttrA};
+        for (int i = 0; i < 4; ++i) {
+            UINT st = IsDlgButtonChecked(hwnd_, ids[i]);
+            f.attr[i] = st == BST_INDETERMINATE ? -1 : st == BST_CHECKED ? 1 : 0;
+        }
+        f.git = gitFound && IsChecked(kGit);
+        f.sort = std::max(0, (int)SendMessageW(Item(kSort), CB_GETCURSEL, 0, 0));
+        return true;
     }
 };
 
@@ -529,18 +638,68 @@ void DriveOverview(HWND owner) {
     dlg.DoModal(owner, t);
 }
 
-bool EditFilter(HWND owner, PaneFilter& filter) {
-    DialogTemplate t(L"Dateifilter", 280, 118);
-    t.Label(-1, L"Nur Dateien &anzeigen, die diesen Mustern entsprechen (durch ; getrennt):", 7, 7, 266, 10);
-    t.Combo(FilterDlg::kInclude, 7, 19, 266, 120, true);
-    t.Label(-1, L"&Ausschließen (durch ; getrennt, leer = nichts ausschließen):", 7, 39, 266, 10);
-    t.Edit(FilterDlg::kExclude, 7, 51, 266, 13);
-    t.Check(FilterDlg::kDirs, L"Muster auch auf &Verzeichnisse anwenden", 7, 71, 266, 10);
-    t.Button(FilterDlg::kClear, L"Filter auf&heben", 7, 97, 70, 14);
-    t.DefButton(IDOK, L"OK", 166, 97, 50, 14);
-    t.Button(IDCANCEL, L"Abbrechen", 223, 97, 50, 14);
+bool EditFilter(HWND owner, PaneFilter& filter, const std::wstring& dir) {
+    using D = FilterDlg;
+    const int W = 330, H = 318;
+    DialogTemplate t(L"Filter", W, H);
+    const DWORD tri = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTO3STATE;
+    const DWORD dts = DTS_SHORTDATECENTURYFORMAT | DTS_SHOWNONE;
+    t.Label(-1, L"&Maske (mehrere durch / getrennt, z. B. *.docx / *.xlsx):", 7, 7, W - 14, 10);
+    t.Combo(D::kMask, 7, 18, W - 14, 140, true);
+    t.Label(-1, L"A&usschließen:", 7, 37, 52, 10);
+    t.Edit(D::kExclude, 60, 35, W - 67, 13);
+    t.Group(-1, L"Verzeichnisse", 7, 52, W - 14, 24);
+    t.Radio(D::kDirAll, L"&alle", 14, 62, 60, 10, true);
+    t.Radio(D::kDirNone, L"&ohne", 80, 62, 60, 10);
+    t.Radio(D::kDirMask, L"&laut Maske", 146, 62, 80, 10);
+    // Datum der letzten Änderung und der Erstellung: beliebig / von–bis / seit N Tagen
+    auto dateGroup = [&](int y, const wchar_t* title, int any, int range, int days, int from, int to, int val,
+                         const wchar_t* sinceText) {
+        t.Group(-1, title, 7, y, W - 14, 42);
+        t.Radio(any, L"beliebig", 14, y + 12, 50, 10, true);
+        t.Radio(range, L"von", 14, y + 26, 28, 10);
+        t.DateTime(from, 44, y + 24, 72, 13, dts);
+        t.Label(-1, L"bis", 120, y + 26, 14, 10);
+        t.DateTime(to, 136, y + 24, 72, 13, dts);
+        t.Radio(days, sinceText, 70, y + 12, 70, 10);
+        t.Combo(val, 142, y + 10, 36, 120, true);
+        t.Label(-1, L"Tagen", 182, y + 12, 30, 10);
+    };
+    dateGroup(80, L"Letzte Änderung", D::kModAny, D::kModRange, D::kModDays, D::kModFrom, D::kModTo, D::kModDaysVal,
+              L"&geändert seit");
+    dateGroup(126, L"Erstellung", D::kCrAny, D::kCrRange, D::kCrDays, D::kCrFrom, D::kCrTo, D::kCrDaysVal,
+              L"&erstellt seit");
+    t.Group(-1, L"Dateigröße", 7, 172, W - 14, 26);
+    t.Label(-1, L"&von", 14, 184, 16, 10);
+    t.Edit(D::kSizeMin, 32, 182, 60, 13);
+    t.Label(-1, L"b&is", 98, 184, 14, 10);
+    t.Edit(D::kSizeMax, 114, 182, 60, 13);
+    t.Label(-1, L"(leer = offen; z. B. 10 KB, 1,5 MB)", 180, 184, W - 194, 10);
+    t.Group(-1, L"Attribute (gefülltes Kästchen = egal)", 7, 202, W - 14, 24);
+    t.Add(D::kAttrR, L"Button", L"&schreibgeschützt", 14, 212, 76, 10, tri);
+    t.Add(D::kAttrH, L"Button", L"verstec&kt", 94, 212, 56, 10, tri);
+    t.Add(D::kAttrS, L"Button", L"S&ystem", 154, 212, 50, 10, tri);
+    t.Add(D::kAttrA, L"Button", L"A&rchiv", 208, 212, 50, 10, tri);
+    t.Group(-1, L"Git", 7, 230, W - 14, 36);
+    t.Check(D::kGit, L"Nur gemäß .gi&tignore zum Projekt gehörige Dateien", 14, 240, W - 28, 10);
+    t.Label(D::kGitInfo, L"", 26, 252, W - 40, 10, SS_PATHELLIPSIS | SS_NOPREFIX);
+    t.Label(-1, L"Sortieru&ng:", 7, 274, 44, 10);
+    t.Combo(D::kSort, 52, 272, 120, 160);
+    t.Button(D::kReset, L"&Zurücksetzen", 7, H - 21, 60, 14);
+    t.DefButton(IDOK, L"Filter an", W - 121, H - 21, 54, 14);
+    t.Button(IDCANCEL, L"Abbrechen", W - 61, H - 21, 54, 14);
     FilterDlg dlg;
     dlg.filter = filter;
+    dlg.dir = dir;
+    GitIgnore gi;
+    dlg.gitFound = !dir.empty() && gi.Load(dir);
+    if (dlg.gitFound) {
+        std::wstring files;
+        for (auto& f : gi.Files()) files += (files.empty() ? L"" : L"; ") + f;
+        dlg.gitText = L"Gefunden: " + files;
+    } else {
+        dlg.gitText = L"(keine .gitignore in diesem oder einem übergeordneten Verzeichnis)";
+    }
     if (dlg.DoModal(owner, t) != IDOK) return false;
     filter = dlg.filter;
     return true;

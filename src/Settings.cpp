@@ -316,19 +316,25 @@ std::vector<Bookmark> LoadBookmarks(const Config& c) {
     std::vector<Bookmark> r;
     auto names = c.GetList(L"Lesezeichen", L"Name");
     auto paths = c.GetList(L"Lesezeichen", L"Pfad");
-    for (size_t i = 0; i < names.size() && i < paths.size(); ++i) r.push_back({names[i], paths[i]});
+    auto filters = c.GetList(L"Lesezeichen", L"Filter");
+    for (size_t i = 0; i < names.size() && i < paths.size(); ++i)
+        r.push_back({names[i], paths[i], i < filters.size() && filters[i] != L"-" ? filters[i] : std::wstring()});
     return r;
 }
 
 void SaveBookmarks(Config& c, const std::vector<Bookmark>& b) {
     c.ClearSection(L"Lesezeichen");
-    std::vector<std::wstring> names, paths;
+    std::vector<std::wstring> names, paths, filters;
+    bool anyFilter = false;
     for (auto& x : b) {
         names.push_back(x.name);
         paths.push_back(x.path);
+        filters.push_back(x.filter.empty() ? L"-" : x.filter);
+        if (!x.filter.empty()) anyFilter = true;
     }
     c.SetList(L"Lesezeichen", L"Name", names);
     c.SetList(L"Lesezeichen", L"Pfad", paths);
+    if (anyFilter) c.SetList(L"Lesezeichen", L"Filter", filters);
 }
 
 std::vector<FunctionKey> LoadFunctionKeys(const Config& c) {

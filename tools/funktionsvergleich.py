@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.16"
+QF_VERSION = "0.1.20"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -60,6 +60,7 @@ DATA = [
          "QFiles: Symbolspalte bzw. Umschalt+Eingabe; SC: Ordner für das inaktive Fenster", False),
         ("Lesezeichen farbig nach Art (Standard-, Cloud-, FTP-, Netzwerkordner)", "ja", "–", "–", "", False),
         ("Lesezeichen nach Art sortieren", "ja", "–", "–", "", False),
+        ("Lesezeichen mit gespeichertem Filter", "ja", "–", "teilw.", "neu in QFiles 0.1.20", False),
         ("Cloud-Speicher-Ordner erkennen und als Lesezeichen anlegen", "ja", "–", "–", "Dropbox, Google Drive, OneDrive (mehrere Konten)", False),
         ("Linux-Distributionen (WSL) als Lesezeichen unter „Netzwerk“", "ja", "–", "–", "neu in QFiles 0.1.10", False),
         ("Dateien auf ein Lesezeichen ziehen", "ja", "?", "teilw.", "SC: QuickDrop-Symbole als Ziel", False),
@@ -130,9 +131,15 @@ DATA = [
         ("Versteckte und Systemdateien ein-/ausblenden", "ja", "?", "ja", "", False),
         ("Versteckte und Systemdateien farbig (blau, rot, beides lila)", "ja", "?", "?", "neu in QFiles 0.1.11", False),
         ("Dateierweiterung ausblenden", "–", "ja", "?", "QFiles: eigene Spalte „Typ“", False),
-        ("Dateifilter je Liste (Ein-/Ausschlussmuster)", "ja", "ja", "ja", "", False),
-        ("Filter nach Größe, Alter, Attributen", "–", "ja", "ja", "", False),
-        ("Vordefinierte und gespeicherte Filter", "–", "ja", "ja", "", False),
+        ("Dateifilter je Liste (mehrere Masken, Ausschlussmuster)", "ja", "ja", "ja",
+         "QFiles 0.1.20: Trichter in der Kopfzeile, Masken mit Verlauf, Verzeichnisse alle/ohne/laut Maske", False),
+        ("Filter nach Größe, Alter (von/bis, seit N Tagen), Attributen", "ja", "ja", "ja", "neu in QFiles 0.1.20", False),
+        ("Filter „nur gemäß .gitignore zum Projekt gehörig“", "ja", "–", "–",
+         "neu in QFiles 0.1.20: .gitignore-Kette bis zum Projektverzeichnis; Pfadzeile hell-lila", False),
+        ("Aktiver Filter sichtbar (Farbe und Kurztext in der Pfadzeile)", "ja", "?", "teilw.", "QFiles: hellrot bzw. hell-lila", False),
+        ("Filter mit Sortiervorgabe", "ja", "–", "teilw.", "SC: Ordneransichten mit Sortierung", False),
+        ("Vordefinierte und gespeicherte Filter", "teilw.", "ja", "ja",
+         "QFiles: letzter Filter je Liste, Maskenverlauf, Lesezeichen mit Filter (Trichter-Symbol)", A),
         ("Schnellfilter beim Tippen", "–", "–", "ja", "", False),
         ("Farbregeln für Dateien", "–", "–", "ja", "", False),
         ("Tags für Dateien und Ordner", "–", "–", "ja (Pro)", "", False),
@@ -148,6 +155,8 @@ DATA = [
          "QFiles 0.1.15: wie Idoswin Pro – erfasst die Dateien, deren Name in den Rahmen ragt; auf dem Namen Drag & Drop", False),
         ("Mittlere Maustaste: Verzeichnis der Datei öffnen (Favoriten, mit Unterverzeichnissen)", "ja", "?", "?",
          "neu in QFiles 0.1.14; Datei wird dort markiert", False),
+        ("Mittlere Maustaste in sonstigen Listen: Auswahl „Öffnen mit“", "ja", "?", "?", "neu in QFiles 0.1.18, mit „Abbrechen“", False),
+        ("Zeile unter der Maus hervorheben (abschaltbar)", "ja", "?", "ja", "QFiles 0.1.19: Option unter Anzeige", False),
         ("Gruppe markieren/abwählen/umkehren (Muster)", "ja", "ja", "ja", "", False),
         ("Markieren über Verzeichnisvergleich", "ja", "ja", "ja", "", False),
         ("Auswahl speichern und wiederherstellen", "–", "–", "ja", "", False),

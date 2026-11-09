@@ -35,7 +35,7 @@ Eine nummerierte Gegenüberstellung der Funktionen von QFiles, Idoswin Pro und S
 
 ### Lesezeichen-Symbol in der Kopfzeile
 
-Ein Klick auf das Lesezeichen-Symbol (rechts in der Kopfzeile jeder Liste, links neben dem Split-Symbol, auch mit
+Ein Klick auf das Lesezeichen-Symbol (rechts in der Kopfzeile jeder Liste, links neben dem Filter-Trichter, auch mit
 Strg+D) fügt das in
 dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 
@@ -45,11 +45,44 @@ dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 - „Abbrechen“ fügt nichts hinzu.
 - Das neue Lesezeichen kommt ans **Ende** der Lesezeichenliste.
 
+### Filter (Trichter in der Kopfzeile)
+
+Links neben dem Split-Symbol steht in jeder Liste ein **Trichter** (auch *Ansicht → Dateifilter…*, Strg+Umschalt+F).
+Ein Klick öffnet die Filterauswahl. Alle gewählten Bedingungen gelten zusammen („und“):
+
+- **Masken**: eine oder mehrere Wildcard-Angaben, getrennt mit `/` (oder `;`), z. B. `*.docx / *.xlsx`; angezeigt
+  werden Dateien, die mindestens einer Maske entsprechen. Die zuletzt verwendeten Masken stehen in der Auswahlliste
+  (Verlauf, bis zu 20). Dazu wahlweise auszuschließende Masken.
+- **Verzeichnisse**: alle / ohne / laut Maske.
+- **Geändert** und **Erstellt**: beliebig, von–bis (Datumsfelder, einzeln abschaltbar) oder „seit N Tagen“
+  (Auswahl 1, 2, 3, 7, 14, 30, 90, 365 oder eigene Zahl).
+- **Größe** von/bis, z. B. `10 KB`, `1,5 MB`; leer = offen.
+- **Attribute** schreibgeschützt, versteckt, System, Archiv: je Kästchen mit drei Zuständen (egal / gesetzt / nicht
+  gesetzt).
+- **Nur gemäß .gitignore zum Projekt gehörig**: wertet die `.gitignore` im Verzeichnis und in den direkt
+  übergeordneten Verzeichnissen aus (bis zum Projektverzeichnis mit `.git`, dazu `.git\info\exclude`); die
+  gefundenen Dateien werden angezeigt. Ohne `.gitignore` ist die Wahl gesperrt. Das Verzeichnis `.git` selbst wird
+  dabei immer ausgeblendet.
+- **Sortierung**: keine Vorgabe, Name, Typ, Größe, Erstellungs- oder Änderungsdatum, jeweils auf- oder absteigend.
+  Beim Ausschalten des Filters gilt wieder die vorherige Sortierung.
+
+Bei aktivem Filter ist das Verzeichnisfeld **hellrot** hinterlegt (mit Git-Filter **hell-lila** wie die
+Cloud-Lesezeichen) und zeigt `Verzeichnis – Kurztext`, z. B. `C:\Projekte – *.cpp / *.h, geändert seit 7 Tagen, Git`.
+Der Trichter ist dann ebenso hinterlegt.
+
+- Erneuter Klick auf den Trichter oder ein Verzeichniswechsel schaltet den Filter ab.
+- Der letzte Filter bleibt je Liste gespeichert (auch über Programmende): Ein neuer Klick auf den Trichter öffnet die
+  Auswahl damit vorbelegt, auch nach einem Verzeichniswechsel. Liegt im neuen Verzeichnis keine `.gitignore`, ist
+  die Git-Wahl gesperrt.
+- **Lesezeichen** (Strg+D bzw. Lesezeichen-Symbol) nehmen einen aktiven Filter mit; sie zeigen dann in der
+  Lesezeichenliste einen Trichter statt der Mappe, der Tooltip nennt den Filter. Beim Öffnen wird der Filter wieder
+  eingeschaltet; hat er eine Sortiervorgabe, schaltet die Liste in die Ansicht „Details“.
+
 ### Split-Funktion
 
 - Das **Split-Symbol** ganz rechts in der Kopfzeile (oder Strg+T) teilt die Liste. Die untere Hälfte ist ein eigenes,
   vollwertiges Listenfenster: das „dritte“ (links) bzw. „vierte“ (rechts).
-- Das untere Fenster hat denselben Kopfbereich: Laufwerksymbole, rechts Lesezeichen- und Split-Symbol, darunter das
+- Das untere Fenster hat denselben Kopfbereich: Laufwerksymbole, rechts Lesezeichen-, Filter- und Split-Symbol, darunter das
   Verzeichnis-Textfeld mit Wahlsymbolen (Zurück, Vor, Übergeordnet, Verzeichnis wählen) und dem Aktiv-Kreis.
 - Im oberen Fenster wird das Split-Symbol zum **Split-aufheben-Symbol**. Im unteren Fenster erscheint es nur so.
   Ein Klick in einem der beiden hebt die Teilung auf.
@@ -181,7 +214,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     (neueste oben); die Zurück/Vor-Liste wird gespeichert und gilt auch nach einem Neustart (nicht im privaten Modus).
     Die Maustasten **„Zurück“ und „Vor“** einer 5-Tasten-Maus (sowie die Browser-Tasten der Tastatur) wirken wie
     „<“ bzw. „>“ der aktiven Liste.
-  - Kopfzeile rechts: Lesezeichen hinzufügen, Split.
+  - Kopfzeile rechts: Lesezeichen hinzufügen, Filter (Trichter), Split.
   - Statuszeile: Anzahl, Größe, Markierung, Filter, belegter und freier Speicher des Laufwerks bzw. der Freigabe.
   - Die Zeile mit den Spaltenköpfen hat die Farbe der Laufwerksleiste (aktive Liste hellblau).
 - **Miniaturansicht** (Kacheln, Größe einstellbar): Sind die sichtbaren Kacheln geladen, lädt QFiles die übrigen im
@@ -219,7 +252,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   (beides unter *Optionen → Anzeige*).
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
   wie im Explorer.
-- Versteckte und Systemdateien ein-/ausblendbar. Dateifilter je Liste mit Ein- und Ausschlussmustern.
+- Versteckte und Systemdateien ein-/ausblendbar. Filter je Liste (Trichter): Masken, Datum, Größe, Attribute,
+  .gitignore, Sortierung (siehe oben).
 - Schriftfarben: versteckte Dateien **mittelblau**, Systemdateien **rot** (leicht abgedunkelt), versteckte
   Systemdateien **lila**. Das Grau ausgeschnittener Dateien hat Vorrang und ist leicht in Richtung dieser Farbe
   abgetönt.

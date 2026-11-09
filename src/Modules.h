@@ -9,6 +9,7 @@
 // - Dateioperationen über FileOps.h (Protokoll + Rückgängig).
 
 #include <windows.h>
+#include "PaneFilter.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -103,14 +104,9 @@ bool CreateZipArchive(HWND owner, const std::wstring& dir, const std::vector<std
 // Optionen-Dialog (modal, mit Registerkarten). Rückgabe true, wenn geändert (Hauptfenster aktualisiert dann).
 bool ShowOptionsDialog(HWND owner);
 
-struct PaneFilter {
-    std::wstring include = L"*";     // Muster, durch ';' getrennt
-    std::wstring exclude;            // Muster, durch ';' getrennt
-    bool applyToDirs = false;        // Muster auch auf Verzeichnisse anwenden
-    bool IsActive() const { return !(include.empty() || include == L"*" || include == L"*.*") || !exclude.empty(); }
-};
-// Dateifilter bearbeiten (modal). Rückgabe true bei OK.
-bool EditFilter(HWND owner, PaneFilter& filter);
+// Filter einer Dateiliste bearbeiten (modal, Trichter in der Kopfleiste). dir: Verzeichnis der Liste (für die Suche nach
+// .gitignore). Rückgabe true bei „Filter an“; filter.active ist dann gesetzt.
+bool EditFilter(HWND owner, PaneFilter& filter, const std::wstring& dir);
 // Info-Dialog
 void ShowAbout(HWND owner);
 

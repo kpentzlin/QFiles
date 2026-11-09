@@ -120,8 +120,14 @@ public:
     void SetSort(SortKey k, bool descending);
     SortKey Sort() const { return sortKey_; }
     bool SortDescending() const { return sortDesc_; }
-    void SetFilter(const PaneFilter& f);
+    // Filter (Trichter in der Kopfleiste): ToggleFilter = Dialog bzw. ausschalten; ApplyFilter schaltet einen Filter
+    // ein (z. B. aus einem Lesezeichen), ClearFilter aus. Bei Verzeichniswechsel wird der Filter ausgeschaltet; der
+    // zuletzt gewählte bleibt für den nächsten Klick auf den Trichter gespeichert.
+    void ToggleFilter();
+    void ApplyFilter(const PaneFilter& f);
+    void ClearFilter(bool reload = true);
     const PaneFilter& Filter() const { return filter_; }
+    std::wstring PathText() const;   // Verzeichnis, bei aktivem Filter „ – Kurztext“
     void SetMarks(const CompareMarks& marks);
     void ClearMarks();
     bool HasMarks() const { return !marks_.empty(); }
@@ -184,8 +190,8 @@ private:
     void StartTreeWalk();
     void OnTreeBatch(WPARAM gen);
     void OnTreeDone(WPARAM gen);
-    bool AcceptEntry(const DirEntry& e) const;
-    enum class HitArea { None, Drive, Split, Bookmark, Back, Forward, Up, Root, Browse, Active };
+    bool AcceptEntry(const DirEntry& e, const std::wstring& fullPath) const;
+    enum class HitArea { None, Drive, Split, Bookmark, Filter, Back, Forward, Up, Root, Browse, Active };
     struct HitRect {
         HitArea area;
         int drive;          // Laufwerksindex bei Drive
@@ -285,7 +291,14 @@ private:
     PaneView view_ = PaneView::Details;
     SortKey sortKey_ = SortKey::Name;
     bool sortDesc_ = false;
-    PaneFilter filter_;
+    PaneFilter filter_;            // aktueller Filter (filter_.active)
+    PaneFilter lastFilter_;        // zuletzt gewählter Filter dieser Liste (für den nächsten Klick auf den Trichter)
+    GitIgnore git_;                // .gitignore-Regeln für den Git-Filter
+    bool sortSaved_ = false;       // Sortierung vor dem Filter (Filter mit Sortiervorgabe)
+    SortKey sortBeforeFilter_ = SortKey::Name;
+    bool descBeforeFilter_ = false;
+    HBRUSH pathBrush_ = nullptr;   // Hintergrund der Pfadzeile bei aktivem Filter
+    void UpdateFilterLook();
     CompareMarks marks_;
     std::vector<int> colWidths_;   // in 96-DPI-Pixeln
     int fittedName_ = -1, fittedSub_ = -1;   // automatisch angepasste Breiten (Pixel) der Ansicht „Mit Unterverzeichnissen“

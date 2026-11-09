@@ -8,6 +8,7 @@
 #include "Network.h"
 #include "Remote.h"
 #include "ShellMenu.h"
+#include "PaneFilter.h"
 #include "Util.h"
 
 #include <shellapi.h>
@@ -278,6 +279,7 @@ void BookmarkList::Rebuild(int select) {
         // „Favoriten“: Symbol und Hintergrund zeichnet NM_CUSTOMDRAW (Ordnersymbol nur für die Zeilengeometrie)
         it.pszText = const_cast<wchar_t*>(k == kRowFavorites ? kFavoritesLocation : k == kRowLinux ? L"Linux" : items_[k].name.c_str());
         it.iImage = k == kRowFavorites ? folder : k == kRowLinux ? linuxIcon_ : icons_[k];
+        if (k >= 0 && !items_[k].filter.empty()) it.iImage = I_IMAGENONE;   // Trichter zeichnet NM_CUSTOMDRAW
         ListView_InsertItem(list_, &it);
     }
     if (select >= 0 && select < (int)items_.size()) {
@@ -302,6 +304,11 @@ std::wstring BookmarkList::RowPath(int row) const {
     return k >= 0 && k < (int)items_.size() ? items_[k].path : L"";
 }
 
+std::wstring BookmarkList::RowFilter(int row) const {
+    int k = ItemOfRow(row);
+    return k >= 0 && k < (int)items_.size() ? items_[k].filter : L"";
+}
+
 int BookmarkList::SelectedRow() const { return ListView_GetNextItem(list_, -1, LVNI_SELECTED); }
 
 int BookmarkList::Selected() const {
@@ -320,8 +327,8 @@ int BookmarkList::FindPath(const std::wstring& path) const {
     return -1;
 }
 
-void BookmarkList::Append(const std::wstring& name, const std::wstring& path) {
-    items_.push_back({name, path});
+void BookmarkList::Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter) {
+    items_.push_back({name, path, filter});
     Rebuild((int)items_.size() - 1);
     if (cb_.changed) cb_.changed();
 }
@@ -405,7 +412,7 @@ void BookmarkList::ContextMenu(POINT pt) {
     switch (id) {
     case MenuOpen:
     case MenuOpenOther:
-        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? specialPath : items_[i].path, id == MenuOpenOther);
+        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? specialPath : items_[i].path, id == MenuOpenOther, fav ? L"" : items_[i].filter);
         break;
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
@@ -495,7 +502,7 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 DWORD mp = GetMessagePos();
                 if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == row) other = true;
             }
-            cb_.navigate(target, other);
+            cb_.navigate(target, other, RowFilter(row));
         }
         return 0;
     }
@@ -525,6 +532,8 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
             }
             else if (!(kinds_.size() > (size_t)k && kinds_[k] == KindNetwork) && !DirExists(s))
                 s += L"\n(nicht erreichbar)";
+            PaneFilter f;
+            if (!items_[k].filter.empty() && PaneFilter::FromString(items_[k].filter, f)) s += L"\nFilter: " + f.ShortText();
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         }
         return 0;
@@ -562,7 +571,25 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 DrawFavoritesRow(cd);
                 return CDRF_SKIPDEFAULT;
             }
+            {
+                int k0 = ItemOfRow((int)cd->nmcd.dwItemSpec);
+                if (k0 >= 0 && k0 < (int)items_.size() && !items_[k0].filter.empty())
+                    return CDRF_NOTIFYSUBITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+            }
             return CDRF_NOTIFYSUBITEMDRAW;
+        case CDDS_ITEMPOSTPAINT: {
+            // Lesezeichen mit Filter: Trichter als Symbol vor dem Namen
+            int row = (int)cd->nmcd.dwItemSpec;
+            RECT ic{};
+            if (ListView_GetItemRect(list_, row, &ic, LVIR_ICON)) {
+                int sz = DpiScale(list_, 16);
+                RECT g{(ic.left + ic.right - sz) / 2, (ic.top + ic.bottom - sz) / 2, 0, 0};
+                g.right = g.left + sz;
+                g.bottom = g.top + sz;
+                DrawGlyph(cd->nmcd.hdc, Glyph::Filter, g, RGB(0, 0, 0));
+            }
+            return CDRF_DODEFAULT;
+        }
         case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
             int row = (int)cd->nmcd.dwItemSpec;
             int k = ItemOfRow(row);
@@ -575,7 +602,13 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 HIMAGELIST il = ListView_GetImageList(list_, LVSIL_SMALL);
                 int sz = DpiScale(list_, 16);
                 int iconIndex = k == kRowLinux ? linuxIcon_ : (i < icons_.size() ? icons_[i] : -1);
-                if (il && iconIndex >= 0)
+                if (i < items_.size() && !items_[i].filter.empty()) {
+                    // Lesezeichen mit Filter: Trichter statt Mappe
+                    RECT g{(rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2, 0, 0};
+                    g.right = g.left + sz;
+                    g.bottom = g.top + sz;
+                    DrawGlyph(cd->nmcd.hdc, Glyph::Filter, g, RGB(0, 0, 0));
+                } else if (il && iconIndex >= 0)
                     ImageList_DrawEx(il, iconIndex, cd->nmcd.hdc, (rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2,
                                      sz, sz, CLR_NONE, CLR_NONE, ILD_TRANSPARENT);
                 return CDRF_SKIPDEFAULT;
@@ -634,7 +667,8 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
     case WM_KEYDOWN:
         if (wp == VK_RETURN) {
             std::wstring target = self->RowPath(self->SelectedRow());
-            if (!target.empty() && self->cb_.navigate) self->cb_.navigate(target, GetKeyState(VK_SHIFT) < 0);
+            if (!target.empty() && self->cb_.navigate)
+                self->cb_.navigate(target, GetKeyState(VK_SHIFT) < 0, self->RowFilter(self->SelectedRow()));
             return 0;
         }
         break;

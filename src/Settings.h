@@ -118,6 +118,7 @@ struct Options {
 struct Bookmark {
     std::wstring name;
     std::wstring path;
+    std::wstring filter;   // gespeicherter Listenfilter (PaneFilter::ToString), leer = ohne Filter
 };
 
 struct FunctionKey {

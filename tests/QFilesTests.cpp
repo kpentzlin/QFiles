@@ -26,6 +26,7 @@
 #include "ArchiveCore.h"
 #include "Drives.h"
 #include "Location.h"
+#include "PaneFilter.h"
 #include "Settings.h"
 #include "Util.h"
 
@@ -663,6 +664,104 @@ static void TestRemote(const std::wstring& base) {
     }
 }
 
+static void TestPaneFilter(const std::wstring& base) {
+    // Glob wie in .gitignore
+    CHECK(GitGlobMatch(L"*.log", L"a.LOG"));
+    CHECK(!GitGlobMatch(L"*.log", L"x/a.log"));
+    CHECK(GitGlobMatch(L"**/build", L"build"));
+    CHECK(GitGlobMatch(L"**/build", L"a/b/build"));
+    CHECK(GitGlobMatch(L"doc/**", L"doc/x/y.txt"));
+    CHECK(GitGlobMatch(L"a/**/z", L"a/z"));
+    CHECK(GitGlobMatch(L"a/**/z", L"a/b/c/z"));
+    CHECK(GitGlobMatch(L"file[0-9].txt", L"file7.txt"));
+    CHECK(!GitGlobMatch(L"file[!0-9].txt", L"file7.txt"));
+    CHECK(GitGlobMatch(L"?.c", L"x.c"));
+    // Regeln
+    GitIgnore gi;
+    gi.AddRules(L"# Kommentar\r\n*.obj\r\nbuild/\r\n/top.txt\r\n!keep.obj\r\nsub/*.tmp\r\nlogs\n", L"");
+    gi.AddRules(L"*.bak\n", L"src");
+    CHECK(gi.Ignored(L"a.obj", false));
+    CHECK(gi.Ignored(L"src/x/a.obj", false));
+    CHECK(!gi.Ignored(L"keep.obj", false));
+    CHECK(gi.Ignored(L"build", true));
+    CHECK(!gi.Ignored(L"build", false));          // nur Verzeichnisse
+    CHECK(gi.Ignored(L"build/out.exe", false));   // Inhalt eines ausgeschlossenen Verzeichnisses
+    CHECK(gi.Ignored(L"top.txt", false));
+    CHECK(!gi.Ignored(L"src/top.txt", false));    // verankert
+    CHECK(gi.Ignored(L"sub/a.tmp", false));
+    CHECK(!gi.Ignored(L"x/sub/a.tmp", false));
+    CHECK(gi.Ignored(L"x/logs", true));
+    CHECK(gi.Ignored(L"src/a.bak", false));
+    CHECK(!gi.Ignored(L"a.bak", false));          // Regel gilt nur unterhalb von src
+    CHECK(gi.Ignored(L".git", true));
+    CHECK(!gi.Ignored(L"main.cpp", false));
+    // Laden aus Verzeichnissen: Projekt mit .git, .gitignore oben und im Unterverzeichnis
+    std::wstring proj = PathCombine(base, L"Projekt"), sub = PathCombine(proj, L"src");
+    CreateDirectoryW(base.c_str(), nullptr);   // frühere Tests räumen das Testverzeichnis evtl. schon ab
+    CreateDirectoryW(proj.c_str(), nullptr);
+    CreateDirectoryW(PathCombine(proj, L".git").c_str(), nullptr);
+    CreateDirectoryW(sub.c_str(), nullptr);
+    std::string a = "*.obj\n", b = "local.txt\n";
+    WriteFileBytes(PathCombine(proj, L".gitignore"), a.data(), a.size());
+    WriteFileBytes(PathCombine(sub, L".gitignore"), b.data(), b.size());
+    GitIgnore g2;
+    CHECK(g2.Load(sub));
+    CHECK(g2.Files().size() == 2);
+    CHECK(g2.IgnoredPath(PathCombine(sub, L"x.obj"), false));
+    CHECK(g2.IgnoredPath(PathCombine(sub, L"local.txt"), false));
+    CHECK(!g2.IgnoredPath(PathCombine(sub, L"main.cpp"), false));
+    CHECK(!g2.IgnoredPath(PathCombine(proj, L"local.txt"), false));
+    GitIgnore g3;
+    CHECK(!g3.Load(base));
+    // Filter
+    PaneFilter f;
+    f.active = true;
+    f.masks = L"*.docx / *.xlsx";
+    DirEntry e;
+    e.name = L"Bericht.DOCX";
+    e.size = 5000;
+    GetSystemTimeAsFileTime(&e.modified);
+    e.created = e.modified;
+    CHECK(FilterAccepts(f, e, L"", nullptr));
+    e.name = L"Bild.png";
+    CHECK(!FilterAccepts(f, e, L"", nullptr));
+    e.name = L"Tabelle.xlsx";
+    f.sizeMin = 10000;
+    CHECK(!FilterAccepts(f, e, L"", nullptr));
+    f.sizeMin = -1;
+    f.modMode = 2;
+    f.modDays = 3;
+    CHECK(FilterAccepts(f, e, L"", nullptr));
+    f.modMode = 1;
+    f.modFrom = AddDays(TodayNumber(), 1);
+    CHECK(!FilterAccepts(f, e, L"", nullptr));
+    f.modMode = 0;
+    e.attributes = FILE_ATTRIBUTE_ARCHIVE;
+    f.attr[1] = 1;   // versteckt verlangt
+    CHECK(!FilterAccepts(f, e, L"", nullptr));
+    f.attr[1] = 0;
+    CHECK(FilterAccepts(f, e, L"", nullptr));
+    DirEntry dir;
+    dir.name = L"Ordner";
+    dir.attributes = FILE_ATTRIBUTE_DIRECTORY;
+    CHECK(FilterAccepts(f, dir, L"", nullptr));   // Verzeichnisse: alle
+    f.dirMode = 1;
+    CHECK(!FilterAccepts(f, dir, L"", nullptr));
+    f.dirMode = 2;
+    CHECK(!FilterAccepts(f, dir, L"", nullptr));
+    f.sort = (int)FilterSort::SizeDesc;
+    f.git = true;
+    PaneFilter back;
+    CHECK(PaneFilter::FromString(f.ToString(), back));
+    CHECK(back.masks == f.masks && back.dirMode == 2 && back.attr[1] == 0 && back.git && back.sort == f.sort && back.active);
+    CHECK(f.ShortText().find(L"*.docx / *.xlsx") == 0);
+    int64_t sz = 0;
+    CHECK(ParseSizeText(L"1,5 MB", sz) && sz == 1572864);
+    CHECK(ParseSizeText(L"10 KB", sz) && sz == 10240);
+    CHECK(SizeShortText(10240) == L"10 KB");
+    CHECK(AddDays(20260301, -1) == 20260228);
+}
+
 int wmain() {
     SetConsoleOutputCP(CP_UTF8);
     OleInitialize(nullptr);
@@ -686,6 +785,7 @@ int wmain() {
     TestTarListing();
     TestDrives(base);
     TestRemote(base);
+    TestPaneFilter(base);
 
     Out(L"Bestanden: " + std::to_wstring(g_passed) + L", fehlgeschlagen: " + std::to_wstring(g_failed));
     OleUninitialize();

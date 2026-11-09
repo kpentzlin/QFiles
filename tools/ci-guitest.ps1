@@ -10,6 +10,8 @@ using System.Runtime.InteropServices;
 public static class W {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr after, string cls, string title);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -1037,6 +1039,121 @@ if ($favOk -and $favPruned) { Write-Output "::notice title=Favoriten::$fl" }
 else {
   Write-Output "::error title=Favoriten::Liste: $fl; fehlende Datei entfernt: $favPruned"
   "Favoriten nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+
+# ---- Filter (Trichter, Strg+Umschalt+F): Masken, ohne Verzeichnisse (hellrot); .gitignore mit Sortierung (hell-lila);
+# Abschalten; Lesezeichen mit Filter (Trichter-Symbol) öffnet wieder gefiltert und in der Ansicht „Details“ ----
+$fBase = "C:\QFilesFilter\Projekt"
+Remove-Item "C:\QFilesFilter" -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path "$fBase\.git", "$fBase\build", "$fBase\Sub" | Out-Null
+foreach ($n in @("a.docx", "b.xlsx", "c.txt", "x.log", "build\o.obj", "Sub\s.docx")) { Set-Content -Path "$fBase\$n" -Value $n -Encoding UTF8 }
+[System.IO.File]::WriteAllText("$fBase\.gitignore", "*.log`nbuild/`n")
+$script:p = Start-Process -FilePath $Exe -ArgumentList ('"' + $fBase + '"'), '"C:\Windows"' -PassThru
+Start-Sleep -Seconds 7
+Check-Alive "Start (Filter)"
+$fw = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $fw -eq [IntPtr]::Zero; $t++) { $fw = [W]::FindWindow("QFilesMain", [NullString]::Value); if ($fw -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+[W]::SetForegroundWindow($fw) | Out-Null
+$hh = [IntPtr]::Zero; $fPane = [IntPtr]::Zero; $bestKey = [int]::MaxValue
+while ($true) {
+  $hh = [W]::FindWindowEx($fw, $hh, "QFilesPane", $null)
+  if ($hh -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($hh)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($hh, [ref]$r) | Out-Null
+  $key = $r.L + $r.T * 10
+  if ($key -lt $bestKey) { $bestKey = $key; $fPane = $hh }
+}
+$fList = [W]::FindWindowEx($fPane, [IntPtr]::Zero, "SysListView32", $null)
+$fEdit = [IntPtr]::Zero
+$cb = [IntPtr]::Zero
+while ($fEdit -eq [IntPtr]::Zero) {
+  $cb = [W]::FindWindowEx($fPane, $cb, "ComboBox", $null)
+  if ($cb -eq [IntPtr]::Zero) { break }
+  $fEdit = [W]::FindWindowEx($cb, [IntPtr]::Zero, "Edit", $null)
+}
+function PathText() { $sb = New-Object System.Text.StringBuilder 1024; [W]::GetWindowText($fEdit, $sb, 1024) | Out-Null; return $sb.ToString() }
+function ItemCount() { return ([W]::SendMessage($fList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32() }   # LVM_GETITEMCOUNT
+function EditColor([string]$shot) {
+  $er = New-Object W+RECT; [W]::GetWindowRect($fEdit, [ref]$er) | Out-Null
+  try {
+    $img = [System.Drawing.Bitmap]::FromFile((Join-Path $PWD $shot))
+    $c = $img.GetPixel([int]($er.L + 2), [int]($er.B - 2)); $img.Dispose()
+    return $c
+  } catch { return [System.Drawing.Color]::Black }
+}
+$flr = New-Object W+RECT; [W]::GetWindowRect($fList, [ref]$flr) | Out-Null
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
+$fAll = ItemCount
+$parentRow = $fAll - 8   # 1 mit „..“, 0 ohne
+# 1) Masken, ohne Verzeichnisse
+[System.Windows.Forms.SendKeys]::SendWait("^+f"); Start-Sleep -Seconds 2
+$fDlg = [W]::FindWindow("#32770", "Filter")
+[System.Windows.Forms.SendKeys]::SendWait("*.docx / *.xlsx"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("%o"); Start-Sleep -Milliseconds 300
+$gitEnabled = $false
+if ($fDlg -ne [IntPtr]::Zero) { $gitEnabled = [W]::IsWindowEnabled([W]::GetDlgItem($fDlg, 124)) }   # kGit
+Shot "screenshot40.png"   # Filterauswahl
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+Check-Alive "Filter einschalten"
+$f1 = ItemCount; $t1 = PathText
+Shot "screenshot41.png"   # gefilterte Liste, Verzeichnisfeld hellrot
+$c1 = EditColor "screenshot41.png"
+# 2) erneuter Aufruf schaltet ab
+[System.Windows.Forms.SendKeys]::SendWait("^+f"); Start-Sleep -Seconds 2
+$f2 = ItemCount; $t2 = PathText
+# 3) wieder einschalten: Vorbelegung zurücksetzen, .gitignore, Sortierung „Geändert absteigend“
+[System.Windows.Forms.SendKeys]::SendWait("^+f"); Start-Sleep -Seconds 2
+$fDlg2 = [W]::FindWindow("#32770", "Filter")
+$sbm = New-Object System.Text.StringBuilder 512
+if ($fDlg2 -ne [IntPtr]::Zero) { [W]::GetWindowText([W]::FindWindowEx([W]::GetDlgItem($fDlg2, 101), [IntPtr]::Zero, "Edit", $null), $sbm, 512) | Out-Null }
+$prefill = $sbm.ToString()
+[System.Windows.Forms.SendKeys]::SendWait("%z"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("%t"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("%n"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 300
+Shot "screenshot42.png"   # Filterauswahl mit .gitignore
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+Check-Alive "Git-Filter"
+$f3 = ItemCount; $t3 = PathText
+# Lesezeichen mit Filter (Strg+D, Name bestätigen)
+[System.Windows.Forms.SendKeys]::SendWait("^d"); Start-Sleep -Seconds 1
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 1
+Shot "screenshot43.png"   # Git-Filter (hell-lila), Lesezeichen mit Trichter
+$c3 = EditColor "screenshot43.png"
+# 4) Verzeichniswechsel (Rücktaste) schaltet ab; Ansicht „Liste“; Lesezeichen öffnen -> Filter + „Details“
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE}"); Start-Sleep -Seconds 2
+$t4 = PathText
+[System.Windows.Forms.SendKeys]::SendWait("^+2"); Start-Sleep -Milliseconds 800
+$view4 = ([W]::SendMessage($fList, 0x108F, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()   # LVM_GETVIEW
+$bl = [W]::FindWindowEx($fw, [IntPtr]::Zero, "SysListView32", $null)
+$blr = New-Object W+RECT; [W]::GetWindowRect($bl, [ref]$blr) | Out-Null
+[W]::Click($blr.L + 60, $blr.B - 6, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+Check-Alive "Lesezeichen mit Filter"
+$f5 = ItemCount; $t5 = PathText
+$view5 = ([W]::SendMessage($fList, 0x108F, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+Shot "screenshot44.png"   # Lesezeichen mit Filter geöffnet (Details, sortiert nach Änderungsdatum absteigend)
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$iniF = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
+$bmFilter = $iniF -match 'Filter\d+=v1\|[^\r\n]*g=1'
+$redOk = $c1.R -ge 235 -and $c1.G -lt 238 -and $c1.B -lt 238 -and $c1.R -gt $c1.B + 12
+$purpleOk = $c3.B -ge 235 -and $c3.G -lt 225 -and $c3.B -gt $c3.G + 15
+$fInfo = "ungefiltert $fAll; Masken: $f1 (erwartet $($parentRow + 2)) [$t1] Farbe $($c1.R),$($c1.G),$($c1.B); Git-Wahl frei: $gitEnabled; " +
+         "aus: $f2 [$t2]; Vorbelegung [$prefill]; Git: $f3 (erwartet $($parentRow + 5)) [$t3] Farbe $($c3.R),$($c3.G),$($c3.B); " +
+         "nach Verzeichniswechsel [$t4] Ansicht $view4; Lesezeichen: $f5 [$t5] Ansicht $view5; INI-Filter: $bmFilter"
+if ($f1 -eq $parentRow + 2 -and $t1 -match ' – \*\.docx / \*\.xlsx' -and $redOk -and $gitEnabled -and
+    $f2 -eq $fAll -and $t2 -notmatch ' – ' -and $prefill -eq '*.docx / *.xlsx' -and
+    $f3 -eq $parentRow + 5 -and $t3 -match 'Git' -and $purpleOk -and
+    $t4 -notmatch ' – ' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter) {
+  Write-Output "::notice title=Filter::$fInfo"
+} else {
+  Write-Output "::error title=Filter::$fInfo"
+  "Filter nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 
 if (-not (Test-Path "C:\ProgramData\QFiles\QFiles.ini")) {

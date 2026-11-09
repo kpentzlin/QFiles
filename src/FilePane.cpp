@@ -164,6 +164,7 @@ FilePane::~FilePane() {
     if (listFont_) DeleteObject(listFont_);
     if (driveFont_) DeleteObject(driveFont_);
     if (thumbList_) ImageList_Destroy(thumbList_);
+    if (pathBrush_) DeleteObject(pathBrush_);
 }
 
 bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
@@ -494,6 +495,11 @@ void FilePane::BuildHitRects() {
     // ganz rechts: Split, links daneben: Lesezeichen
     hits_.push_back({HitArea::Split, -1, {x - bs, pad, x, pad + bs}});
     x -= bs + pad;
+    // links neben Split: Filter (Trichter); nicht in den Favoriten und im Papierkorb
+    if (!IsSpecialList()) {
+        hits_.push_back({HitArea::Filter, -1, {x - bs, pad, x, pad + bs}});
+        x -= bs + pad;
+    }
     // Lesezeichensymbol entfällt bei FTP/SFTP (Zugänge entstehen über „Lesezeichen → Neuer FTP/sFTP-Zugriff“) und in
     // den Favoriten (die haben ihr eigenes Lesezeichen)
     if (!IsRemoteUrl(dir_) && !IsSpecialList()) {
@@ -548,7 +554,14 @@ void FilePane::UpdateTooltips() {
         case HitArea::Split:
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
             break;
-        case HitArea::Bookmark: text = L"Gewähltes Verzeichnis den Lesezeichen hinzufügen (Strg+D)"; break;
+        case HitArea::Bookmark:
+            text = filter_.active ? L"Gewähltes Verzeichnis mit dem Filter den Lesezeichen hinzufügen (Strg+D)"
+                                  : L"Gewähltes Verzeichnis den Lesezeichen hinzufügen (Strg+D)";
+            break;
+        case HitArea::Filter:
+            text = filter_.active ? L"Filter ausschalten (" + filter_.ShortText() + L")"
+                                  : L"Filter: Masken, Datum, Größe, Attribute, .gitignore, Sortierung …";
+            break;
         case HitArea::Back: text = L"Zurück (Alt+←) – Rechtsklick: Liste"; break;
         case HitArea::Forward: text = L"Vor (Alt+→) – Rechtsklick: Liste"; break;
         case HitArea::Up: text = L"Übergeordnetes Verzeichnis (Rücktaste)"; break;
@@ -611,6 +624,18 @@ void FilePane::DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot) {
     }
     case HitArea::Split: g = splitButton_ == SplitButton::Split ? Glyph::Split : Glyph::Unsplit; break;
     case HitArea::Bookmark: g = Glyph::Bookmark; break;
+    case HitArea::Filter:
+        g = Glyph::Filter;
+        if (filter_.active) {
+            // aktiver Filter: Schaltfläche in der Farbe der Pfadzeile
+            HBRUSH fb = CreateSolidBrush(filter_.git ? RGB(226, 210, 248) : RGB(255, 205, 205));
+            FillRect(dc, &rc, fb);
+            DeleteObject(fb);
+            HBRUSH fr = CreateSolidBrush(filter_.git ? RGB(140, 100, 200) : RGB(200, 90, 90));
+            FrameRect(dc, &rc, fr);
+            DeleteObject(fr);
+        }
+        break;
     default: return;
     }
     if (!enabled) col = GetSysColor(COLOR_GRAYTEXT);
@@ -655,7 +680,7 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             HGDIOBJ prev = SelectObject(dc, DriveFont());
             DrawTextW(dc, letter, 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
             SelectObject(dc, prev);
-        } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark) {
+        } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark || h.area == HitArea::Filter) {
             DrawGlyph(dc, h.area, h.rc, hot_ == &h);
         }
     }
@@ -802,6 +827,9 @@ void FilePane::OnClickArea(const HitRect& h) {
     case HitArea::Bookmark:
         if (host_) host_->OnPaneBookmarkButton(this);
         break;
+    case HitArea::Filter:
+        ToggleFilter();
+        break;
     case HitArea::Back: GoBack(); break;
     case HitArea::Forward: GoForward(); break;
     case HitArea::Up: GoUp(); break;
@@ -821,6 +849,7 @@ void FilePane::OnClickArea(const HitRect& h) {
 
 bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
     std::vector<DirEntry> entries;
+    if (filter_.active && filter_.git && !git_.Load(dir)) git_ = GitIgnore();   // .gitignore neu einlesen
     if (IsFavoritesLocation(dir)) {
         // Favoriten: Datei, vollständiges Verzeichnis (Spalte „Verzeichnis“). Nicht mehr vorhandene Dateien entfallen
         // stillschweigend aus der Favoritenliste; nicht erreichbare (Server aus, keine Rechte) bleiben gespeichert,
@@ -905,7 +934,7 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
     (void)o;
     bool recursive = ViewFor(dir) == PaneView::Recursive && !IsVirtualLocation(dir);
     for (auto& e : entries) {
-        if (!AcceptEntry(e)) continue;
+        if (!AcceptEntry(e, filter_.active ? PathCombine(dir, e.name) : std::wstring())) continue;
         if (recursive && e.IsDir()) continue;   // Unterverzeichnisse: deren Dateien kommen über StartTreeWalk
         Item it;
         it.e = std::move(e);
@@ -922,15 +951,11 @@ bool FilePane::ReadDirectory(const std::wstring& dir, DWORD* err) {
 }
 
 // Sichtbarkeit eines Eintrags (versteckte/Systemdateien, Dateifilter)
-bool FilePane::AcceptEntry(const DirEntry& e) const {
+bool FilePane::AcceptEntry(const DirEntry& e, const std::wstring& fullPath) const {
     const Options& o = App::Opt();
     if (!o.showHidden && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) return false;
     if (!o.showSystem && (e.attributes & FILE_ATTRIBUTE_SYSTEM) && (e.attributes & FILE_ATTRIBUTE_HIDDEN)) return false;
-    if (filter_.IsActive() && (!e.IsDir() || filter_.applyToDirs)) {
-        if (!filter_.include.empty() && !MatchAnyPattern(filter_.include, e.name)) return false;
-        if (!filter_.exclude.empty() && MatchAnyPattern(filter_.exclude, e.name)) return false;
-    }
-    return true;
+    return FilterAccepts(filter_, e, fullPath, filter_.git ? &git_ : nullptr);
 }
 
 // ===================== Ansicht „Mit Unterverzeichnissen“ =====================
@@ -1013,7 +1038,7 @@ void FilePane::OnTreeBatch(WPARAM gen) {
     auto sel = SelectedNames();
     int top = ListView_GetTopIndex(list_);
     for (auto& it : got) {
-        if (!AcceptEntry(it.e)) continue;
+        if (!AcceptEntry(it.e, filter_.active ? Combine(RelName(it)) : std::wstring())) continue;
         auto m = marks_.find(ToLower(it.e.name));
         if (m != marks_.end()) it.mark = m->second;
         items_.push_back(std::move(it));
@@ -1137,6 +1162,8 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
     }
     bool sameDir = IsRemoteUrl(dir) ? dir == dir_ : EqualsI(dir, dir_);
     std::wstring oldDir = dir_;
+    // Verzeichniswechsel schaltet den Filter aus (der zuletzt gewählte bleibt für den Trichter gespeichert)
+    if (!sameDir && filter_.active) ClearFilter(false);
     DWORD err = 0;
     if (!ReadDirectory(dir, &err)) {
         if (showErrors) {
@@ -1507,7 +1534,7 @@ void FilePane::AddHistory(const std::wstring& dir) {
 void FilePane::UpdatePathCombo() {
     SendMessageW(pathCombo_, CB_RESETCONTENT, 0, 0);
     for (auto& r : recent_) SendMessageW(pathCombo_, CB_ADDSTRING, 0, (LPARAM)LocationDisplay(r).c_str());
-    SetWindowTextW(pathCombo_, LocationDisplay(dir_).c_str());
+    SetWindowTextW(pathCombo_, PathText().c_str());
     // Keine Markierung im Textfeld, Schreibmarke ans Ende (zeigt das letzte Glied des Pfads)
     if (pathEdit_ && GetFocus() != pathEdit_) {
         int len = GetWindowTextLengthW(pathEdit_);
@@ -1744,7 +1771,7 @@ void FilePane::UpdateStatus() {
     }
     if (selFiles + selDirs)
         s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
-    if (filter_.IsActive()) s += L"  –  Filter: " + filter_.include + (filter_.exclude.empty() ? L"" : (L" ohne " + filter_.exclude));
+    if (filter_.active) s += L"  –  Filter: " + filter_.ShortText();
     if (freeKnown_) s += L"  –  belegt: " + FormatSize(usedBytes_) + L", frei: " + FormatSize(freeBytes_);
     statusText_ = s;
     InvalidateRect(hwnd_, &rcStatus_, FALSE);
@@ -2013,9 +2040,74 @@ void FilePane::SetSort(SortKey k, bool descending) {
     FillList(focus, sel, 0);
 }
 
-void FilePane::SetFilter(const PaneFilter& f) {
+std::wstring FilePane::PathText() const {
+    std::wstring t = LocationDisplay(dir_);
+    if (filter_.active) t += L" – " + filter_.ShortText();
+    return t;
+}
+
+// Pfadzeile und Trichter: hellrot bei aktivem Filter, hell-lila beim Git-Filter
+void FilePane::UpdateFilterLook() {
+    if (pathBrush_) DeleteObject(pathBrush_);
+    pathBrush_ = filter_.active ? CreateSolidBrush(filter_.git ? RGB(226, 210, 248) : RGB(255, 218, 218)) : nullptr;
+    if (pathCombo_) {
+        SetWindowTextW(pathCombo_, PathText().c_str());
+        if (pathEdit_ && GetFocus() != pathEdit_) SendMessageW(pathEdit_, EM_SETSEL, 0, 0);
+        InvalidateRect(pathCombo_, nullptr, TRUE);
+        if (pathEdit_) InvalidateRect(pathEdit_, nullptr, TRUE);
+    }
+    UpdateTooltips();
+    InvalidateRect(hwnd_, &rcHeader_, FALSE);
+}
+
+void FilePane::ToggleFilter() {
+    if (filter_.active) {
+        ClearFilter();
+        return;
+    }
+    if (IsSpecialList()) return;
+    PaneFilter f = lastFilter_;
+    if (!EditFilter(GetAncestor(hwnd_, GA_ROOT), f, IsVirtual() ? std::wstring() : dir_)) return;
+    ApplyFilter(f);
+}
+
+void FilePane::ApplyFilter(const PaneFilter& fIn) {
+    PaneFilter f = fIn;
+    f.active = true;
+    if (f.git && (IsVirtual() || !git_.Load(dir_))) f.git = false;   // keine .gitignore: Git-Bedingung entfällt
+    lastFilter_ = f;
+    lastFilter_.git = fIn.git;   // Wahl merken, auch wenn hier keine .gitignore liegt
     filter_ = f;
+    if (f.sort > 0) {
+        if (!sortSaved_) {
+            sortSaved_ = true;
+            sortBeforeFilter_ = sortKey_;
+            descBeforeFilter_ = sortDesc_;
+        }
+        static const SortKey keys[] = {SortKey::Name, SortKey::Name, SortKey::Name, SortKey::Ext, SortKey::Ext,
+                                       SortKey::Size, SortKey::Size, SortKey::Created, SortKey::Created,
+                                       SortKey::Date, SortKey::Date};
+        sortKey_ = keys[f.sort];
+        sortDesc_ = f.sort % 2 == 0;
+    }
+    UpdateFilterLook();
     Reload();
+    UpdateStatus();
+}
+
+void FilePane::ClearFilter(bool reload) {
+    if (!filter_.active) return;
+    filter_.active = false;
+    if (sortSaved_) {
+        sortSaved_ = false;
+        sortKey_ = sortBeforeFilter_;
+        sortDesc_ = descBeforeFilter_;
+    }
+    UpdateFilterLook();
+    if (reload) {
+        Reload();
+        UpdateStatus();
+    }
 }
 
 void FilePane::SetMarks(const CompareMarks& marks) {
@@ -2753,9 +2845,15 @@ void FilePane::LoadState(const Config& c, const std::wstring& s) {
         int w = (int)StrToInt(widths[i], kDefaultWidths[i]);
         if (w >= 20 && w <= 2000) colWidths_[i] = w;
     }
-    filter_.include = c.Get(s, L"FilterEin", L"*");
-    filter_.exclude = c.Get(s, L"FilterAus", L"");
-    filter_.applyToDirs = c.GetBool(s, L"FilterVerzeichnisse", false);
+    // zuletzt gewählter Filter (inaktiv); ältere Fassungen speicherten nur Masken (FilterEin/FilterAus)
+    if (!PaneFilter::FromString(c.Get(s, L"FilterZuletzt"), lastFilter_)) {
+        lastFilter_ = PaneFilter();
+        std::wstring in = c.Get(s, L"FilterEin", L"*"), out = c.Get(s, L"FilterAus", L"");
+        if (!in.empty()) lastFilter_.masks = in;
+        lastFilter_.exclude = out;
+    }
+    lastFilter_.active = false;
+    filter_ = PaneFilter();
     recent_ = c.GetList(s, L"Verlauf");
     hist_ = c.GetList(s, L"Zurueck");
     if (hist_.size() > 100) hist_.erase(hist_.begin(), hist_.end() - 100);
@@ -2775,9 +2873,7 @@ void FilePane::SaveState(Config& c, const std::wstring& s) const {
     std::vector<std::wstring> ws;
     for (int w : colWidths_) ws.push_back(std::to_wstring(w));
     c.Set(s, L"Spalten", Join(ws, L","));
-    c.Set(s, L"FilterEin", filter_.include);
-    c.Set(s, L"FilterAus", filter_.exclude);
-    c.SetBool(s, L"FilterVerzeichnisse", filter_.applyToDirs);
+    c.Set(s, L"FilterZuletzt", lastFilter_.ToString());
     c.SetList(s, L"Verlauf", privActive_ ? privSnap_.recent : recent_);
     c.SetList(s, L"Zurueck", privActive_ ? privSnap_.hist : hist_);
     c.SetInt(s, L"ZurueckPos", privActive_ ? privSnap_.histPos : histPos_);
@@ -3038,6 +3134,11 @@ LRESULT CALLBACK FilePane::PathEditSubclass(HWND h, UINT msg, WPARAM wp, LPARAM 
     case WM_KEYDOWN:
         if (wp == VK_RETURN) {
             std::wstring t = Trim(GetWindowTextStr(h));
+            // unveränderte Anzeige mit Filter-Kurztext: im Verzeichnis bleiben
+            if (self->filter_.active && t == self->PathText()) {
+                self->FocusList();
+                return 0;
+            }
             // Umgebungsvariablen erlauben (%USERPROFILE% …)
             wchar_t buf[32768];
             DWORD n = ExpandEnvironmentStringsW(t.c_str(), buf, 32768);
@@ -3046,7 +3147,7 @@ LRESULT CALLBACK FilePane::PathEditSubclass(HWND h, UINT msg, WPARAM wp, LPARAM 
             return 0;
         }
         if (wp == VK_ESCAPE) {
-            SetWindowTextW(self->pathCombo_, LocationDisplay(self->dir_).c_str());
+            SetWindowTextW(self->pathCombo_, self->PathText().c_str());
             self->FocusList();
             return 0;
         }
@@ -3204,6 +3305,14 @@ LRESULT FilePane::OnNotify(NMHDR* nm) {
 
 LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+    case WM_CTLCOLOREDIT:
+        // Pfadzeile bei aktivem Filter hellrot bzw. hell-lila (Git)
+        if (pathBrush_ && (HWND)lp == pathEdit_) {
+            SetBkColor((HDC)wp, filter_.git ? RGB(226, 210, 248) : RGB(255, 218, 218));
+            SetTextColor((HDC)wp, GetSysColor(COLOR_WINDOWTEXT));
+            return (LRESULT)pathBrush_;
+        }
+        break;
     case WM_SIZE:
         Layout();
         return 0;

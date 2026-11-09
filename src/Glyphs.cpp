@@ -152,6 +152,15 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
         Lines(dc, v1, 2, RGB(255, 255, 255), std::max(1, u));
         break;
     }
+    case Glyph::Filter: {
+        // Trichter (blau): breiter Rand oben, Hals unten
+        int full = std::min(w, h);
+        int ox = rc.left + (w - full) / 2, oy = rc.top + (h - full) / 2;
+        auto P = [&](double x, double y) { return POINT{ox + (int)(x * full / 16.0 + 0.5), oy + (int)(y * full / 16.0 + 0.5)}; };
+        POINT f[6] = {P(2.0, 2.5), P(14.0, 2.5), P(9.3, 8.2), P(9.3, 13.8), P(6.7, 12.4), P(6.7, 8.2)};
+        Poly(dc, f, 6, RGB(70, 125, 205), RGB(30, 60, 120), std::max(1, full / 16));
+        break;
+    }
     case Glyph::Eraser: {
         // Radiergummi, schräg gestellt: rosa Körper, blaue Manschette, Wischspur darunter
         int full = std::min(w, h);
