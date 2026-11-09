@@ -5,3 +5,5 @@ out/
 *.user
 *.aps
 CMakeUserPresets.json
+QFiles.pdf
+docs/shots/

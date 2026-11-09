@@ -21,3 +21,10 @@ anderes verlangt wird (Vorgabe von Karl, 15.10.2026). Die Nummer steht an zwei S
   legen (über die Geräte-Werkzeuge; große Dateien wie die PDB ggf. über SendUserFile + fileUuid).
 - Lässt sich `QFiles.exe` nicht überschreiben, weil die alte Version noch läuft: Karl kurz Bescheid geben, ihm Zeit
   zum Schließen lassen und den Download bzw. das Kopieren danach automatisch wiederholen.
+
+## Dokumente (Vorgabe von Karl, 09.11.2026)
+
+- Bei jeder Programmänderung `QFiles Funktionsvergleich.pdf` (`python3 tools/funktionsvergleich.py "QFiles Funktionsvergleich.pdf"`,
+  `QF_VERSION` und Zeilen anpassen) und die Gebrauchsanleitung `QFiles.pdf` (`python3 tools/make-manual.py QFiles.pdf <shots>`,
+  bebildert mit den Bildschirmfotos des grünen CI-Laufs; neue Funktionen in README.md beschreiben und Bilder in
+  `FIGURES` zuordnen) aktualisieren, einchecken und mit nach `C:\_Arbeit\__QFiles` legen.

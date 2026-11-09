@@ -18,16 +18,18 @@ ebenfalls unterstützt.
 
 Eine nummerierte Gegenüberstellung der Funktionen von QFiles, Idoswin Pro und SpeedCommander steht in
 [`QFiles Funktionsvergleich.pdf`](QFiles%20Funktionsvergleich.pdf) (erzeugt mit `tools/funktionsvergleich.py`).
+Eine bebilderte Gebrauchsanleitung und Programmbeschreibung steht in [`QFiles.pdf`](QFiles.pdf) (erzeugt mit
+`tools/make-manual.py` aus dieser Beschreibung und den Bildschirmfotos des automatischen Tests).
 
 | Bereich | Umsetzung in QFiles |
 |---|---|
-| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: grüne Sammelmappe mit Lupe und Hammer auf gelbem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
+| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: hellgraue Sammelmappe mit Lupe und Hammer auf orangem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
 | Unicode | Vollständig Unicode (UTF-16 intern), insbesondere Anzeige und Bearbeitung von Dateinamen |
 | Texteditor | Neue und **leere Dateien werden standardmäßig als UTF-8 ohne BOM** gespeichert; vorhandene Dateien behalten ihre Kodierung |
 | Disketten | Alle diskettenbezogenen Funktionen entfallen (keine Diskettenlaufwerke A:/B:, kein Formatieren/Kopieren von Disketten, keine Diskettengrößen beim Teilen) |
 | Zwei Dateilisten | Immer **senkrecht nebeneinander**, Verzeichnisbaum links |
 | Dateianzeige | Standardeinstellung „**in dem jeweils anderen Fenster**“ (Schnellansicht ersetzt die Gegenseite) |
-| Kopfzeile jeder Liste | Laufwerksymbole, rechtsbündig **Lesezeichen hinzufügen** und ganz rechts **Split** |
+| Kopfzeile jeder Liste | Laufwerksymbole, rechtsbündig **Lesezeichen hinzufügen**, **Filter** (Trichter) und ganz rechts **Split** |
 | Pfadzeile jeder Liste | Ganz rechts ein **Kreis**: grün gefüllt = aktive Liste, hohl = nicht aktiv; ein Klick darauf macht die Liste aktiv |
 | Lesezeichen | Als **senkrechte Liste zwischen Verzeichnisbaum und Dateilisten**, immer sichtbar (nicht abwählbar), statt im Kopfzeilenbereich |
 | Split | Teilt eine Liste waagerecht: unten erscheint Liste 3 (links) bzw. Liste 4 (rechts) mit gleichem Kopfbereich |
@@ -538,7 +540,8 @@ Weitere:
 | Strg+T | Split / Split aufheben |
 | Strg+Umschalt+1…5 | Ansicht: Details · Liste · Symbole · Miniaturen · Mit Unterverzeichnissen |
 | Strg+Q | Dateianzeige im anderen Fenster |
-| Strg+D | Gewähltes Verzeichnis den Lesezeichen hinzufügen |
+| Strg+D | Gewähltes Verzeichnis den Lesezeichen hinzufügen (mit aktivem Filter) |
+| Strg+Umschalt+F | Filter (Trichter): Auswahl öffnen bzw. ausschalten |
 | Strg+Z | Rückgängig |
 | Strg+K · Strg+Umschalt+Y | Dateien vergleichen · Synchronisieren |
 | Strg+L / Strg+G · Strg+E | Verzeichnis eingeben · Befehlszeile |
@@ -558,8 +561,8 @@ Gespeichert werden:
 - Breiten von Baum und Lesezeichenliste,
 - Teilungsverhältnisse und Split-Zustand,
 - die zuletzt in den **vier Listenfenstern** angezeigten Verzeichnisse mit Ansicht, Sortierung, Spaltenbreiten,
-  Filter, Verzeichnisverlauf und Zurück/Vor-Liste (im privaten Modus der Stand beim Einschalten),
-- die Lesezeichen und die Favoriten,
+  zuletzt gewähltem Filter, Verzeichnisverlauf und Zurück/Vor-Liste (im privaten Modus der Stand beim Einschalten),
+- die Lesezeichen (mit Filter) und die Favoriten, der Verlauf der Filtermasken,
 - die Funktionstasten,
 - der Befehlszeilen-Verlauf,
 - Größe, Position und Spaltenbreiten des Suchfensters.

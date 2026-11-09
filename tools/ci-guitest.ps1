@@ -10,7 +10,8 @@ using System.Runtime.InteropServices;
 public static class W {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr after, string cls, string title);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SendMessageText(IntPtr h, uint msg, IntPtr w, System.Text.StringBuilder l);
+  public static string Text(IntPtr h) { var sb = new System.Text.StringBuilder(1024); SendMessageText(h, 0x000D, (IntPtr)1024, sb); return sb.ToString(); }
   [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -1071,7 +1072,7 @@ while ($fEdit -eq [IntPtr]::Zero) {
   if ($cb -eq [IntPtr]::Zero) { break }
   $fEdit = [W]::FindWindowEx($cb, [IntPtr]::Zero, "Edit", $null)
 }
-function PathText() { $sb = New-Object System.Text.StringBuilder 1024; [W]::GetWindowText($fEdit, $sb, 1024) | Out-Null; return $sb.ToString() }
+function PathText() { return [W]::Text($fEdit) }   # WM_GETTEXT (GetWindowText liest fremde Steuerelemente nicht)
 function ItemCount() { return ([W]::SendMessage($fList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32() }   # LVM_GETITEMCOUNT
 function EditColor([string]$shot) {
   $er = New-Object W+RECT; [W]::GetWindowRect($fEdit, [ref]$er) | Out-Null
@@ -1105,9 +1106,8 @@ $f2 = ItemCount; $t2 = PathText
 # 3) wieder einschalten: Vorbelegung zurücksetzen, .gitignore, Sortierung „Geändert absteigend“
 [System.Windows.Forms.SendKeys]::SendWait("^+f"); Start-Sleep -Seconds 2
 $fDlg2 = [W]::FindWindow("#32770", "Filter")
-$sbm = New-Object System.Text.StringBuilder 512
-if ($fDlg2 -ne [IntPtr]::Zero) { [W]::GetWindowText([W]::FindWindowEx([W]::GetDlgItem($fDlg2, 101), [IntPtr]::Zero, "Edit", $null), $sbm, 512) | Out-Null }
-$prefill = $sbm.ToString()
+$prefill = ""
+if ($fDlg2 -ne [IntPtr]::Zero) { $prefill = [W]::Text([W]::FindWindowEx([W]::GetDlgItem($fDlg2, 101), [IntPtr]::Zero, "Edit", $null)) }
 [System.Windows.Forms.SendKeys]::SendWait("%z"); Start-Sleep -Milliseconds 300
 [System.Windows.Forms.SendKeys]::SendWait("%t"); Start-Sleep -Milliseconds 300
 [System.Windows.Forms.SendKeys]::SendWait("%n"); Start-Sleep -Milliseconds 300
