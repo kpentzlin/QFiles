@@ -81,6 +81,9 @@ FIGURES = {
         ("screenshot21.png", "Eigenes Anzeigefenster (Kontextmenü „Anzeigen“)", WIN),
         ("screenshot27.png", "Programmdatei in der Dateianzeige: Symbol und Versionsinformationen", WIN),
     ],
+    "Bedienungshilfen vereinfachen (0.1.21)": [
+        ("screenshot45.png", "Optionen, Seite „Bedienung“, unten die Option „Bedienungshilfen vereinfachen“", WIN),
+    ],
     "Kontextmenü-Erweiterungen ausschließen": [
         ("screenshot5.png", "Abgefangener Fehler einer Kontextmenü-Erweiterung", WIN),
     ],

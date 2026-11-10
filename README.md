@@ -696,3 +696,13 @@ Die Berichte führten bisher zu diesen Änderungen (0.1.18): Der erste Aufbau de
 Programmstart unsichtbar im Hintergrund (eine .NET-Kontextmenü-Erweiterung brauchte beim ersten Rechtsklick gut 10 s,
 um Laufzeit, Windows Forms und Schriften zu laden); die Abfrage, ob der Papierkorb leer ist, läuft im Hintergrund
 (sie fragt alle Laufwerke ab und blockierte bis zu 7 s).
+
+### Bedienungshilfen vereinfachen (0.1.21)
+
+Programme, die die Oberfläche über die Windows-Bedienungshilfen-Schnittstelle (UI Automation) auslesen –
+Sprachausgabe, Sprachzugriff, aber auch KI-Bildschirmsteuerungen wie `codex-computer-use.exe` –, lasen nach jedem
+Klick alle Einträge der Dateilisten über den Haupt-Thread aus; bei großen Verzeichnissen reagierte QFiles dann jeweils
+8–15 s nicht (Sanduhr, blasses Fenster, danach Neuzeichnen). Die Option *Optionen → Bedienung → Bedienungshilfen
+vereinfachen* (Standard: ein) lässt Dateilisten und Verzeichnisbaum diesen Programmen nur sich selbst melden (Art
+„Liste“ bzw. „Baum“, Name mit Verzeichnis, Fokus), nicht jeden Eintrag. Wer eine Sprachausgabe nutzt und die einzelnen
+Dateien vorgelesen bekommen möchte, schaltet die Option aus.

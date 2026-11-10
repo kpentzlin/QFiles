@@ -1,4 +1,6 @@
 #include "FilePane.h"
+#include "UiaSimple.h"
+#include <uiautomation.h>
 #include "App.h"
 #include "Commands.h"
 #include "Favorites.h"
@@ -3120,7 +3122,16 @@ LRESULT CALLBACK FilePane::ListSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         ShowOpenWithMenu(GetAncestor(h, GA_ROOT), self->ItemFullPath(it), sp);
         return 0;
     }
+    case WM_GETOBJECT:
+        // Hilfsprogramme (UI Automation) sehen bei der Option nur die Liste, nicht jeden Eintrag (sonst hängt
+        // QFiles bei großen Verzeichnissen nach jedem Klick, während z. B. eine KI-Bildschirmsteuerung ausliest)
+        if (App::Opt().simpleAccessibility) {
+            LRESULT r = 0;
+            if (SimpleUiaGetObject(h, wp, lp, L"Dateiliste " + self->PathText(), UIA_ListControlTypeId, r)) return r;
+        }
+        break;
     case WM_NCDESTROY:
+        SimpleUiaDisconnect(h);
         RevokeFileDropTarget(h);
         RemoveWindowSubclass(h, ListSubclass, 1);
         break;

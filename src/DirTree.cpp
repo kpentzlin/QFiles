@@ -4,6 +4,8 @@
 #include "Location.h"
 #include "ShellMenu.h"
 #include "Util.h"
+#include "UiaSimple.h"
+#include <uiautomation.h>
 
 #include <shellapi.h>
 #include <shlobj.h>
@@ -467,7 +469,16 @@ LRESULT CALLBACK DirTree::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_
     case WM_CHAR:
         if (wp == L'\r') return 0;
         break;
+    case WM_GETOBJECT:
+        // vereinfachte Bedienungshilfen-Darstellung (siehe UiaSimple.h)
+        if (App::Opt().simpleAccessibility) {
+            LRESULT r = 0;
+            if (SimpleUiaGetObject(h, wp, lp, L"Verzeichnisbaum " + self->SelectedPath(), UIA_TreeControlTypeId, r))
+                return r;
+        }
+        break;
     case WM_NCDESTROY:
+        SimpleUiaDisconnect(h);
         RevokeFileDropTarget(h);
         RemoveWindowSubclass(h, Subclass, 1);
         break;

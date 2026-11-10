@@ -250,6 +250,7 @@ void Options::Load(const Config& c) {
     saveOnExit = c.GetBool(S, L"BeimBeendenSpeichern", d.saveOnExit);
     privateMode = c.GetBool(S, L"PrivaterModus", d.privateMode);
     dragMark = c.GetBool(S, L"ZiehenMarkiert", d.dragMark);
+    simpleAccessibility = c.GetBool(S, L"BedienungshilfenEinfach", d.simpleAccessibility);
     if (thumbnailSize < 32) thumbnailSize = 32;
     if (thumbnailSize > 256) thumbnailSize = 256;
     if (editorTabWidth < 1 || editorTabWidth > 16) editorTabWidth = 4;
@@ -310,6 +311,7 @@ void Options::Save(Config& c) const {
     c.SetBool(S, L"BeimBeendenSpeichern", saveOnExit);
     c.SetBool(S, L"PrivaterModus", privateMode);
     c.SetBool(S, L"ZiehenMarkiert", dragMark);
+    c.SetBool(S, L"BedienungshilfenEinfach", simpleAccessibility);
 }
 
 std::vector<Bookmark> LoadBookmarks(const Config& c) {

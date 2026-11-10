@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.20"
+QF_VERSION = "0.1.21"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -157,6 +157,8 @@ DATA = [
          "neu in QFiles 0.1.14; Datei wird dort markiert", False),
         ("Mittlere Maustaste in sonstigen Listen: Auswahl „Öffnen mit“", "ja", "?", "?", "neu in QFiles 0.1.18, mit „Abbrechen“", False),
         ("Zeile unter der Maus hervorheben (abschaltbar)", "ja", "?", "ja", "QFiles 0.1.19: Option unter Anzeige", False),
+        ("Schutz vor Wartezeiten durch UI-Automation-Programme (Option)", "ja", "?", "?",
+         "neu in QFiles 0.1.21: „Bedienungshilfen vereinfachen“", False),
         ("Gruppe markieren/abwählen/umkehren (Muster)", "ja", "ja", "ja", "", False),
         ("Markieren über Verzeichnisvergleich", "ja", "ja", "ja", "", False),
         ("Auswahl speichern und wiederherstellen", "–", "–", "ja", "", False),

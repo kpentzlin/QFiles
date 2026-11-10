@@ -187,6 +187,10 @@ if ($dlg -eq [IntPtr]::Zero) { "Optionen-Dialog nicht gefunden" | Tee-Object -Fi
 [System.Windows.Forms.SendKeys]::SendWait("%k"); Start-Sleep -Milliseconds 400
 [System.Windows.Forms.SendKeys]::SendWait("%e"); Start-Sleep -Milliseconds 400
 Shot "screenshot6.png"
+# Seite „Bedienung“ (TCM_SETCURFOCUS wählt die Seite mit TCN_SELCHANGE) – Option „Bedienungshilfen vereinfachen“
+[W]::SendMessage([W]::GetDlgItem($dlg, 100), 0x1330, [IntPtr]1, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 600
+Shot "screenshot45.png"
+[W]::SendMessage([W]::GetDlgItem($dlg, 100), 0x1330, [IntPtr]0, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 400
 [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
 Check-Alive "Optionen"
 Shot "screenshot7.png"
@@ -1136,6 +1140,21 @@ Check-Alive "Lesezeichen mit Filter"
 $f5 = ItemCount; $t5 = PathText
 $view5 = ([W]::SendMessage($fList, 0x108F, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
 Shot "screenshot44.png"   # Lesezeichen mit Filter geöffnet (Details, sortiert nach Änderungsdatum absteigend)
+# Bedienungshilfen vereinfacht (Standard): die Dateiliste meldet sich per UI Automation als Liste ohne Einträge
+$uiaInfo = ""; $uiaOk = $false
+try {
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+  $ae = [System.Windows.Automation.AutomationElement]::FromHandle($fList)
+  $kids = $ae.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $all = [System.Windows.Automation.AutomationElement]::FromHandle($fw).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  $sw.Stop()
+  $items = 0
+  foreach ($k in $kids) { if ($k.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -or $k.Current.ControlType -eq [System.Windows.Automation.ControlType]::DataItem) { $items++ } }
+  $uiaInfo = "Liste: $($ae.Current.ControlType.ProgrammaticName) [$($ae.Current.Name)], Kinder $($kids.Count) (Einträge $items); Hauptfenster: $($all.Count) Elemente in $($sw.ElapsedMilliseconds) ms"
+  $uiaOk = $ae.Current.ControlType -eq [System.Windows.Automation.ControlType]::List -and $ae.Current.Name -like "Dateiliste *" -and $items -eq 0
+} catch { $uiaInfo = "UIA-Fehler: $($_.Exception.Message)" }
+if ($uiaOk) { Write-Output "::notice title=Bedienungshilfen::$uiaInfo" } else { Write-Output "::error title=Bedienungshilfen::$uiaInfo" }
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
@@ -1149,7 +1168,7 @@ $fInfo = "ungefiltert $fAll; Masken: $f1 (erwartet $($parentRow + 2)) [$t1] Farb
 if ($f1 -eq $parentRow + 2 -and $t1 -match ' – \*\.docx / \*\.xlsx' -and $redOk -and $gitEnabled -and
     $f2 -eq $fAll -and $t2 -notmatch ' – ' -and $prefill -eq '*.docx / *.xlsx' -and
     $f3 -eq $parentRow + 5 -and $t3 -match 'Git' -and $purpleOk -and
-    $t4 -notmatch ' – ' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter) {
+    $t4 -notmatch ' – ' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter -and $uiaOk) {
   Write-Output "::notice title=Filter::$fInfo"
 } else {
   Write-Output "::error title=Filter::$fInfo"

@@ -110,6 +110,8 @@ struct Options {
     // Liste/Details: Ziehen mit der linken Maustaste neben den Namen zieht einen Auswahlrahmen auf (wie Idoswin Pro);
     // markiert werden die Dateien, deren Name in den Rahmen ragt. Ziehen auf einem Namen: Drag & Drop wie bisher
     bool dragMark = true;
+    // Dateilisten und Verzeichnisbaum melden Hilfsprogrammen (UI Automation) nur sich selbst, nicht jeden Eintrag
+    bool simpleAccessibility = true;
 
     void Load(const Config& c);
     void Save(Config& c) const;

@@ -154,6 +154,7 @@ constexpr int kHistoryEdit = 1112;
 constexpr int kHistorySpin = 1113;
 constexpr int kPrivateMode = 1114;
 constexpr int kDragMark = 1115;
+constexpr int kSimpleUia = 1116;
 // ---- Seite 2: Dateianzeige ----
 constexpr int kQvGroup = 1201;
 constexpr int kQvOther = 1202;
@@ -255,6 +256,7 @@ protected:
         InitSpin(kHistorySpin, kHistoryEdit, 5, 500, opt.historySize);
         SetCheck(kPrivateMode, opt.privateMode);
         SetCheck(kDragMark, opt.dragMark);
+        SetCheck(kSimpleUia, opt.simpleAccessibility);
         // Dateianzeige
         CheckRadioButton(hwnd_, kQvOther, kQvWindow,
                          opt.quickViewTarget == QuickViewTarget::Window ? kQvWindow : kQvOther);
@@ -475,6 +477,7 @@ private:
         opt.historySize = SpinValue(kHistoryEdit, 5, 500, opt.historySize);
         opt.privateMode = IsChecked(kPrivateMode);
         opt.dragMark = IsChecked(kDragMark);
+        opt.simpleAccessibility = IsChecked(kSimpleUia);
 
         opt.quickViewTarget = IsChecked(kQvWindow) ? QuickViewTarget::Window : QuickViewTarget::OtherPane;
 
@@ -558,8 +561,10 @@ bool ShowOptionsDialog(HWND owner) {
             px, py + 152, pw, 10);
     t.Check(kDragMark, L"&Ziehen neben den Namen markiert Dateien (Auswahlrahmen in Liste und Details, wie Idoswin Pro)",
             px, py + 166, pw, 10);
-
-    // ---- Dateianzeige ----
+    t.Check(kSimpleUia,
+            L"Bedienungs&hilfen vereinfachen: Dateilisten und Baum melden Sprachausgabe/KI-Bildschirmsteuerung nicht jeden "
+            L"Eintrag (vermeidet Wartezeiten)",
+            px, py + 178, pw, 16, BS_MULTILINE);
     t.Group(kQvGroup, L"Dateianzeige (Schnellansicht)", px - 4, py, pw + 8, 50);
     t.Radio(kQvOther, L"in dem jeweils &anderen Fenster (Standard)", px + 4, py + 14, 250, 10, true);
     t.Radio(kQvWindow, L"in &eigenem Fenster", px + 4, py + 29, 250, 10);
