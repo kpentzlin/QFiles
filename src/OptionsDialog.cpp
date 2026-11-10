@@ -559,7 +559,7 @@ bool ShowOptionsDialog(HWND owner) {
     t.UpDown(kHistorySpin, 0, 0, 10, 13);
     t.Check(kPrivateMode, L"Privater M&odus: Verlauf nicht speichern (auch Schaltfläche „P“ in der Kopfzeile der Listen)",
             px, py + 152, pw, 10);
-    t.Check(kDragMark, L"&Ziehen neben den Namen markiert Dateien (Auswahlrahmen in Liste und Details, wie Idoswin Pro)",
+    t.Check(kDragMark, L"&Ziehen neben den Namen markiert Dateien (Auswahlrahmen in Liste und Details)",
             px, py + 166, pw, 10);
     t.Check(kSimpleUia,
             L"Bedienungs&hilfen vereinfachen: Dateilisten und Baum melden Sprachausgabe/KI-Bildschirmsteuerung nicht jeden "

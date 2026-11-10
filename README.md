@@ -23,7 +23,7 @@ Eine bebilderte Gebrauchsanleitung und Programmbeschreibung steht in [`QFiles.pd
 
 | Bereich | Umsetzung in QFiles |
 |---|---|
-| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: hellgraue Sammelmappe mit Lupe und Hammer auf orangem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
+| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: weiße Sammelmappe mit Lupe und Hammer auf violettem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
 | Unicode | Vollständig Unicode (UTF-16 intern), insbesondere Anzeige und Bearbeitung von Dateinamen |
 | Texteditor | Neue und **leere Dateien werden standardmäßig als UTF-8 ohne BOM** gespeichert; vorhandene Dateien behalten ihre Kodierung |
 | Disketten | Alle diskettenbezogenen Funktionen entfallen (keine Diskettenlaufwerke A:/B:, kein Formatieren/Kopieren von Disketten, keine Diskettengrößen beim Teilen) |
@@ -72,10 +72,13 @@ Bei aktivem Filter ist das Verzeichnisfeld **hellrot** hinterlegt (mit Git-Filte
 Cloud-Lesezeichen) und zeigt `Verzeichnis – Kurztext`, z. B. `C:\Projekte – *.cpp / *.h, geändert seit 7 Tagen, Git`.
 Der Trichter ist dann ebenso hinterlegt.
 
-- Erneuter Klick auf den Trichter oder ein Verzeichniswechsel schaltet den Filter ab.
+- Der Filter bleibt bei Verzeichniswechseln (Doppelklick, Übergeordnet, Zurück/Vor, Pfadeingabe, Baum) aktiv und gilt
+  dann im neuen Verzeichnis; beim Git-Filter wird dort die `.gitignore`-Kette neu eingelesen. Ausgeschaltet wird er
+  nur durch einen erneuten Klick auf den Trichter, einen Klick auf ein Laufwerksymbol derselben Liste oder das Laden
+  eines Lesezeichens in diese Liste (ein mit dem Lesezeichen gespeicherter Filter wird dann eingeschaltet). In den
+  Favoriten und im Papierkorb ruht ein Filter.
 - Der letzte Filter bleibt je Liste gespeichert (auch über Programmende): Ein neuer Klick auf den Trichter öffnet die
-  Auswahl damit vorbelegt, auch nach einem Verzeichniswechsel. Liegt im neuen Verzeichnis keine `.gitignore`, ist
-  die Git-Wahl gesperrt.
+  Auswahl damit vorbelegt. Liegt im aktuellen Verzeichnis keine `.gitignore`, ist die Git-Wahl gesperrt.
 - **Lesezeichen** (Strg+D bzw. Lesezeichen-Symbol) nehmen einen aktiven Filter mit; sie zeigen dann in der
   Lesezeichenliste einen Trichter statt der Mappe, der Tooltip nennt den Filter. Beim Öffnen wird der Filter wieder
   eingeschaltet; hat er eine Sortiervorgabe, schaltet die Liste in die Ansicht „Details“.
@@ -176,7 +179,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 ### Oberfläche
 
 - Verzeichnisbaum links. Er folgt der aktiven Liste; ein Klick öffnet das Verzeichnis in der aktiven Liste.
-- Im Baum unten der aufklappbare Knoten **Netzwerk** (wie in Idoswin Pro), Netzlaufwerke mit ihrer Freigabe
+- Im Baum unten der aufklappbare Knoten **Netzwerk**, Netzlaufwerke mit ihrer Freigabe
   (z. B. `N:  \\fritz.box\FRITZ.NAS\media1`), Wechseldatenträger mit ihrer Bezeichnung.
 - Lesezeichenliste daneben:
   - Ein Klick öffnet das Lesezeichen in der aktiven Liste, Umschalt+Eingabe in der anderen. Links neben den Namen
@@ -242,7 +245,7 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   Explorer-Kontextmenüs, dazu „Andere App auswählen…“ und „Abbrechen“.
 - Die hellblaue Hinterlegung der Zeile unter dem Mauszeiger lässt sich abschalten (*Optionen → Anzeige → Zeile unter
   der Maus hervorheben*).
-- **Markieren durch Ziehen** (Ansichten Liste, Details und Mit Unterverzeichnissen, wie Idoswin Pro): Beginnt das
+- **Markieren durch Ziehen** (Ansichten Liste, Details und Mit Unterverzeichnissen, wie in Idoswin Pro): Beginnt das
   Ziehen mit der linken Maustaste **neben** einem Namen (rechts vom letzten angezeigten Zeichen, in einer anderen
   Spalte oder im leeren Bereich), zieht QFiles einen Auswahlrahmen auf. Markiert werden die Dateien, deren Name
   (Symbol und Text) in den Rahmen ragt – ein schmaler Rahmen rechts der Namen erfasst also nur die Dateien mit

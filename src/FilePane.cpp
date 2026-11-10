@@ -819,6 +819,7 @@ void FilePane::OnClickArea(const HitRect& h) {
         for (auto& p : lastDirPerDrive_)
             if (EqualsI(p.first, root) && DirExists(p.second)) target = p.second;
         if (EqualsI(PathRoot(dir_), root)) target = root; // erneuter Klick auf aktuelles Laufwerk -> Wurzel
+        ClearFilter(false);   // Laufwerksymbol schaltet den Filter ab
         Navigate(target);
         break;
     }
@@ -1164,8 +1165,8 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
     }
     bool sameDir = IsRemoteUrl(dir) ? dir == dir_ : EqualsI(dir, dir_);
     std::wstring oldDir = dir_;
-    // Verzeichniswechsel schaltet den Filter aus (der zuletzt gewählte bleibt für den Trichter gespeichert)
-    if (!sameDir && filter_.active) ClearFilter(false);
+    // Der Filter bleibt bei Verzeichniswechseln aktiv; ausgeschaltet wird er nur über den Trichter, ein
+    // Laufwerksymbol dieser Liste oder ein in diese Liste geladenes Lesezeichen (ClearFilter)
     DWORD err = 0;
     if (!ReadDirectory(dir, &err)) {
         if (showErrors) {
@@ -1773,7 +1774,7 @@ void FilePane::UpdateStatus() {
     }
     if (selFiles + selDirs)
         s += L"  –  markiert: " + IntToStr((long long)(selFiles + selDirs)) + L" (" + FormatSize(selTotal) + L")";
-    if (filter_.active) s += L"  –  Filter: " + filter_.ShortText();
+    if (FilterShown()) s += L"  –  Filter: " + filter_.ShortText();
     if (freeKnown_) s += L"  –  belegt: " + FormatSize(usedBytes_) + L", frei: " + FormatSize(freeBytes_);
     statusText_ = s;
     InvalidateRect(hwnd_, &rcStatus_, FALSE);
@@ -2044,7 +2045,7 @@ void FilePane::SetSort(SortKey k, bool descending) {
 
 std::wstring FilePane::PathText() const {
     std::wstring t = LocationDisplay(dir_);
-    if (filter_.active) t += L" – " + filter_.ShortText();
+    if (FilterShown()) t += L" – " + filter_.ShortText();
     return t;
 }
 
@@ -3318,7 +3319,7 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_CTLCOLOREDIT:
         // Pfadzeile bei aktivem Filter hellrot bzw. hell-lila (Git)
-        if (pathBrush_ && (HWND)lp == pathEdit_) {
+        if (pathBrush_ && FilterShown() && (HWND)lp == pathEdit_) {
             SetBkColor((HDC)wp, filter_.git ? RGB(226, 210, 248) : RGB(255, 218, 218));
             SetTextColor((HDC)wp, GetSysColor(COLOR_WINDOWTEXT));
             return (LRESULT)pathBrush_;

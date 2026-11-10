@@ -28,3 +28,5 @@ anderes verlangt wird (Vorgabe von Karl, 15.10.2026). Die Nummer steht an zwei S
   `QF_VERSION` und Zeilen anpassen) und die Gebrauchsanleitung `QFiles.pdf` (`python3 tools/make-manual.py QFiles.pdf <shots>`,
   bebildert mit den Bildschirmfotos des grünen CI-Laufs; neue Funktionen in README.md beschreiben und Bilder in
   `FIGURES` zuordnen) aktualisieren, einchecken und mit nach `C:\_Arbeit\__QFiles` legen.
+- Die Gebrauchsanleitung bezieht sich nicht auf Idoswin Pro (Vorgabe von Karl, 10.11.2026); `neutral()` in
+  `tools/make-manual.py` entfernt solche Bezüge aus dem README-Text, Bildunterschriften und Texte dort ohne Bezug halten.

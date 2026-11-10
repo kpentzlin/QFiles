@@ -1125,7 +1125,7 @@ $f3 = ItemCount; $t3 = PathText
 [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 1
 Shot "screenshot43.png"   # Git-Filter (hell-lila), Lesezeichen mit Trichter
 $c3 = EditColor "screenshot43.png"
-# 4) Verzeichniswechsel (Rücktaste) schaltet ab; Ansicht „Liste“; Lesezeichen öffnen -> Filter + „Details“
+# 4) Verzeichniswechsel (Rücktaste) lässt den Filter aktiv; Ansicht „Liste“; Lesezeichen öffnen -> Filter + „Details“
 [W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
 [System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE}"); Start-Sleep -Seconds 2
 $t4 = PathText
@@ -1140,6 +1140,11 @@ Check-Alive "Lesezeichen mit Filter"
 $f5 = ItemCount; $t5 = PathText
 $view5 = ([W]::SendMessage($fList, 0x108F, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
 Shot "screenshot44.png"   # Lesezeichen mit Filter geöffnet (Details, sortiert nach Änderungsdatum absteigend)
+# 5) Klick auf das Laufwerksymbol C dieser Liste schaltet den Filter ab
+$pr = New-Object W+RECT; [W]::GetWindowRect($fPane, [ref]$pr) | Out-Null
+[W]::Click($pr.L + 12, $pr.T + 10, $false); Start-Sleep -Seconds 2
+Check-Alive "Laufwerksymbol"
+$t6 = PathText
 # Bedienungshilfen vereinfacht (Standard): die Dateiliste meldet sich per UI Automation als Liste ohne Einträge
 $uiaInfo = ""; $uiaOk = $false
 try {
@@ -1164,11 +1169,11 @@ $redOk = $c1.R -ge 235 -and $c1.G -lt 238 -and $c1.B -lt 238 -and $c1.R -gt $c1.
 $purpleOk = $c3.B -ge 235 -and $c3.G -lt 225 -and $c3.B -gt $c3.G + 15
 $fInfo = "ungefiltert $fAll; Masken: $f1 (erwartet $($parentRow + 2)) [$t1] Farbe $($c1.R),$($c1.G),$($c1.B); Git-Wahl frei: $gitEnabled; " +
          "aus: $f2 [$t2]; Vorbelegung [$prefill]; Git: $f3 (erwartet $($parentRow + 5)) [$t3] Farbe $($c3.R),$($c3.G),$($c3.B); " +
-         "nach Verzeichniswechsel [$t4] Ansicht $view4; Lesezeichen: $f5 [$t5] Ansicht $view5; INI-Filter: $bmFilter"
+         "nach Verzeichniswechsel [$t4] Ansicht $view4; Lesezeichen: $f5 [$t5] Ansicht $view5; INI-Filter: $bmFilter; nach Laufwerksymbol [$t6]"
 if ($f1 -eq $parentRow + 2 -and $t1 -match ' – \*\.docx / \*\.xlsx' -and $redOk -and $gitEnabled -and
     $f2 -eq $fAll -and $t2 -notmatch ' – ' -and $prefill -eq '*.docx / *.xlsx' -and
     $f3 -eq $parentRow + 5 -and $t3 -match 'Git' -and $purpleOk -and
-    $t4 -notmatch ' – ' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter -and $uiaOk) {
+    $t4 -match '^C:\\QFilesFilter – .*Git' -and $t6 -notmatch ' – ' -and $t6 -match '^C:' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter -and $uiaOk) {
   Write-Output "::notice title=Filter::$fInfo"
 } else {
   Write-Output "::error title=Filter::$fInfo"

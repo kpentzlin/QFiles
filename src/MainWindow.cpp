@@ -2053,9 +2053,15 @@ void MainWindow::OnPaneSplitButton(FilePane* p) {
     SetSplit(col, !split_[col]);
 }
 
-// Lesezeichen öffnen; mit gespeichertem Filter diesen einschalten (mit Sortiervorgabe in der Ansicht „Details“)
+// Lesezeichen öffnen: ein aktiver Filter der Liste wird ausgeschaltet; ein mit dem Lesezeichen gespeicherter Filter
+// wird eingeschaltet (mit Sortiervorgabe in der Ansicht „Details“)
 bool MainWindow::OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter) {
-    if (!pane.Navigate(path)) return false;
+    bool hadFilter = pane.Filter().active;
+    pane.ClearFilter(false);
+    if (!pane.Navigate(path)) {
+        if (hadFilter) pane.Reload();   // Verzeichnis bleibt, nun ohne Filter
+        return false;
+    }
     PaneFilter f;
     if (!filter.empty() && PaneFilter::FromString(filter, f)) {
         if (f.sort != 0 && pane.View() != PaneView::Details) pane.SetView(PaneView::Details);

@@ -124,6 +124,20 @@ Verzeichnisse der Listen 1 und 2 angeben, z. B. `QFiles.exe "C:\\Daten" "D:\\Pro
 SKIP_SECTIONS = set()   # README-Abschnitte, die im Handbuch fehlen sollen (derzeit keine)
 
 
+def neutral(md):
+    """Die Gebrauchsanleitung nennt kein Vorbildprogramm (Vorgabe von Karl, 10.11.2026): Bezüge auf Idoswin Pro
+    (und den Funktionsvergleich mit anderen Programmen) aus dem README-Text entfernen."""
+    md = re.sub(r",? nachempfunden \*\*Idoswin Pro\*\* \(<[^>]*>\)", "", md)
+    md = md.replace("## Abweichungen von Idoswin Pro", "## Besonderheiten")
+    # Absatz mit dem Verweis auf den Funktionsvergleich und diese Anleitung selbst
+    md = re.sub(r"Eine nummerierte Gegenüberstellung.*?(?=\n\n)", "", md, flags=re.S)
+    md = re.sub(r",? (wie )?(in |bei )?Idoswin Pro(?=[),])", "", md)
+    md = re.sub(r" \((wie |ähnlich )?(in |bei )?Idoswin Pro\)", "", md)
+    # übrige Sätze mit Bezug ganz entfernen
+    md = re.sub(r"[^.\n]*Idoswin[^.\n]*\.\s*", "", md)
+    return md
+
+
 def version():
     with open(os.path.join(ROOT, "CMakeLists.txt"), encoding="utf-8") as f:
         m = re.search(r"project\(QFiles VERSION ([0-9.]+)", f.read())
@@ -238,7 +252,7 @@ def build(out, shots):
     story.append(Paragraph(f"Version {ver} · Stand {datetime.date.today().strftime('%d.%m.%Y')}",
                            ParagraphStyle("v", parent=body, fontSize=11, alignment=TA_CENTER)))
     story.append(Spacer(1, 50 * mm))
-    story.append(Paragraph("Dateimanager für Windows (64 Bit), nachempfunden Idoswin Pro. Erzeugt aus README.md und "
+    story.append(Paragraph("Dateimanager für Windows (64 Bit). Erzeugt aus README.md und "
                            "den Bildschirmfotos des automatischen Oberflächentests (Windows Server 2025, 1024×768).",
                            ParagraphStyle("n", parent=body, fontSize=8.5, alignment=TA_CENTER,
                                           textColor=colors.HexColor("#555555"))))
@@ -397,6 +411,7 @@ def build(out, shots):
     with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
         readme = f.read()
     # Einleitung des README als Kapitel „Überblick“, danach „Erste Schritte“
+    readme = neutral(readme)
     readme = readme.replace("# QFiles\n", "# QFiles\n\n## Überblick\n", 1)
     m = re.search(r"^## ", readme[readme.index("## Überblick") + 5:], re.M)
     cut = readme.index("## Überblick") + 5 + m.start() if m else len(readme)
@@ -404,6 +419,13 @@ def build(out, shots):
     render(readme, None)
 
     doc.multiBuild(story)
+    try:   # Kontrolle: kein Bezug auf das Vorbildprogramm im Text
+        import subprocess
+        txt = subprocess.run(["pdftotext", out, "-"], capture_output=True, text=True).stdout
+        if "Idoswin" in txt:
+            print("WARNUNG: „Idoswin“ steht noch im Text der Anleitung")
+    except Exception:
+        pass
     missing = [f for sec in FIGURES.values() for f, _, _ in sec if f not in used]
     print(f"{out}: Version {ver}, {doc.page} Seiten, {fig_no[0]} Abbildungen"
           + (f"; fehlende Bilder: {', '.join(missing)}" if missing else ""))

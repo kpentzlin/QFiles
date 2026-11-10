@@ -128,6 +128,8 @@ public:
     void ClearFilter(bool reload = true);
     const PaneFilter& Filter() const { return filter_; }
     std::wstring PathText() const;   // Verzeichnis, bei aktivem Filter „ – Kurztext“
+    // Filter wirkt hier (in Favoriten und Papierkorb ruht er, bleibt aber eingeschaltet)
+    bool FilterShown() const { return filter_.active && !IsSpecialList(); }
     void SetMarks(const CompareMarks& marks);
     void ClearMarks();
     bool HasMarks() const { return !marks_.empty(); }
