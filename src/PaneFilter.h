@@ -69,6 +69,9 @@ struct PaneFilter {
     static bool FromString(const std::wstring& s, PaneFilter& out);
 };
 
+// Bezeichnung einer Sortiervorgabe: lang („Name aufsteigend“, 0 = „keine Vorgabe“) bzw. kurz („Name ↑“, 0 = "")
+std::wstring FilterSortName(int sort, bool shortForm = false);
+
 // Prüft einen Eintrag (Datei oder Verzeichnis); fullPath für den Git-Filter; git darf nullptr sein.
 // nowDay = heutiger Tag (Tage seit 1601) für „seit N Tagen“.
 bool FilterAccepts(const PaneFilter& f, const DirEntry& e, const std::wstring& fullPath, const GitIgnore* git);

@@ -16,7 +16,8 @@ public:
     void UpdateRecycleIcon();   // Papierkorb-Symbol (leer/voll) nachführen
     struct Callbacks {
         // filter: gespeicherter Listenfilter des Lesezeichens (PaneFilter::ToString), leer = ohne
-        std::function<void(const std::wstring& path, bool otherPane, const std::wstring& filter)> navigate;
+        // sort: Sortiervorgabe eines Lesezeichens ohne Filter (FilterSort, 0 = keine)
+        std::function<void(const std::wstring& path, bool otherPane, const std::wstring& filter, int sort)> navigate;
         std::function<void()> changed;     // Liste geändert -> speichern
         std::function<void()> activated;
         std::function<std::wstring()> currentDir; // Verzeichnis der aktiven Liste
@@ -26,7 +27,7 @@ public:
     void Set(const std::vector<Bookmark>& b);
     const std::vector<Bookmark>& Get() const { return items_; }
     int FindPath(const std::wstring& path) const;   // -1 wenn nicht vorhanden
-    void Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter = L"");
+    void Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter = L"", int sort = 0);
     void DeleteSelected();
     void RenameSelected();
     void MoveSelected(int delta);
@@ -54,6 +55,7 @@ private:
     bool IsLinuxRow(int row) const { return ItemOfRow(row) == kRowLinux; }
     bool IsSpecialRow(int row) const { int k = ItemOfRow(row); return k == kRowFavorites || k == kRowLinux; }
     std::wstring RowFilter(int row) const;   // Filter des Lesezeichens einer Zeile ("" = ohne)
+    int RowSort(int row) const;              // Sortiervorgabe des Lesezeichens einer Zeile (0 = keine)
     std::wstring RowPath(int row) const;   // Ziel einer Zeile (Lesezeichen, „Favoriten“, „Linux“), "" = keins
     void DrawFavoritesRow(NMLVCUSTOMDRAW* cd);
     int IconColumnWidth() const;

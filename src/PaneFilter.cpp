@@ -360,8 +360,17 @@ std::wstring DatePart(const wchar_t* what, int mode, int from, int to, int days)
 
 const wchar_t* kSortNames[] = {L"",        L"Name ↑",     L"Name ↓",      L"Typ ↑",       L"Typ ↓",       L"Größe ↑",
                                L"Größe ↓", L"Erstellt ↑", L"Erstellt ↓", L"Geändert ↑", L"Geändert ↓"};
+const wchar_t* kSortLong[] = {L"keine Vorgabe",        L"Name aufsteigend",    L"Name absteigend",
+                              L"Typ aufsteigend",      L"Typ absteigend",      L"Größe aufsteigend",
+                              L"Größe absteigend",     L"Erstellt aufsteigend", L"Erstellt absteigend",
+                              L"Geändert aufsteigend", L"Geändert absteigend"};
 
 } // namespace
+
+std::wstring FilterSortName(int sort, bool shortForm) {
+    if (sort < 0 || sort > 10) sort = 0;
+    return shortForm ? kSortNames[sort] : kSortLong[sort];
+}
 
 bool PaneFilter::MaskActive() const {
     std::wstring m = Trim(masks);

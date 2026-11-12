@@ -43,6 +43,9 @@ FIGURES = {
         ("screenshot43.png", "Git-Filter: Verzeichnisfeld hell-lila; das neue Lesezeichen „Projekt“ zeigt den Trichter", WIN),
         ("screenshot44.png", "Lesezeichen mit Filter geöffnet: Ansicht „Details“, sortiert nach Änderungsdatum absteigend", WIN),
     ],
+    "Lesezeichen-Symbol in der Kopfzeile": [
+        ("screenshot46.png", "Kontextmenü eines Lesezeichens mit dem Untermenü „Sortierung“", WIN),
+    ],
     "Split-Funktion": [
         ("screenshot2.png", "Rechte Spalte geteilt: oben die Dateianzeige der links gewählten Datei, unten Liste 4", WIN),
     ],

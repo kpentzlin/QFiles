@@ -1145,6 +1145,17 @@ $pr = New-Object W+RECT; [W]::GetWindowRect($fPane, [ref]$pr) | Out-Null
 [W]::Click($pr.L + 12, $pr.T + 10, $false); Start-Sleep -Seconds 2
 Check-Alive "Laufwerksymbol"
 $t6 = PathText
+# 6) Lesezeichen ohne Filter: Sortierung der Liste (nach Laufwerksymbol: Name ↑) als Vorgabe; Kontextmenü „Sortierung“
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^d"); Start-Sleep -Seconds 1
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 1
+[W]::Click($blr.L + 60, $blr.B - 6, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("r"); Start-Sleep -Milliseconds 800
+Shot "screenshot46.png"   # Kontextmenü eines Lesezeichens mit Untermenü „Sortierung“
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 300
 # Bedienungshilfen vereinfacht (Standard): die Dateiliste meldet sich per UI Automation als Liste ohne Einträge
 $uiaInfo = ""; $uiaOk = $false
 try {
@@ -1165,15 +1176,16 @@ Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $iniF = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
 $bmFilter = $iniF -match 'Filter\d+=v1\|[^\r\n]*g=1'
+$bmSort = $iniF -match 'Sortierung\d+=1\b'
 $redOk = $c1.R -ge 235 -and $c1.G -lt 238 -and $c1.B -lt 238 -and $c1.R -gt $c1.B + 12
 $purpleOk = $c3.B -ge 235 -and $c3.G -lt 225 -and $c3.B -gt $c3.G + 15
 $fInfo = "ungefiltert $fAll; Masken: $f1 (erwartet $($parentRow + 2)) [$t1] Farbe $($c1.R),$($c1.G),$($c1.B); Git-Wahl frei: $gitEnabled; " +
          "aus: $f2 [$t2]; Vorbelegung [$prefill]; Git: $f3 (erwartet $($parentRow + 5)) [$t3] Farbe $($c3.R),$($c3.G),$($c3.B); " +
-         "nach Verzeichniswechsel [$t4] Ansicht $view4; Lesezeichen: $f5 [$t5] Ansicht $view5; INI-Filter: $bmFilter; nach Laufwerksymbol [$t6]"
+         "nach Verzeichniswechsel [$t4] Ansicht $view4; Lesezeichen: $f5 [$t5] Ansicht $view5; INI-Filter: $bmFilter; nach Laufwerksymbol [$t6]; INI-Sortierung: $bmSort"
 if ($f1 -eq $parentRow + 2 -and $t1 -match ' – \*\.docx / \*\.xlsx' -and $redOk -and $gitEnabled -and
     $f2 -eq $fAll -and $t2 -notmatch ' – ' -and $prefill -eq '*.docx / *.xlsx' -and
     $f3 -eq $parentRow + 5 -and $t3 -match 'Git' -and $purpleOk -and
-    $t4 -match '^C:\\QFilesFilter – .*Git' -and $t6 -notmatch ' – ' -and $t6 -match '^C:' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter -and $uiaOk) {
+    $t4 -match '^C:\\QFilesFilter – .*Git' -and $t6 -notmatch ' – ' -and $t6 -match '^C:' -and $view4 -ne 1 -and $f5 -eq $parentRow + 5 -and $t5 -match 'Git' -and $view5 -eq 1 -and $bmFilter -and $bmSort -and $uiaOk) {
   Write-Output "::notice title=Filter::$fInfo"
 } else {
   Write-Output "::error title=Filter::$fInfo"

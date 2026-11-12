@@ -819,8 +819,12 @@ void FilePane::OnClickArea(const HitRect& h) {
         for (auto& p : lastDirPerDrive_)
             if (EqualsI(p.first, root) && DirExists(p.second)) target = p.second;
         if (EqualsI(PathRoot(dir_), root)) target = root; // erneuter Klick auf aktuelles Laufwerk -> Wurzel
-        ClearFilter(false);   // Laufwerksymbol schaltet den Filter ab
+        // Laufwerksymbol schaltet den Filter ab; ändert sich der Anzeigeumfang (anderes Verzeichnis oder Filter aus),
+        // wird nach Name aufsteigend sortiert
+        bool changes = filter_.active || !EqualsI(target, dir_);
+        ClearFilter(false);
         Navigate(target);
+        if (changes) ResetToNameSort();
         break;
     }
     case HitArea::Split:
@@ -2043,6 +2047,37 @@ void FilePane::SetSort(SortKey k, bool descending) {
     FillList(focus, sel, 0);
 }
 
+void FilePane::ResetToNameSort() {
+    sortSaved_ = false;
+    if (sortKey_ != SortKey::Name || sortDesc_) SetSort(SortKey::Name, false);
+}
+
+// Sortiervorgabe eines Lesezeichens bzw. Filters (FilterSort; 0 = keine Vorgabe)
+void FilePane::ApplySortPreset(int sort) {
+    if (sort <= 0 || sort > 10) return;
+    SetSort(SortKeyOfPreset(sort), sort % 2 == 0);
+}
+
+SortKey FilePane::SortKeyOfPreset(int sort) {
+    static const SortKey keys[] = {SortKey::Name, SortKey::Name, SortKey::Name, SortKey::Ext, SortKey::Ext,
+                                   SortKey::Size, SortKey::Size, SortKey::Created, SortKey::Created,
+                                   SortKey::Date, SortKey::Date};
+    return sort >= 0 && sort <= 10 ? keys[sort] : SortKey::Name;
+}
+
+int FilePane::CurrentSortPreset() const {
+    int base = 0;
+    switch (sortKey_) {
+    case SortKey::Name: base = 1; break;
+    case SortKey::Ext: base = 3; break;
+    case SortKey::Size: base = 5; break;
+    case SortKey::Created: base = 7; break;
+    case SortKey::Date: base = 9; break;
+    default: return 0;   // Attribute, Unterverzeichnis: keine Entsprechung
+    }
+    return base + (sortDesc_ ? 1 : 0);
+}
+
 std::wstring FilePane::PathText() const {
     std::wstring t = LocationDisplay(dir_);
     if (FilterShown()) t += L" – " + filter_.ShortText();
@@ -2087,10 +2122,7 @@ void FilePane::ApplyFilter(const PaneFilter& fIn) {
             sortBeforeFilter_ = sortKey_;
             descBeforeFilter_ = sortDesc_;
         }
-        static const SortKey keys[] = {SortKey::Name, SortKey::Name, SortKey::Name, SortKey::Ext, SortKey::Ext,
-                                       SortKey::Size, SortKey::Size, SortKey::Created, SortKey::Created,
-                                       SortKey::Date, SortKey::Date};
-        sortKey_ = keys[f.sort];
+        sortKey_ = SortKeyOfPreset(f.sort);
         sortDesc_ = f.sort % 2 == 0;
     }
     UpdateFilterLook();

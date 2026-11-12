@@ -128,6 +128,12 @@ public:
     void ClearFilter(bool reload = true);
     const PaneFilter& Filter() const { return filter_; }
     std::wstring PathText() const;   // Verzeichnis, bei aktivem Filter „ – Kurztext“
+    // Sortierung nach Name aufsteigend (Laufwerksymbol, Auswahl im Verzeichnisbaum)
+    void ResetToNameSort();
+    // Sortiervorgaben wie im Filter (FilterSort: 0 keine, 1 Name ↑ … 10 Geändert ↓)
+    void ApplySortPreset(int sort);
+    int CurrentSortPreset() const;
+    static SortKey SortKeyOfPreset(int sort);
     // Filter wirkt hier (in Favoriten und Papierkorb ruht er, bleibt aber eingeschaltet)
     bool FilterShown() const { return filter_.active && !IsSpecialList(); }
     void SetMarks(const CompareMarks& marks);

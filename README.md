@@ -23,7 +23,7 @@ Eine bebilderte Gebrauchsanleitung und Programmbeschreibung steht in [`QFiles.pd
 
 | Bereich | Umsetzung in QFiles |
 |---|---|
-| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: weiße Sammelmappe mit Lupe und Hammer auf violettem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
+| Name, Symbol | „QFiles“ mit eigenem Programmsymbol: weiße Sammelmappe mit Lupe und Hammer auf grünem Grund (`res/QFiles.ico`, vorgegeben; das frühere Symbol erzeugt `tools/make-icon.py`) |
 | Unicode | Vollständig Unicode (UTF-16 intern), insbesondere Anzeige und Bearbeitung von Dateinamen |
 | Texteditor | Neue und **leere Dateien werden standardmäßig als UTF-8 ohne BOM** gespeichert; vorhandene Dateien behalten ihre Kodierung |
 | Disketten | Alle diskettenbezogenen Funktionen entfallen (keine Diskettenlaufwerke A:/B:, kein Formatieren/Kopieren von Disketten, keine Diskettengrößen beim Teilen) |
@@ -46,6 +46,11 @@ dieser Liste gewählte Verzeichnis der Lesezeichenliste hinzu:
 - Steht das Verzeichnis schon in der Lesezeichenliste, zeigt die Abfrage einen Hinweis mit dem vorhandenen Namen.
 - „Abbrechen“ fügt nichts hinzu.
 - Das neue Lesezeichen kommt ans **Ende** der Lesezeichenliste.
+- Ein Lesezeichen ohne Filter merkt sich als **Sortierung** die Sortierung der Liste beim Anlegen (Name, Typ, Größe,
+  Erstellt oder Geändert, auf- bzw. absteigend; bei Sortierung nach Attributen „keine Vorgabe“). Beim Öffnen wird
+  so sortiert; die Ansicht bleibt. Ändern über das Kontextmenü der Lesezeichenliste: *Sortierung* mit „keine Vorgabe“
+  und den zehn Sortierungen wie im Filter. Der Tooltip nennt die Sortierung. Bei Lesezeichen mit Filter legt der
+  Filter die Sortierung fest.
 
 ### Filter (Trichter in der Kopfzeile)
 
@@ -72,11 +77,13 @@ Bei aktivem Filter ist das Verzeichnisfeld **hellrot** hinterlegt (mit Git-Filte
 Cloud-Lesezeichen) und zeigt `Verzeichnis – Kurztext`, z. B. `C:\Projekte – *.cpp / *.h, geändert seit 7 Tagen, Git`.
 Der Trichter ist dann ebenso hinterlegt.
 
-- Der Filter bleibt bei Verzeichniswechseln (Doppelklick, Übergeordnet, Zurück/Vor, Pfadeingabe, Baum) aktiv und gilt
+- Der Filter bleibt bei Verzeichniswechseln (Doppelklick, Übergeordnet, Zurück/Vor, Pfadeingabe) aktiv und gilt
   dann im neuen Verzeichnis; beim Git-Filter wird dort die `.gitignore`-Kette neu eingelesen. Ausgeschaltet wird er
-  nur durch einen erneuten Klick auf den Trichter, einen Klick auf ein Laufwerksymbol derselben Liste oder das Laden
-  eines Lesezeichens in diese Liste (ein mit dem Lesezeichen gespeicherter Filter wird dann eingeschaltet). In den
-  Favoriten und im Papierkorb ruht ein Filter.
+  durch einen erneuten Klick auf den Trichter, einen Klick auf ein Laufwerksymbol derselben Liste, die Auswahl eines
+  Verzeichnisses im Verzeichnisbaum für diese Liste oder das Laden eines Lesezeichens in diese Liste (ein mit dem
+  Lesezeichen gespeicherter Filter wird dann eingeschaltet). In den Favoriten und im Papierkorb ruht ein Filter.
+- Ändert ein Klick auf ein Laufwerksymbol den Anzeigeumfang (anderes Verzeichnis oder Filter aus) und bei jeder Auswahl
+  im Verzeichnisbaum wird die Liste nach **Name aufsteigend** sortiert.
 - Der letzte Filter bleibt je Liste gespeichert (auch über Programmende): Ein neuer Klick auf den Trichter öffnet die
   Auswahl damit vorbelegt. Liegt im aktuellen Verzeichnis keine `.gitignore`, ist die Git-Wahl gesperrt.
 - **Lesezeichen** (Strg+D bzw. Lesezeichen-Symbol) nehmen einen aktiven Filter mit; sie zeigen dann in der

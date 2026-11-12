@@ -343,18 +343,22 @@ bool MainWindow::Create(int nCmdShow) {
     tree_.Create(
         hwnd_, cmd::IdTree,
         [this](const std::wstring& p) {
-            Active().Navigate(p);
+            // Auswahl im Verzeichnisbaum: Filter der Liste aus, anfangs nach Name aufsteigend sortiert
+            FilePane& a = Active();
+            a.ClearFilter(false);
+            a.Navigate(p);
+            a.ResetToNameSort();
         },
         [this]() {});
     BookmarkList::Callbacks cb;
-    cb.navigate = [this](const std::wstring& p, bool other, const std::wstring& filter) {
+    cb.navigate = [this](const std::wstring& p, bool other, const std::wstring& filter, int sort) {
         FilePane* target = &Active();
         if (other) {
             // Die Gegenseite zeigt evtl. die Schnellansicht: dann nicht die verdeckte Liste umschalten
             if (quickView_) SetQuickView(false);
             if (FilePane* o = Other()) target = o;
         }
-        if (OpenBookmarkIn(*target, p, filter)) {
+        if (OpenBookmarkIn(*target, p, filter, sort)) {
             SetActive(target->Index(), true);
         }
     };
@@ -2055,7 +2059,7 @@ void MainWindow::OnPaneSplitButton(FilePane* p) {
 
 // Lesezeichen öffnen: ein aktiver Filter der Liste wird ausgeschaltet; ein mit dem Lesezeichen gespeicherter Filter
 // wird eingeschaltet (mit Sortiervorgabe in der Ansicht „Details“)
-bool MainWindow::OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter) {
+bool MainWindow::OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter, int sort) {
     bool hadFilter = pane.Filter().active;
     pane.ClearFilter(false);
     if (!pane.Navigate(path)) {
@@ -2066,6 +2070,8 @@ bool MainWindow::OpenBookmarkIn(FilePane& pane, const std::wstring& path, const 
     if (!filter.empty() && PaneFilter::FromString(filter, f)) {
         if (f.sort != 0 && pane.View() != PaneView::Details) pane.SetView(PaneView::Details);
         pane.ApplyFilter(f);
+    } else if (sort > 0) {
+        pane.ApplySortPreset(sort);   // Lesezeichen ohne Filter mit Sortierung
     }
     return true;
 }
@@ -2102,7 +2108,8 @@ void MainWindow::AddBookmarkFor(FilePane& p) {
         return;
     name = Trim(name);
     if (name.empty()) name = IsVirtualLocation(dir) ? LocationFileName(dir) : LastPathElement(dir);
-    bookmarks_.Append(name, dir, filter);
+    // ohne Filter: Sortierung der Liste als Vorgabe des Lesezeichens (über das Kontextmenü änderbar)
+    bookmarks_.Append(name, dir, filter, filter.empty() ? p.CurrentSortPreset() : 0);
 }
 
 void MainWindow::OnPaneOpenItem(FilePane* p) { OpenFileItem(*p); }
@@ -3052,7 +3059,7 @@ void MainWindow::OnCommand(int id) {
         size_t i = (size_t)(id - cmd::BookmarkFirst);
         if (i < bookmarks_.Get().size()) {
             Bookmark b = bookmarks_.Get()[i];
-            OpenBookmarkIn(a, b.path, b.filter);
+            OpenBookmarkIn(a, b.path, b.filter, b.sort);
             a.FocusList();
         }
         return;

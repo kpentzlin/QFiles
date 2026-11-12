@@ -319,24 +319,31 @@ std::vector<Bookmark> LoadBookmarks(const Config& c) {
     auto names = c.GetList(L"Lesezeichen", L"Name");
     auto paths = c.GetList(L"Lesezeichen", L"Pfad");
     auto filters = c.GetList(L"Lesezeichen", L"Filter");
-    for (size_t i = 0; i < names.size() && i < paths.size(); ++i)
-        r.push_back({names[i], paths[i], i < filters.size() && filters[i] != L"-" ? filters[i] : std::wstring()});
+    auto sorts = c.GetList(L"Lesezeichen", L"Sortierung");
+    for (size_t i = 0; i < names.size() && i < paths.size(); ++i) {
+        int sort = i < sorts.size() ? _wtoi(sorts[i].c_str()) : 0;
+        r.push_back({names[i], paths[i], i < filters.size() && filters[i] != L"-" ? filters[i] : std::wstring(),
+                     sort >= 0 && sort <= 10 ? sort : 0});
+    }
     return r;
 }
 
 void SaveBookmarks(Config& c, const std::vector<Bookmark>& b) {
     c.ClearSection(L"Lesezeichen");
-    std::vector<std::wstring> names, paths, filters;
-    bool anyFilter = false;
+    std::vector<std::wstring> names, paths, filters, sorts;
+    bool anyFilter = false, anySort = false;
     for (auto& x : b) {
         names.push_back(x.name);
         paths.push_back(x.path);
         filters.push_back(x.filter.empty() ? L"-" : x.filter);
         if (!x.filter.empty()) anyFilter = true;
+        sorts.push_back(std::to_wstring(x.sort));
+        if (x.sort) anySort = true;
     }
     c.SetList(L"Lesezeichen", L"Name", names);
     c.SetList(L"Lesezeichen", L"Pfad", paths);
     if (anyFilter) c.SetList(L"Lesezeichen", L"Filter", filters);
+    if (anySort) c.SetList(L"Lesezeichen", L"Sortierung", sorts);
 }
 
 std::vector<FunctionKey> LoadFunctionKeys(const Config& c) {

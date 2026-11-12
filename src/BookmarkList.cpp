@@ -20,7 +20,8 @@
 namespace qf {
 
 namespace {
-enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent, MenuNewFtp, MenuSort };
+enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent, MenuNewFtp, MenuSort,
+             MenuSortPreset = 100 /* bis 110: Sortiervorgabe 0…10 */ };
 
 int StockIndex(SHSTOCKICONID id) {
     SHSTOCKICONINFO sii{sizeof(sii)};
@@ -309,6 +310,11 @@ std::wstring BookmarkList::RowFilter(int row) const {
     return k >= 0 && k < (int)items_.size() ? items_[k].filter : L"";
 }
 
+int BookmarkList::RowSort(int row) const {
+    int k = ItemOfRow(row);
+    return k >= 0 && k < (int)items_.size() && items_[k].filter.empty() ? items_[k].sort : 0;
+}
+
 int BookmarkList::SelectedRow() const { return ListView_GetNextItem(list_, -1, LVNI_SELECTED); }
 
 int BookmarkList::Selected() const {
@@ -327,8 +333,8 @@ int BookmarkList::FindPath(const std::wstring& path) const {
     return -1;
 }
 
-void BookmarkList::Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter) {
-    items_.push_back({name, path, filter});
+void BookmarkList::Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter, int sort) {
+    items_.push_back({name, path, filter, filter.empty() ? sort : 0});
     Rebuild((int)items_.size() - 1);
     if (cb_.changed) cb_.changed();
 }
@@ -400,6 +406,17 @@ void BookmarkList::ContextMenu(POINT pt) {
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, has, MenuRename, L"&Umbenennen\tF2");
     AppendMenuW(m, has, MenuChangePath, L"&Pfad ändern…");
+    // Sortierung beim Öffnen (wie im Filter); bei Lesezeichen mit Filter legt der Filter die Sortierung fest
+    HMENU sortMenu = CreatePopupMenu();
+    bool withFilter = i >= 0 && !items_[i].filter.empty();
+    for (int s = 0; s <= 10; ++s) {
+        AppendMenuW(sortMenu, MF_STRING, MenuSortPreset + s, FilterSortName(s).c_str());
+        if (s == 0) AppendMenuW(sortMenu, MF_SEPARATOR, 0, nullptr);
+    }
+    if (i >= 0 && !withFilter)
+        CheckMenuRadioItem(sortMenu, MenuSortPreset, MenuSortPreset + 10, MenuSortPreset + items_[i].sort, MF_BYCOMMAND);
+    AppendMenuW(m, MF_POPUP | ((i >= 0 && !withFilter) ? MF_STRING : MF_GRAYED), (UINT_PTR)sortMenu,
+                withFilter ? L"So&rtierung (im Filter festgelegt)" : L"So&rtierung");
     AppendMenuW(m, (i > 0) ? MF_STRING : MF_GRAYED, MenuUp, L"Nach &oben\tAlt+↑");
     AppendMenuW(m, (i >= 0 && i + 1 < (int)items_.size()) ? MF_STRING : MF_GRAYED, MenuDown, L"Nach u&nten\tAlt+↓");
     AppendMenuW(m, has, MenuDelete, L"&Entfernen\tEntf");
@@ -412,7 +429,8 @@ void BookmarkList::ContextMenu(POINT pt) {
     switch (id) {
     case MenuOpen:
     case MenuOpenOther:
-        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? specialPath : items_[i].path, id == MenuOpenOther, fav ? L"" : items_[i].filter);
+        if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? specialPath : items_[i].path, id == MenuOpenOther, fav ? L"" : items_[i].filter,
+                                       fav ? 0 : RowSort(SelectedRow()));
         break;
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
@@ -444,6 +462,12 @@ void BookmarkList::ContextMenu(POINT pt) {
     case MenuAddCurrent: PostMessageW(App::MainWindow(), WM_COMMAND, 40400 /* cmd::BookmarkAdd */, 0); break;
     case MenuNewFtp: PostMessageW(App::MainWindow(), WM_COMMAND, 40401 /* cmd::BookmarkNewRemote */, 0); break;
     case MenuSort: PostMessageW(App::MainWindow(), WM_COMMAND, 40402 /* cmd::BookmarkSort */, 0); break;
+    default:
+        if (id >= MenuSortPreset && id <= MenuSortPreset + 10 && i >= 0 && items_[i].filter.empty()) {
+            items_[i].sort = (int)id - MenuSortPreset;
+            if (cb_.changed) cb_.changed();
+        }
+        break;
     }
 }
 
@@ -502,7 +526,7 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 DWORD mp = GetMessagePos();
                 if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == row) other = true;
             }
-            cb_.navigate(target, other, RowFilter(row));
+            cb_.navigate(target, other, RowFilter(row), RowSort(row));
         }
         return 0;
     }
@@ -534,6 +558,7 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 s += L"\n(nicht erreichbar)";
             PaneFilter f;
             if (!items_[k].filter.empty() && PaneFilter::FromString(items_[k].filter, f)) s += L"\nFilter: " + f.ShortText();
+            else if (items_[k].sort > 0) s += L"\nSortierung: " + FilterSortName(items_[k].sort);
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         }
         return 0;
@@ -654,6 +679,18 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         self->recycleFull_ = (int)wp;
         self->ApplyRecycleIcon();
         return 0;
+    case WM_CONTEXTMENU:
+        // Tastatur (Umschalt+F10, Kontextmenütaste): Menü an der gewählten Zeile
+        if (lp == -1) {
+            RECT rc{};
+            int row = self->SelectedRow();
+            POINT pt{8, 8};
+            if (row >= 0 && ListView_GetItemRect(h, row, &rc, LVIR_LABEL)) pt = {rc.left + 8, rc.bottom};
+            ClientToScreen(h, &pt);
+            self->ContextMenu(pt);
+            return 0;
+        }
+        break;
     case WM_SYSKEYDOWN:
         if (wp == VK_UP) {
             self->MoveSelected(-1);
@@ -668,7 +705,8 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         if (wp == VK_RETURN) {
             std::wstring target = self->RowPath(self->SelectedRow());
             if (!target.empty() && self->cb_.navigate)
-                self->cb_.navigate(target, GetKeyState(VK_SHIFT) < 0, self->RowFilter(self->SelectedRow()));
+                self->cb_.navigate(target, GetKeyState(VK_SHIFT) < 0, self->RowFilter(self->SelectedRow()),
+                                   self->RowSort(self->SelectedRow()));
             return 0;
         }
         break;

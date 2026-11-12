@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.22"
+QF_VERSION = "0.1.23"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -61,6 +61,7 @@ DATA = [
         ("Lesezeichen farbig nach Art (Standard-, Cloud-, FTP-, Netzwerkordner)", "ja", "–", "–", "", False),
         ("Lesezeichen nach Art sortieren", "ja", "–", "–", "", False),
         ("Lesezeichen mit gespeichertem Filter", "ja", "–", "teilw.", "neu in QFiles 0.1.20", False),
+        ("Lesezeichen mit Sortiervorgabe", "ja", "–", "teilw.", "neu in QFiles 0.1.23 (Kontextmenü „Sortierung“)", False),
         ("Cloud-Speicher-Ordner erkennen und als Lesezeichen anlegen", "ja", "–", "–", "Dropbox, Google Drive, OneDrive (mehrere Konten)", False),
         ("Linux-Distributionen (WSL) als Lesezeichen unter „Netzwerk“", "ja", "–", "–", "neu in QFiles 0.1.10", False),
         ("Dateien auf ein Lesezeichen ziehen", "ja", "?", "teilw.", "SC: QuickDrop-Symbole als Ziel", False),

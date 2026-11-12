@@ -91,7 +91,7 @@ private:
     void ReloadVisible();
     void ReloadOthers();
     void AddBookmarkFor(FilePane& p);
-    bool OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter);
+    bool OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter, int sort = 0);
     void RunCommandLine();
     void CopyOrMove(bool move);
     void DeleteSelection(bool permanent);

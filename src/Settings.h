@@ -121,6 +121,7 @@ struct Bookmark {
     std::wstring name;
     std::wstring path;
     std::wstring filter;   // gespeicherter Listenfilter (PaneFilter::ToString), leer = ohne Filter
+    int sort = 0;          // Sortierung beim Öffnen (FilterSort, 0 = keine Vorgabe); nur ohne Filter
 };
 
 struct FunctionKey {
