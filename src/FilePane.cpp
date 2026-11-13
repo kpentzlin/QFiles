@@ -1171,8 +1171,34 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
     std::wstring oldDir = dir_;
     // Der Filter bleibt bei Verzeichniswechseln aktiv; ausgeschaltet wird er nur über den Trichter, ein
     // Laufwerksymbol dieser Liste oder ein in diese Liste geladenes Lesezeichen (ClearFilter)
+    //
+    // Verzeichniswechsel in der Ansicht „Mit Unterverzeichnissen“: Ansicht „Details“, nach Name aufsteigend sortiert
+    // (eine Sortiervorgabe eines Lesezeichens bzw. Filters setzt der Aufrufer danach). Nicht beim ersten Einlesen
+    // nach dem Start und nicht für Favoriten/Papierkorb (die haben eigene Ansichten).
+    bool toSpecial = IsFavoritesLocation(dir) || IsRecycleBinLocation(dir);
+    bool leaveRecursive = !sameDir && !oldDir.empty() && !toSpecial &&
+                          (IsSpecialList() ? viewBeforeFav_ == PaneView::Recursive : view_ == PaneView::Recursive);
+    PaneView oldView = view_, oldViewBeforeFav = viewBeforeFav_;
+    SortKey oldKey = sortKey_;
+    bool oldDesc = sortDesc_, oldSortSaved = sortSaved_;
+    if (leaveRecursive) {
+        if (IsSpecialList()) viewBeforeFav_ = PaneView::Details;   // wird beim Verlassen der Favoriten übernommen
+        else view_ = PaneView::Details;
+        if (!(filter_.active && filter_.sort > 0)) {   // Sortiervorgabe eines aktiven Filters bleibt
+            sortKey_ = SortKey::Name;
+            sortDesc_ = false;
+            sortSaved_ = false;
+        }
+    }
     DWORD err = 0;
     if (!ReadDirectory(dir, &err)) {
+        if (leaveRecursive) {   // Verzeichnis bleibt: Ansicht und Sortierung wie vorher
+            view_ = oldView;
+            viewBeforeFav_ = oldViewBeforeFav;
+            sortKey_ = oldKey;
+            sortDesc_ = oldDesc;
+            sortSaved_ = oldSortSaved;
+        }
         if (showErrors) {
             std::wstring msg = L"Das Verzeichnis „" + dir + L"“ kann nicht geöffnet werden:\n" +
                                (IsRemoteUrl(dir) ? remoteError_ : LastErrorMessage(err));
@@ -1206,6 +1232,12 @@ bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusNam
         ApplyViewStyle();
         SetupColumns();
         UpdateListColors();
+        if (host_) host_->OnPaneLayoutChanged(this);
+    }
+    if (leaveRecursive && wasFav == toFav) {
+        // Spalten ohne „Verzeichnis“, Listenstil „Details“
+        ApplyViewStyle();
+        SetupColumns();
         if (host_) host_->OnPaneLayoutChanged(this);
     }
     if (remoteChanged || wasFav != toFav) BuildHitRects();

@@ -241,7 +241,10 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   **Mit Unterverzeichnissen** (Strg+Umschalt+5): wie Details, aber statt „Name“ die Spalten „Dateiname“ und
   „Unterverzeichnis“. Gezeigt werden alle Dateien des Verzeichnisses und seiner Unterverzeichnisse; „Unterverzeichnis“
   enthält den relativen Teilpfad (leer für Dateien direkt im Verzeichnis). Das Einlesen läuft im Hintergrund, die
-  Einträge erscheinen nach und nach, **Esc** bricht ab. Versteckte Verzeichnisse werden nur mit „Versteckte Dateien
+  Einträge erscheinen nach und nach, **Esc** bricht ab. Wird in dieser Ansicht das Verzeichnis gewechselt
+  (Doppelklick, Übergeordnet, Zurück/Vor, Pfadeingabe, Baum, Laufwerk, Lesezeichen, mittlere Maustaste), schaltet die
+  Liste auf „Details“, nach Name aufsteigend sortiert; ein Lesezeichen mit Sortierung bzw. ein Filter mit
+  Sortiervorgabe sortiert stattdessen nach seiner Vorgabe. Versteckte Verzeichnisse werden nur mit „Versteckte Dateien
   anzeigen“ durchsucht, Verknüpfungspunkte (Junctions/symbolische Links) nicht. Kopieren, Verschieben, Löschen,
   Umbenennen, Anzeigen und Bearbeiten wirken auf die Dateien in ihren Unterverzeichnissen. Für lokale Verzeichnisse
   und Netzwerkfreigaben; auf FTP/SFTP/WebDAV-Servern und in der Netzwerkübersicht zeigt sie den normalen Inhalt.

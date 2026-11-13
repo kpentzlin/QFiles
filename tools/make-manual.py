@@ -56,6 +56,7 @@ FIGURES = {
     "Oberfläche": [
         ("screenshot6.png", "Optionen, Seite „Anzeige“", WIN),
         ("screenshot10.png", "Ansicht „Mit Unterverzeichnissen“ (Strg+Umschalt+5)", WIN),
+        ("screenshot47.png", "Nach einem Verzeichniswechsel aus „Mit Unterverzeichnissen“: Ansicht „Details“, nach Name sortiert", WIN),
         ("screenshot30.png", "Ansicht „Miniaturen“ (Kacheln)", WIN),
         ("screenshot32.png", "Werkzeugleiste anpassen", WIN),
         ("screenshot34.png", "Markieren durch Ziehen: Auswahlrahmen neben den Namen", WIN),

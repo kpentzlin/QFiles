@@ -1091,6 +1091,23 @@ $flr = New-Object W+RECT; [W]::GetWindowRect($fList, [ref]$flr) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait("^+1"); Start-Sleep -Milliseconds 800
 $fAll = ItemCount
 $parentRow = $fAll - 8   # 1 mit „..“, 0 ohne
+# Ansicht „Mit Unterverzeichnissen“ (Strg+Umschalt+5): Verzeichniswechsel schaltet auf „Details“, Name aufsteigend
+function ColCount() { $hdr = [W]::SendMessage($fList, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero); return ([W]::SendMessage($hdr, 0x1200, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32() }
+$colsDetails = ColCount
+[System.Windows.Forms.SendKeys]::SendWait("^+5"); Start-Sleep -Seconds 2
+$colsRec = ColCount
+[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE}"); Start-Sleep -Seconds 2
+$colsUp = ColCount; $tUp = PathText
+Shot "screenshot47.png"   # nach Verzeichniswechsel aus „Mit Unterverzeichnissen“: Details
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+$colsBack = ColCount; $tBack = PathText; $fBack = ItemCount
+$recInfo = "Spalten Details $colsDetails, rekursiv $colsRec, nach Wechsel $colsUp [$tUp], zurück $colsBack [$tBack] $fBack Einträge (erwartet $fAll)"
+if ($colsRec -gt $colsDetails -and $colsUp -eq $colsDetails -and $tUp -eq 'C:\QFilesFilter' -and $colsBack -eq $colsDetails -and $tBack -eq $fBase -and $fBack -eq $fAll) {
+  Write-Output "::notice title=Rekursiv-Wechsel::$recInfo"
+} else {
+  Write-Output "::error title=Rekursiv-Wechsel::$recInfo"
+  "Verzeichniswechsel aus „Mit Unterverzeichnissen“ nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
 # 1) Masken, ohne Verzeichnisse
 [System.Windows.Forms.SendKeys]::SendWait("^+f"); Start-Sleep -Seconds 2
 $fDlg = [W]::FindWindow("#32770", "Filter")
