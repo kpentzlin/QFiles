@@ -1106,7 +1106,7 @@ if ($colsRec -gt $colsDetails -and $colsUp -eq $colsDetails -and $tUp -eq 'C:\QF
   Write-Output "::notice title=Rekursiv-Wechsel::$recInfo"
 } else {
   Write-Output "::error title=Rekursiv-Wechsel::$recInfo"
-  "Verzeichniswechsel aus „Mit Unterverzeichnissen“ nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+  "Verzeichniswechsel aus Mit-Unterverzeichnissen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
 }
 # 1) Masken, ohne Verzeichnisse
 [System.Windows.Forms.SendKeys]::SendWait("^+f"); Start-Sleep -Seconds 2
