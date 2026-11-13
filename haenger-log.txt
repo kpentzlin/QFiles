@@ -1,0 +1,14 @@
+QFiles 0.1.24 – Hänger: Hauptfenster reagiert nicht (bemerkt 2026-11-13 22:37:43)
+Probe 1 nach 5 s – Aufrufstapel des Haupt-Threads:
+   0  ntdll.dll+0x162944  ZwDelayExecution+0x14
+   1  ntdll.dll+0xD0FB4  RtlDelayExecution+0x34
+   2  KERNELBASE.dll+0x38D61  SleepEx+0x91
+   3  USER32.dll+0x17D59  CallWindowProcW+0xF09
+   4  USER32.dll+0x150F4  IsWindowUnicode+0x474
+   5  QFiles.exe+0x211462  wWinMain+0xE02  (main.cpp:117)
+   6  QFiles.exe+0x237419  __scrt_common_main_seh+0x109  (exe_common.inl:288)
+   7  KERNEL32.DLL+0x2DD37  BaseThreadInitThunk+0x17
+   8  ntdll.dll+0x3F2BC  RtlUserThreadStart+0x2C
+Ende: 2026-11-13 22:37:47 – Dauer etwa 8 s
+
+
