@@ -132,7 +132,7 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
         int st = top ? T + big + gap : T, sb = top ? B : B - big - gap;   // andere Liste
         Box(dc, L, bt, R, bb, fill, line, u);
         Box(dc, L, st, R, sb, RGB(255, 255, 255), line, u);
-        int cw = std::max(3, W / 4), ch = std::max(2, cw * 2 / 3);
+        int cw = std::max(3, W / 4), ch = cw;   // Winkel 90°, gut erkennbar
         int cyv = (bt + bb) / 2 + (top ? ch / 2 : -ch / 2);   // Spitze zur anderen Liste hin
         POINT v[3] = {{cx - cw, top ? cyv - ch : cyv + ch}, {cx, cyv}, {cx + cw, top ? cyv - ch : cyv + ch}};
         Lines(dc, v, 3, acc, std::max(2, u * 2));
