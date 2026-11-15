@@ -116,22 +116,26 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
     }
     case Glyph::EnlargeTop:
     case Glyph::EnlargeBottom: {
-        // Rahmen, eigene Liste (oben bzw. unten) über drei Viertel hellblau, Pfeil zur Teilung hin
+        // Zwei übereinanderliegende Listen mit kleinem Abstand: die eigene (oben bzw. unten) drei Viertel hoch,
+        // hellblau mit Winkel zur kleineren hin, die andere ein weißer Streifen. Dünne graublaue Linien.
         bool top = g == Glyph::EnlargeTop;
-        Box(dc, l, t, r, b, RGB(255, 255, 255), color, std::max(1, u));
-        int split = top ? t + (b - t) * 3 / 4 : t + (b - t) / 4;
-        RECT big = top ? RECT{l + u, t + u, r - u + 1, split} : RECT{l + u, split + 1, r - u + 1, b - u + 1};
-        HBRUSH br = CreateSolidBrush(Blend(color == GetSysColor(COLOR_GRAYTEXT) ? color : RGB(60, 120, 215),
-                                           RGB(255, 255, 255), 150));
-        FillRect(dc, &big, br);
-        DeleteObject(br);
-        POINT m[2] = {{l, split}, {r, split}};
-        Lines(dc, m, 2, color, std::max(1, u));
-        // Pfeil in der eigenen Fläche Richtung Teilung
-        int ay = top ? split - 2 * u : split + 2 * u;
-        int dy = top ? -2 * u : 2 * u;
-        POINT a[3] = {{cx - 2 * u, ay + dy}, {cx + 2 * u, ay + dy}, {cx, ay}};
-        Poly(dc, a, 3, color, color, 1);
+        bool off = color == GetSysColor(COLOR_GRAYTEXT);
+        int H = std::max(10, std::min(w, h) * 7 / 10);
+        int W = H * 7 / 8;
+        int L = cx - W / 2, R = L + W, T = cy - H / 2, B = T + H;
+        int gap = std::max(2, u * 2);
+        int big = (H - gap) * 3 / 4;
+        COLORREF line = off ? color : RGB(110, 120, 135);
+        COLORREF fill = off ? RGB(225, 225, 225) : RGB(214, 228, 247);
+        COLORREF acc = off ? color : RGB(40, 105, 200);
+        int bt = top ? T : B - big, bb = top ? T + big : B;          // eigene Liste
+        int st = top ? T + big + gap : T, sb = top ? B : B - big - gap;   // andere Liste
+        Box(dc, L, bt, R, bb, fill, line, u);
+        Box(dc, L, st, R, sb, RGB(255, 255, 255), line, u);
+        int cw = std::max(3, W / 4), ch = std::max(2, cw * 2 / 3);
+        int cyv = (bt + bb) / 2 + (top ? ch / 2 : -ch / 2);   // Spitze zur anderen Liste hin
+        POINT v[3] = {{cx - cw, top ? cyv - ch : cyv + ch}, {cx, cyv}, {cx + cw, top ? cyv - ch : cyv + ch}};
+        Lines(dc, v, 3, acc, std::max(2, u * 2));
         break;
     }
     case Glyph::Unsplit: {
