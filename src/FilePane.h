@@ -36,6 +36,7 @@ public:
     virtual void OnPaneDirChanged(FilePane* p) = 0;
     virtual void OnPaneFocusItemChanged(FilePane* p) = 0;
     virtual void OnPaneSplitButton(FilePane* p) = 0;
+    virtual void OnPaneEnlargeButton(FilePane*) {}                       // Liste auf drei Viertel der Spaltenhöhe
     virtual void OnPaneBookmarkButton(FilePane* p) = 0;
     virtual void OnPaneOpenItem(FilePane* p) = 0;                       // Eingabe/Doppelklick auf Datei
     virtual void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) = 0;
@@ -140,6 +141,9 @@ public:
     void ClearMarks();
     bool HasMarks() const { return !marks_.empty(); }
     void SetSplitButton(SplitButton b);
+    // Geteilte Spalte: Schaltfläche „auf drei Viertel“ links neben Split. 0 = keine (nicht geteilt),
+    // 1 = verfügbar, 2 = ausgegraut (Liste hat schon drei Viertel); bottom = untere Liste der Spalte
+    void SetEnlargeState(int state, bool bottom);
     void SetActiveLook(bool active);       // aktive Liste hervorheben
     void ApplyOptions();                   // Schrift, Gitternetz, versteckte Dateien …
     void UpdateDrives();
@@ -199,7 +203,7 @@ private:
     void OnTreeBatch(WPARAM gen);
     void OnTreeDone(WPARAM gen);
     bool AcceptEntry(const DirEntry& e, const std::wstring& fullPath) const;
-    enum class HitArea { None, Drive, Split, Bookmark, Filter, Back, Forward, Up, Root, Browse, Active };
+    enum class HitArea { None, Drive, Split, Enlarge, Bookmark, Filter, Back, Forward, Up, Root, Browse, Active };
     struct HitRect {
         HitArea area;
         int drive;          // Laufwerksindex bei Drive
@@ -262,6 +266,7 @@ private:
     void ApplyListTheme();       // Explorer-Design je nach Option „Zeile unter der Maus hervorheben“
     int themeExplorer_ = -1;
     bool dmActive_ = false, dmMoved_ = false, dmCtrl_ = false;
+    bool dmFileDrag_ = false;   // Beginn auf markierter Zeile: Drag & Drop statt Auswahlrahmen
     int dmTick_ = 0;
     POINT dmStart_{};            // Anfangspunkt (Inhaltskoordinaten: unabhängig vom Bildlauf)
     POINT dmCurPt_{};            // aktueller Punkt (Inhaltskoordinaten)
@@ -294,6 +299,9 @@ private:
     bool tracking_ = false;
     bool activeLook_ = false;
     SplitButton splitButton_ = SplitButton::Split;
+    int enlargeState_ = 0;
+    std::wstring pendingDuplicate_;   // nach Drag & Drop mit Strg ins eigene Verzeichnis
+    bool enlargeBottom_ = false;
     bool quickView_ = false;
 
     PaneView view_ = PaneView::Details;

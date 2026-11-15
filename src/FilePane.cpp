@@ -43,6 +43,7 @@ enum : UINT {
     WM_APP_NETDONE = WM_APP + 7,
     WM_APP_TREEBATCH = WM_APP + 8,
     WM_APP_TREEDONE = WM_APP + 9,
+    WM_APP_DUPLICATE = WM_APP + 30,   // nach Drag & Drop mit Strg ins eigene Verzeichnis: Datei duplizieren
 };
 
 struct NetItemMsg {
@@ -225,7 +226,12 @@ bool FilePane::Create(HWND parent, int index, IPaneHost* host) {
             if (host_) host_->OnPaneFilesDropped(this);
         },
         [this]() { ClearDropHighlight(); },
-        true);   // Dateiliste: Ziehen verschiebt, Umschalt/Strg kopiert
+        true,    // Dateiliste: Ziehen verschiebt, Umschalt/Strg kopiert
+        [this](const std::wstring& file) {
+            // erst nach dem Ende von DoDragDrop ausführen (Dialog „Duplizieren“)
+            pendingDuplicate_ = file;
+            PostMessageW(hwnd_, WM_APP_DUPLICATE, 0, 0);
+        });
     UpdateDrives();
     return true;
 }
@@ -497,6 +503,11 @@ void FilePane::BuildHitRects() {
     // ganz rechts: Split, links daneben: Lesezeichen
     hits_.push_back({HitArea::Split, -1, {x - bs, pad, x, pad + bs}});
     x -= bs + pad;
+    // bei geteilter Spalte links neben Split: diese Liste auf drei Viertel der Höhe
+    if (enlargeState_ != 0) {
+        hits_.push_back({HitArea::Enlarge, -1, {x - bs, pad, x, pad + bs}});
+        x -= bs + pad;
+    }
     // links neben Split: Filter (Trichter); nicht in den Favoriten und im Papierkorb
     if (!IsSpecialList()) {
         hits_.push_back({HitArea::Filter, -1, {x - bs, pad, x, pad + bs}});
@@ -555,6 +566,10 @@ void FilePane::UpdateTooltips() {
         case HitArea::Drive: text = DriveDescription(drives_[h.drive]); break;
         case HitArea::Split:
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
+            break;
+        case HitArea::Enlarge:
+            text = enlargeState_ == 2 ? L"Diese Liste nimmt bereits drei Viertel der Höhe ein"
+                                      : L"Diese Liste auf drei Viertel der Höhe vergrößern";
             break;
         case HitArea::Bookmark:
             text = filter_.active ? L"Gewähltes Verzeichnis mit dem Filter den Lesezeichen hinzufügen (Strg+D)"
@@ -626,6 +641,10 @@ void FilePane::DrawGlyph(HDC dc, HitArea area, const RECT& rc, bool hot) {
     }
     case HitArea::Split: g = splitButton_ == SplitButton::Split ? Glyph::Split : Glyph::Unsplit; break;
     case HitArea::Bookmark: g = Glyph::Bookmark; break;
+    case HitArea::Enlarge:
+        g = enlargeBottom_ ? Glyph::EnlargeBottom : Glyph::EnlargeTop;
+        enabled = enlargeState_ == 1;
+        break;
     case HitArea::Filter:
         g = Glyph::Filter;
         if (filter_.active) {
@@ -682,8 +701,9 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             HGDIOBJ prev = SelectObject(dc, DriveFont());
             DrawTextW(dc, letter, 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
             SelectObject(dc, prev);
-        } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark || h.area == HitArea::Filter) {
-            DrawGlyph(dc, h.area, h.rc, hot_ == &h);
+        } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark || h.area == HitArea::Filter ||
+                   h.area == HitArea::Enlarge) {
+            DrawGlyph(dc, h.area, h.rc, hot_ == &h && !(h.area == HitArea::Enlarge && enlargeState_ != 1));
         }
     }
     // Trennlinie unten
@@ -810,6 +830,16 @@ void FilePane::SetSplitButton(SplitButton b) {
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
 }
 
+void FilePane::SetEnlargeState(int state, bool bottom) {
+    if (state == enlargeState_ && bottom == enlargeBottom_) return;
+    bool rebuild = (state == 0) != (enlargeState_ == 0);
+    enlargeState_ = state;
+    enlargeBottom_ = bottom;
+    if (rebuild) BuildHitRects();
+    UpdateTooltips();
+    InvalidateRect(hwnd_, &rcHeader_, FALSE);
+}
+
 void FilePane::OnClickArea(const HitRect& h) {
     if (host_) host_->OnPaneActivated(this);
     switch (h.area) {
@@ -831,6 +861,9 @@ void FilePane::OnClickArea(const HitRect& h) {
         // Der Host setzt den Fokus selbst; diese Liste kann danach unsichtbar sein (Split aufgehoben)
         if (host_) host_->OnPaneSplitButton(this);
         return;
+    case HitArea::Enlarge:
+        if (enlargeState_ == 1 && host_) host_->OnPaneEnlargeButton(this);
+        break;
     case HitArea::Bookmark:
         if (host_) host_->OnPaneBookmarkButton(this);
         break;
@@ -2629,8 +2662,33 @@ void FilePane::DrawDragMarkRect(HDC dc) {
 }
 
 bool FilePane::DragMarkBegin(POINT pt, WPARAM keys) {
-    if (!App::Opt().dragMark || (keys & MK_SHIFT)) return false;
     if (view_ != PaneView::List && view_ != PaneView::Details && view_ != PaneView::Recursive) return false;
+    bool fileDrag = false;
+    if (!(keys & MK_SHIFT)) {   // Umschalt+Klick bleibt Bereichsauswahl
+        // Beginnt das Ziehen auf einer markierten Zeile (auch neben dem Namen), ist Drag & Drop gemeint
+        LVHITTESTINFO h0{};
+        h0.pt = pt;
+        int j = ListView_HitTest(list_, &h0);
+        if (j < 0) {
+            h0 = LVHITTESTINFO{};
+            h0.pt = pt;
+            j = ListView_SubItemHitTest(list_, &h0);
+        }
+        if (j < 0) {   // Ansicht „Liste“/„Details“ ohne Ganzzeilenmarkierung: Zeile über die Höhe bestimmen
+            for (int k = ListView_GetTopIndex(list_), n = (int)items_.size(); k >= 0 && k < n; ++k) {
+                RECT rb{};
+                if (!ListView_GetItemRect(list_, k, &rb, LVIR_BOUNDS)) break;
+                if (rb.top > pt.y) break;
+                if (pt.y >= rb.top && pt.y < rb.bottom && (view_ != PaneView::List || (pt.x >= rb.left && pt.x < rb.right))) {
+                    j = k;
+                    break;
+                }
+            }
+        }
+        fileDrag = j >= 0 && j < (int)items_.size() && !items_[j].isParent && !IsVirtual() &&
+                   (ListView_GetItemState(list_, j, LVIS_SELECTED) & LVIS_SELECTED);
+    }
+    if (!fileDrag && (!App::Opt().dragMark || (keys & MK_SHIFT))) return false;
     // auf einem Namen: wie bisher (Klick, Drag & Drop)
     LVHITTESTINFO ht{};
     ht.pt = pt;
@@ -2651,6 +2709,7 @@ bool FilePane::DragMarkBegin(POINT pt, WPARAM keys) {
     POINT o = ContentOffset();
     dmStart_ = dmCurPt_ = POINT{pt.x - o.x, pt.y - o.y};
     dmActive_ = true;
+    dmFileDrag_ = fileDrag;   // markierte Zeile: nach dem Ziehen-Abstand Drag & Drop statt Auswahlrahmen
     dmMoved_ = false;
     dmCtrl_ = (keys & MK_CONTROL) != 0;
     dmTick_ = 0;
@@ -2746,6 +2805,19 @@ void FilePane::DragMarkMove(bool timer) {
         POINT s{dmStart_.x + o.x, dmStart_.y + o.y};
         if (std::abs(pt.x - s.x) <= GetSystemMetrics(SM_CXDRAG) && std::abs(pt.y - s.y) <= GetSystemMetrics(SM_CYDRAG))
             return;
+        if (dmFileDrag_) {
+            // Ziehen der markierten Dateien (wie LVN_BEGINDRAG)
+            dmActive_ = false;
+            dmFileDrag_ = false;
+            KillTimer(list_, kDragMarkTimer);
+            if (GetCapture() == list_) ReleaseCapture();
+            auto names = SelectedNames();
+            if (names.empty() || IsVirtual()) return;
+            StartFileDrag(hwnd_, dir_, names);
+            Reload();
+            if (host_) host_->OnPaneFilesDropped(this);
+            return;
+        }
         dmMoved_ = true;
         dmBase_.assign(items_.size(), 0);
         if (dmCtrl_) {
@@ -2805,6 +2877,7 @@ void FilePane::DragMarkEnd(bool click) {
     POINT pt{dmStart_.x + o.x, dmStart_.y + o.y};
     dmActive_ = false;
     dmMoved_ = false;
+    dmFileDrag_ = false;
     KillTimer(list_, kDragMarkTimer);
     if (GetCapture() == list_) ReleaseCapture();
     if (moved) {
@@ -3550,6 +3623,21 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             UpdateStatus();
         }
         return 0;
+    case WM_APP_DUPLICATE: {
+        // Datei markieren, Liste aktiv machen, dann „Duplizieren“ (F10) wie über das Menü
+        std::wstring file = pendingDuplicate_;
+        pendingDuplicate_.clear();
+        if (file.empty()) return 0;
+        std::wstring rel = file;   // relativ zur Liste (bei „Mit Unterverzeichnissen“ mit Teilpfad)
+        std::wstring base = dir_;
+        if (!base.empty() && base.back() != L'\\') base += L'\\';
+        if (StartsWithI(rel, base)) rel = rel.substr(base.size());
+        else rel = PathFileName(file);
+        if (host_) host_->OnPaneActivated(this);
+        SelectNames({rel});
+        PostMessageW(GetAncestor(hwnd_, GA_ROOT), WM_COMMAND, cmd::Duplicate, 0);
+        return 0;
+    }
     case WM_APP_RENAMESEL: {
         HWND edit = (HWND)lp;
         if (IsWindow(edit)) {

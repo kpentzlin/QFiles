@@ -52,8 +52,11 @@ struct DropTargetInfo {
     std::wstring alt;
 };
 // Wie oben, mit Zweifelsfall-Abfrage. leave wird beim Verlassen und nach dem Ablegen aufgerufen (Hervorhebung zurück).
+// duplicate (optional): Ablage genau einer Datei mit Strg im eigenen Verzeichnis -> Duplizieren dieser Datei
+// (sonst bewirkt Ablegen im selben Verzeichnis nichts)
 void RegisterFileDropTargetEx(HWND hwnd, std::function<DropTargetInfo(POINT)> resolver, std::function<void()> done,
-                              std::function<void()> leave, bool listPane);
+                              std::function<void()> leave, bool listPane,
+                              std::function<void(const std::wstring&)> duplicate = nullptr);
 void RevokeFileDropTarget(HWND hwnd);
 
 } // namespace qf

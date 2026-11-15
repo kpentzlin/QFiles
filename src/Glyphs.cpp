@@ -114,6 +114,26 @@ void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color) {
         Lines(dc, m, 2, color, std::max(1, u));
         break;
     }
+    case Glyph::EnlargeTop:
+    case Glyph::EnlargeBottom: {
+        // Rahmen, eigene Liste (oben bzw. unten) über drei Viertel hellblau, Pfeil zur Teilung hin
+        bool top = g == Glyph::EnlargeTop;
+        Box(dc, l, t, r, b, RGB(255, 255, 255), color, std::max(1, u));
+        int split = top ? t + (b - t) * 3 / 4 : t + (b - t) / 4;
+        RECT big = top ? RECT{l + u, t + u, r - u + 1, split} : RECT{l + u, split + 1, r - u + 1, b - u + 1};
+        HBRUSH br = CreateSolidBrush(Blend(color == GetSysColor(COLOR_GRAYTEXT) ? color : RGB(60, 120, 215),
+                                           RGB(255, 255, 255), 150));
+        FillRect(dc, &big, br);
+        DeleteObject(br);
+        POINT m[2] = {{l, split}, {r, split}};
+        Lines(dc, m, 2, color, std::max(1, u));
+        // Pfeil in der eigenen Fläche Richtung Teilung
+        int ay = top ? split - 2 * u : split + 2 * u;
+        int dy = top ? -2 * u : 2 * u;
+        POINT a[3] = {{cx - 2 * u, ay + dy}, {cx + 2 * u, ay + dy}, {cx, ay}};
+        Poly(dc, a, 3, color, color, 1);
+        break;
+    }
     case Glyph::Unsplit: {
         // Rahmen ohne Teilung, Pfeile zur Mitte hin (Teilung aufheben)
         COLORREF fill = RGB(255, 255, 255);

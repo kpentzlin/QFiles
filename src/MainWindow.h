@@ -40,6 +40,7 @@ public:
     void OnPaneDirChanged(FilePane* p) override;
     void OnPaneFocusItemChanged(FilePane* p) override;
     void OnPaneSplitButton(FilePane* p) override;
+    void OnPaneEnlargeButton(FilePane* p) override;
     void OnPaneBookmarkButton(FilePane* p) override;
     void OnPaneOpenItem(FilePane* p) override;
     void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) override;

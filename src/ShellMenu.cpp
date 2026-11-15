@@ -1113,9 +1113,9 @@ namespace {
 class DropTarget : public IDropTarget {
 public:
     DropTarget(HWND hwnd, std::function<DropTargetInfo(POINT)> resolver, std::function<void()> done,
-               std::function<void()> leave, bool listPane)
+               std::function<void()> leave, bool listPane, std::function<void(const std::wstring&)> duplicate = nullptr)
         : hwnd_(hwnd), resolver_(std::move(resolver)), done_(std::move(done)), leave_(std::move(leave)),
-          listPane_(listPane) {
+          duplicate_(std::move(duplicate)), listPane_(listPane) {
         CoCreateInstance(CLSID_DragDropHelper, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&helper_));
     }
     virtual ~DropTarget() {
@@ -1168,6 +1168,15 @@ public:
             helper_->Drop(data, &p, *effect);
         }
         if (files_.empty()) ReadFiles(data);
+        // genau eine Datei mit Strg ins eigene Verzeichnis: Duplizieren
+        if (!rightButton_ && DupCase(keys, resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{})) {
+            if (leave_) leave_();
+            std::wstring f = files_[0];
+            files_.clear();
+            *effect = DROPEFFECT_NONE;   // Quelle tut nichts
+            duplicate_(f);
+            return S_OK;
+        }
         DWORD eff = Decide(keys, pt, *effect);
         DropTargetInfo info = resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{};
         if (leave_) leave_();
@@ -1285,9 +1294,18 @@ private:
         return r == kDir ? dir : r == kSub ? sub : L"";
     }
 
+    // Ablage im eigenen Verzeichnis: genau eine Datei (kein Verzeichnis), Strg gedrückt, Duplizieren vorgesehen
+    bool DupCase(DWORD keys, const DropTargetInfo& info) const {
+        if (!duplicate_ || !listPane_ || files_.size() != 1 || !(keys & MK_CONTROL)) return false;
+        if (info.dir.empty() || IsRemoteUrl(info.dir) || !EqualsI(PathParent(files_[0]), info.dir)) return false;
+        DWORD a = GetFileAttributesW(files_[0].c_str());
+        return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+    }
+
     DWORD Decide(DWORD keys, POINTL pt, DWORD allowed) {
         if (files_.empty()) return DROPEFFECT_NONE;
         DropTargetInfo info = resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{};
+        if (!rightButton_ && DupCase(keys, info)) return (allowed & DROPEFFECT_COPY) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
         // Zweifelsfall: Ablage möglich, wenn eines der beiden Ziele geht (beim Ablegen wird gefragt)
         std::wstring target = info.dir;
         if (!info.alt.empty() && !ValidTarget(info.dir)) target = info.alt;
@@ -1309,6 +1327,7 @@ private:
     std::function<DropTargetInfo(POINT)> resolver_;
     std::function<void()> done_;
     std::function<void()> leave_;
+    std::function<void(const std::wstring&)> duplicate_;
     IDropTargetHelper* helper_ = nullptr;
     std::vector<std::wstring> files_;
     bool rightButton_ = false;
@@ -1326,8 +1345,10 @@ void RegisterFileDropTarget(HWND hwnd, std::function<std::wstring(POINT)> resolv
 }
 
 void RegisterFileDropTargetEx(HWND hwnd, std::function<DropTargetInfo(POINT)> resolver, std::function<void()> done,
-                              std::function<void()> leave, bool listPane) {
-    auto* t = new DropTarget(hwnd, std::move(resolver), std::move(done), std::move(leave), listPane);
+                              std::function<void()> leave, bool listPane,
+                              std::function<void(const std::wstring&)> duplicate) {
+    auto* t = new DropTarget(hwnd, std::move(resolver), std::move(done), std::move(leave), listPane,
+                             std::move(duplicate));
     RegisterDragDrop(hwnd, t);
     t->Release();
 }

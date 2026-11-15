@@ -94,12 +94,14 @@ Der Trichter ist dann ebenso hinterlegt.
 
 - Das **Split-Symbol** ganz rechts in der Kopfzeile (oder Strg+T) teilt die Liste. Die untere Hälfte ist ein eigenes,
   vollwertiges Listenfenster: das „dritte“ (links) bzw. „vierte“ (rechts).
-- Das untere Fenster hat denselben Kopfbereich: Laufwerksymbole, rechts Lesezeichen-, Filter- und Split-Symbol, darunter das
+- Das untere Fenster hat denselben Kopfbereich: Laufwerksymbole, rechts Lesezeichen-, Filter-, Drei-Viertel- und Split-Symbol, darunter das
   Verzeichnis-Textfeld mit Wahlsymbolen (Zurück, Vor, Übergeordnet, Verzeichnis wählen) und dem Aktiv-Kreis.
 - Im oberen Fenster wird das Split-Symbol zum **Split-aufheben-Symbol**. Im unteren Fenster erscheint es nur so.
   Ein Klick in einem der beiden hebt die Teilung auf.
 - Beide Spalten lassen sich unabhängig teilen. Bis zu vier Listen sind gleichzeitig sichtbar; die Teilerhöhe ist
   mit der Maus verschiebbar.
+- Bei geteilter Spalte steht links neben dem Split-Symbol beider Listen ein **Drei-Viertel-Symbol**: Ein Klick lässt
+  diese Liste drei Viertel der Spaltenhöhe einnehmen. Hat sie diese Höhe schon, ist das Symbol ausgegraut.
 
 ### Dateianzeige „in dem jeweils anderen Fenster“
 
@@ -262,7 +264,9 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   längeren Namen. Mit **Strg** zusätzlich zur bisherigen Markierung; am Rand wird weitergeblättert. Beginnt das Ziehen
   **auf** einem Namen (auf dem letzten angezeigten Zeichen oder links davon), gilt Drag & Drop wie gewohnt. Ein Klick
   ohne Ziehen neben einem Namen markiert die Zeile, im leeren Bereich hebt er die Markierung auf. Abschaltbar unter
-  *Optionen → Bedienung*.
+  *Optionen → Bedienung*. Beginnt das Ziehen auf einer **markierten** Zeile (auch neben dem Namen, auch mit Strg),
+  ist immer Drag & Drop der markierten Dateien gemeint; der Auswahlrahmen entsteht nur auf nicht markierten Zeilen und
+  im leeren Bereich.
 - Dateidatum wahlweise sekundengenau; zusätzliche Spalte „Erstellt“ (Erstellungsdatum) neben „Geändert“
   (beides unter *Optionen → Anzeige*).
 - Sortieren nach Name, Typ, Größe, Datum, Erstellungsdatum oder Attributen, auf- und absteigend. Namen werden natürlich sortiert,
@@ -367,6 +371,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   bietet QFiles **Mit neuem Namen ablegen** an (vorbelegt „Name (1).ext“, bei Bedarf hochgezählt), außerdem
   „Ersetzen“ und „Abbrechen“.
 - **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen, Anlegen und Löschen in den Papierkorb.
+- Ablegen im eigenen Verzeichnis (z. B. im selben Listenfenster) bewirkt nichts – außer bei genau **einer Datei mit
+  gedrückter Strg-Taste**: dann startet **Duplizieren** (wie F10) für diese Datei.
 - Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Ziehen in ein Listenfenster **verschiebt**;
   mit gedrückter **Umschalt- oder Strg-Taste** wird kopiert. Ist das Ziel ein FTP/SFTP/WebDAV-Verzeichnis, wird erst
   nachgefragt (OK = verschieben, **Kopieren** = nur hochladen, Abbrechen). Auf Baum und Lesezeichen gilt die

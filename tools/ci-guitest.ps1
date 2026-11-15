@@ -37,6 +37,19 @@ public static class W {
     SetCursorPos(x2, y2); mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(400);
     mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
   }
+  // wie Drag, aber ab der Hälfte des Wegs mit gedrückter Strg-Taste (Ablegen mit Strg)
+  public static void DragCtrl(int x1, int y1, int x2, int y2) {
+    SetCursorPos(x1, y1); System.Threading.Thread.Sleep(200);
+    mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(150);
+    for (int i = 1; i <= 25; i++) {
+      if (i == 12) { keybd_event(0x11, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(60); }
+      SetCursorPos(x1 + (x2 - x1) * i / 25, y1 + (y2 - y1) * i / 25);
+      mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(40);
+    }
+    SetCursorPos(x2, y2); mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(400);
+    mouse_event(0x0004, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(100);
+    keybd_event(0x11, 0, 2, IntPtr.Zero);
+  }
   public static void Key(byte vk) { keybd_event(vk, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(60); keybd_event(vk, 0, 2, IntPtr.Zero); }
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
   public delegate bool EnumProc(IntPtr h, IntPtr l);
@@ -175,6 +188,42 @@ Check-Alive "Umschalt+F10"
 [System.Windows.Forms.SendKeys]::SendWait("{F11}"); Start-Sleep -Seconds 2
 Check-Alive "Split und Dateianzeige"
 Shot "screenshot2.png"
+# Drei-Viertel-Symbol links neben Split: untere rechte Liste auf drei Viertel, danach ausgegraut (zweiter Klick ohne
+# Wirkung); dann die obere auf drei Viertel
+$sp = @()
+$hh = [IntPtr]::Zero
+while ($true) {
+  $hh = [W]::FindWindowEx($main, $hh, "QFilesPane", $null)
+  if ($hh -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($hh)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($hh, [ref]$r) | Out-Null
+  $sp += [pscustomobject]@{ H = $hh; L = $r.L; T = $r.T; R = $r.R; B = $r.B }
+}
+$rightCol = @($sp | Sort-Object L -Descending | Select-Object -First 2 | Sort-Object T)
+$eInfo = "Listen: $($sp.Count)"; $eOk = $false
+if ($rightCol.Count -eq 2 -and $rightCol[0].L -eq $rightCol[1].L) {
+  $bs = 22   # Schaltfläche: Kopfzeile 26 − 2 × 2 (96 dpi)
+  function PaneH($pn) { $r = New-Object W+RECT; [W]::GetWindowRect($pn.H, [ref]$r) | Out-Null; return $r.B - $r.T }
+  $bot = $rightCol[1]
+  [W]::Click($bot.R - 2 - $bs - 2 - [int]($bs / 2), $bot.T + 2 + [int]($bs / 2), $false); Start-Sleep -Milliseconds 800
+  $hTop = PaneH $rightCol[0]; $hBot = PaneH $rightCol[1]
+  $frac1 = $hBot / [double]($hTop + $hBot)
+  Shot "screenshot48.png"   # untere rechte Liste mit drei Vierteln der Höhe, ihr Symbol ausgegraut
+  $r2 = New-Object W+RECT; [W]::GetWindowRect($bot.H, [ref]$r2) | Out-Null
+  [W]::Click($r2.R - 2 - $bs - 2 - [int]($bs / 2), $r2.T + 2 + [int]($bs / 2), $false); Start-Sleep -Milliseconds 600
+  $hBot2 = PaneH $rightCol[1]
+  $top = $rightCol[0]
+  [W]::Click($top.R - 2 - $bs - 2 - [int]($bs / 2), $top.T + 2 + [int]($bs / 2), $false); Start-Sleep -Milliseconds 800
+  $hTop3 = PaneH $rightCol[0]; $hBot3 = PaneH $rightCol[1]
+  $frac3 = $hTop3 / [double]($hTop3 + $hBot3)
+  $eInfo = "unten: Anteil {0:N3}, nach zweitem Klick Höhe {1} (vorher {2}); oben: Anteil {3:N3}" -f $frac1, $hBot2, $hBot, $frac3
+  $eOk = [Math]::Abs($frac1 - 0.75) -lt 0.02 -and $hBot2 -eq $hBot -and [Math]::Abs($frac3 - 0.75) -lt 0.02
+}
+if ($eOk) { Write-Output "::notice title=Drei Viertel::$eInfo" }
+else {
+  Write-Output "::error title=Drei Viertel::$eInfo"
+  "Drei-Viertel-Symbol nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
 
 # Optionen: „Dateidatum sekundengenau“ (Alt+K) und „Spalte Erstellt“ (Alt+E) per Zugriffstaste einschalten,
 # mit OK speichern (prüft auch, dass die Zugriffstasten eindeutig sind und Kontrollkästchen umschalten)
@@ -562,6 +611,22 @@ if ($askSame) {
   Start-Sleep -Seconds 2
 }
 Check-Alive "Ziehen 4"
+# 5) q2.txt mit Strg in den leeren Bereich derselben Liste: Duplizieren (Dialog, Vorschlag „q2 - Kopie.txt“)
+$q2Y = $dr.T + 24 + 2 * 20 + 10
+[W]::Click($dr.L + 40, $q2Y, $false); Start-Sleep -Milliseconds 400
+[W]::DragCtrl($dr.L + 40, $q2Y, $dr.L + 60, $dr.B - 15); Start-Sleep -Seconds 2
+$dupDlg = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $dupDlg -eq [IntPtr]::Zero; $t++) {
+  $dupDlg = [W]::FindWindow("#32770", "Duplizieren")
+  if ($dupDlg -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 }
+}
+$dupSeen = $dupDlg -ne [IntPtr]::Zero
+if ($dupSeen) {
+  Shot "screenshot49.png"   # Duplizieren nach Ziehen mit Strg in dieselbe Liste
+  [W]::SendMessage([W]::GetDlgItem($dupDlg, 1), 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # BM_CLICK OK
+  Start-Sleep -Seconds 2
+}
+Check-Alive "Ziehen 5 (Duplizieren)"
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
@@ -569,9 +634,10 @@ $d1 = Test-Path "$dragBase\Ziel\Unterordner\q1.txt"
 $d2 = (Test-Path "$dragBase\Ziel\q2.txt") -and $askSeen
 $d3 = (Test-Path "$dragBase\Ziel\q3.txt") -and -not (Test-Path "$dragBase\Ziel\Unterordner\q3.txt")
 $d4 = $askSame -and (Test-Path "$dragBase\Ziel\q3.txt")
-$dragInfo = "Name -> Unterverzeichnis: $d1; Leerraum -> Abfrage/Listenverzeichnis: $d2; Spalte Typ -> Listenverzeichnis: $d3; gleiche Liste -> Abfrage: $d4"
+$d5 = $dupSeen -and (Test-Path "$dragBase\Ziel\q2 - Kopie.txt") -and (Test-Path "$dragBase\Ziel\q2.txt")
+$dragInfo = "Name -> Unterverzeichnis: $d1; Leerraum -> Abfrage/Listenverzeichnis: $d2; Spalte Typ -> Listenverzeichnis: $d3; gleiche Liste -> Abfrage: $d4; Strg in dieselbe Liste -> Duplizieren: $d5"
 $left = (Get-ChildItem "$dragBase" -Recurse -File | ForEach-Object { $_.FullName.Substring($dragBase.Length) }) -join ', '
-if ($d1 -and $d2 -and $d3 -and $d4) { Write-Output "::notice title=Ziehen in Liste::$dragInfo" }
+if ($d1 -and $d2 -and $d3 -and $d4 -and $d5) { Write-Output "::notice title=Ziehen in Liste::$dragInfo" }
 else {
   Write-Output "::error title=Ziehen in Liste::$dragInfo (Dateien: $left)"
   "Ablageziel beim Ziehen nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
@@ -641,12 +707,16 @@ Shot "screenshot35.png"   # nach mittlerer Maustaste: Verzeichnis „Unter“, x
 $p.Refresh()
 $mTitle = $p.MainWindowTitle
 $selCount3 = ([W]::SendMessage($mList, 0x1032, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+# Ziehen beginnt neben dem Namen der markierten Zeile x.txt (Zeile 1 nach „..“): Drag & Drop, kein Auswahlrahmen
+[W]::Drag($mr.L + 200, (RowY 1), $zr.L + 120, (RowY 3)); Start-Sleep -Seconds 3
+Check-Alive "Ziehen neben dem Namen einer markierten Zeile"
+$selDrag = (Test-Path "$mBase\Ziel\x.txt") -and -not (Test-Path "$mBase\Liste\Unter\x.txt")
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $midOk = ($mTitle -match 'Liste\\Unter$') -and $selCount3 -eq 1
-$mInfo = "Rahmen markiert: $selCount1 (erwartet 5); schmaler Rahmen: $selCount2 (erwartet 1); Ziehen auf dem Namen verschiebt m01: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3"
-if ($selCount1 -eq 5 -and $selCount2 -eq 1 -and $moved -and $midOk) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
+$mInfo = "Rahmen markiert: $selCount1 (erwartet 5); schmaler Rahmen: $selCount2 (erwartet 1); Ziehen auf dem Namen verschiebt m01: $moved; mittlere Maustaste: Titel [$mTitle], markiert $selCount3; Ziehen neben dem Namen einer markierten Zeile verschiebt x.txt: $selDrag"
+if ($selCount1 -eq 5 -and $selCount2 -eq 1 -and $moved -and $midOk -and $selDrag) { Write-Output "::notice title=Markieren durch Ziehen::$mInfo" }
 else {
   Write-Output "::error title=Markieren durch Ziehen::$mInfo"
   "Markieren durch Ziehen bzw. mittlere Maustaste nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1

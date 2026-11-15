@@ -5,7 +5,8 @@
 
 namespace qf {
 
-enum class Glyph { Back, Forward, Up, Browse, Refresh, Split, Unsplit, Bookmark, Eraser, TreeList, Filter };
+enum class Glyph { Back, Forward, Up, Browse, Refresh, Split, Unsplit, Bookmark, Eraser, TreeList, Filter,
+                   EnlargeTop, EnlargeBottom };   // geteilte Spalte: obere bzw. untere Liste auf drei Viertel
 
 // Zeichnet das Symbol zentriert in rc. color = Linienfarbe.
 void DrawGlyph(HDC dc, Glyph g, const RECT& rc, COLORREF color);

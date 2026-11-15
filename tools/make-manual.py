@@ -48,6 +48,7 @@ FIGURES = {
     ],
     "Split-Funktion": [
         ("screenshot2.png", "Rechte Spalte geteilt: oben die Dateianzeige der links gewählten Datei, unten Liste 4", WIN),
+        ("screenshot48.png", "Untere rechte Liste per Drei-Viertel-Symbol vergrößert; ihr Symbol ist nun ausgegraut", WIN),
     ],
     "Dateianzeige „in dem jeweils anderen Fenster“": [
         ("screenshot13.png", "PDF-Datei mit fünf Seiten in der Dateianzeige (F11)", WIN),
@@ -73,6 +74,7 @@ FIGURES = {
         ("screenshot3.png", "Kontextmenü einer Datei: eigene Befehle oben, darunter das Explorer-Kontextmenü", FULL),
         ("screenshot22.png", "Ziehen in den Leerraum hinter einem Verzeichnisnamen: Abfrage des Ziels", WIN),
         ("screenshot25.png", "Namenskonflikt beim Kopieren: Ersetzen, mit neuem Namen ablegen oder abbrechen", WIN),
+        ("screenshot49.png", "Datei mit Strg in die eigene Liste gezogen: Duplizieren", WIN),
     ],
     "Netzwerk": [
         ("screenshot9.png", "Netzwerk durchsuchen", WIN),

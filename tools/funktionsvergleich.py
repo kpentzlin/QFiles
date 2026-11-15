@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.24"
+QF_VERSION = "0.1.25"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -50,6 +50,7 @@ DATA = [
         ("Eine oder zwei Dateilisten umschaltbar", "ja", "ja", "ja", "", False),
         ("Dateilisten wahlweise untereinander", "–", "?", "ja", "QFiles: bewusst immer nebeneinander", False),
         ("Bis zu vier Dateilisten gleichzeitig (Split)", "ja", "–", "–", "", False),
+        ("Geteilte Liste per Klick auf drei Viertel der Höhe", "ja", "–", "–", "neu in QFiles 0.1.25", False),
         ("Vordefinierte Fensteraufteilungen (Ansichtenmanager)", "teilw.", "ja", "ja",
          "QFiles: feste Anordnung, nur eine/zwei Listen und Split; Idoswin: fünf Ansichten (Explorer, Commander …)", A),
         ("Layouts speichern und umschalten", "–", "ja", "ja", "Idoswin: Ansicht je Windows-Benutzer", False),
@@ -177,6 +178,7 @@ DATA = [
         ("Neues Verzeichnis (auch mehrstufig), neue Datei, neue Textdatei", "ja", "ja", "ja", "", False),
         ("Neu aus Dokumentvorlagen", "teilw.", "ja", "?", "QFiles: über das Explorer-Kontextmenü „Neu“", A),
         ("Duplizieren mit Namensvorschlag", "ja", "ja", "?", "", False),
+        ("Duplizieren per Ziehen mit Strg ins eigene Verzeichnis", "ja", "?", "?", "neu in QFiles 0.1.25", False),
         ("Namenskonflikt beim Kopieren/Verschieben: mit neuem Namen ablegen", "ja", "?", "?",
          "QFiles: einzelne Datei, vorbelegt „Name (1)“ (neu in 0.1.9)", False),
         ("Zwischenablage, kompatibel mit dem Explorer", "ja", "ja", "ja", "", False),

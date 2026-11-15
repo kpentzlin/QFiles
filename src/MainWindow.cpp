@@ -1776,10 +1776,16 @@ void MainWindow::Layout() {
         if (split_[col]) {
             int h = c.bottom - c.top;
             int topH = std::clamp((int)((h - sw) * rowRatio_[col]), S(80), std::max(S(80), h - sw - S(80)));
+            // Schaltfläche „auf drei Viertel“: ausgegraut, wenn die Liste diese Höhe schon hat (±1 Pixel)
+            int threeQ = (int)((h - sw) * 0.75);
+            int botH = h - sw - topH;
+            panes_[col]->SetEnlargeState(std::abs(topH - threeQ) <= 1 ? 2 : 1, false);
+            panes_[col + 2]->SetEnlargeState(std::abs(botH - threeQ) <= 1 ? 2 : 1, true);
             panes_[col]->SetBounds({c.left, c.top, c.right, c.top + topH});
             rcSplitRow_[col] = {c.left, c.top + topH, c.right, c.top + topH + sw};
             panes_[col + 2]->SetBounds({c.left, c.top + topH + sw, c.right, c.bottom});
         } else {
+            panes_[col]->SetEnlargeState(0, false);
             panes_[col]->SetBounds(c);
             rcSplitRow_[col] = {};
         }
@@ -2055,6 +2061,14 @@ void MainWindow::OnPaneFocusItemChanged(FilePane* p) {
 void MainWindow::OnPaneSplitButton(FilePane* p) {
     int col = p->Index() % 2;
     SetSplit(col, !split_[col]);
+}
+
+// Geteilte Spalte: die Liste p nimmt drei Viertel der Höhe ein
+void MainWindow::OnPaneEnlargeButton(FilePane* p) {
+    int col = p->Index() % 2;
+    if (!split_[col]) return;
+    rowRatio_[col] = p->Index() >= 2 ? 0.25 : 0.75;
+    Layout();
 }
 
 // Lesezeichen öffnen: ein aktiver Filter der Liste wird ausgeschaltet; ein mit dem Lesezeichen gespeicherter Filter
