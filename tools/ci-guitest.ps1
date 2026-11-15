@@ -13,6 +13,7 @@ public static class W {
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SendMessageText(IntPtr h, uint msg, IntPtr w, System.Text.StringBuilder l);
   public static string Text(IntPtr h) { var sb = new System.Text.StringBuilder(1024); SendMessageText(h, 0x000D, (IntPtr)1024, sb); return sb.ToString(); }
   [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool repaint);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -219,6 +220,37 @@ if ($rightCol.Count -eq 2 -and $rightCol[0].L -eq $rightCol[1].L) {
   $eInfo = "unten: Anteil {0:N3}, nach zweitem Klick Höhe {1} (vorher {2}); oben: Anteil {3:N3}" -f $frac1, $hBot2, $hBot, $frac3
   $eOk = [Math]::Abs($frac1 - 0.75) -lt 0.02 -and $hBot2 -eq $hBot -and [Math]::Abs($frac3 - 0.75) -lt 0.02
 }
+# Befehlszeile bleibt unten, auch wenn sich die Fenstergröße bei aufgeklappter Auswahlliste ändert
+$cmdCb = [W]::FindWindowEx($main, [IntPtr]::Zero, "ComboBox", $null)
+$mr0 = New-Object W+RECT; [W]::GetWindowRect($main, [ref]$mr0) | Out-Null
+[W]::SendMessage($cmdCb, 0x014F, [IntPtr]1, [IntPtr]::Zero) | Out-Null   # CB_SHOWDROPDOWN
+Start-Sleep -Milliseconds 400
+[W]::MoveWindow($main, $mr0.L, $mr0.T, $mr0.R - $mr0.L - 7, $mr0.B - $mr0.T - 5, $true) | Out-Null
+Start-Sleep -Milliseconds 600
+[W]::SendMessage($cmdCb, 0x014F, [IntPtr]0, [IntPtr]::Zero) | Out-Null
+Start-Sleep -Milliseconds 300
+[W]::MoveWindow($main, $mr0.L, $mr0.T, $mr0.R - $mr0.L, $mr0.B - $mr0.T, $true) | Out-Null
+Start-Sleep -Milliseconds 300
+[W]::SendMessage($cmdCb, 0x014F, [IntPtr]1, [IntPtr]::Zero) | Out-Null
+Start-Sleep -Milliseconds 300
+[W]::MoveWindow($main, $mr0.L, $mr0.T, $mr0.R - $mr0.L - 3, $mr0.B - $mr0.T, $true) | Out-Null
+Start-Sleep -Milliseconds 500
+[W]::SendMessage($cmdCb, 0x014F, [IntPtr]0, [IntPtr]::Zero) | Out-Null
+Start-Sleep -Milliseconds 500
+$ccr = New-Object W+RECT; [W]::GetWindowRect($cmdCb, [ref]$ccr) | Out-Null
+$maxPaneB = 0
+$hh = [IntPtr]::Zero
+while ($true) {
+  $hh = [W]::FindWindowEx($main, $hh, "QFilesPane", $null)
+  if ($hh -eq [IntPtr]::Zero) { break }
+  if (-not [W]::IsWindowVisible($hh)) { continue }
+  $r = New-Object W+RECT; [W]::GetWindowRect($hh, [ref]$r) | Out-Null
+  if ($r.B -gt $maxPaneB) { $maxPaneB = $r.B }
+}
+Shot "screenshot50.png"
+$cmdInfo = "Befehlszeile oben $($ccr.T) unten $($ccr.B), Listen bis $maxPaneB"
+if ($cmdCb -ne [IntPtr]::Zero -and $ccr.T -ge $maxPaneB) { Write-Output "::notice title=Befehlszeile::$cmdInfo" }
+else { Write-Output "::error title=Befehlszeile::$cmdInfo"; "Befehlszeile verrutscht" | Tee-Object -FilePath smoke-log.txt; exit 1 }
 if ($eOk) { Write-Output "::notice title=Drei Viertel::$eInfo" }
 else {
   Write-Output "::error title=Drei Viertel::$eInfo"

@@ -463,9 +463,12 @@ void FilePane::Layout() {
     int btnW = ToPx(kNavBtnW);
     int comboW = std::max<int>(ToPx(40), rc.right - 6 * btnW - ToPx(6));
     // Combobox vertikal zentriert
+    // (Fensterhöhe bei aufgeklappter Liste evtl. mit Listenhöhe: dann Auswahlfeldhöhe nehmen, siehe Befehlszeile)
+    int sel = (int)SendMessageW(pathCombo_, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+    int ch = sel > 0 ? sel + 2 * GetSystemMetrics(SM_CYFIXEDFRAME) + ToPx(2) : ph;
     RECT cr;
-    GetWindowRect(pathCombo_, &cr);
-    int ch = cr.bottom - cr.top;
+    if (GetWindowRect(pathCombo_, &cr) && cr.bottom - cr.top > 0 && cr.bottom - cr.top <= ph) ch = cr.bottom - cr.top;
+    ch = std::clamp(ch, 1, ph);
     SetWindowPos(pathCombo_, nullptr, ToPx(2), rcPath_.top + (ph - ch) / 2, comboW, ToPx(300), SWP_NOZORDER | SWP_NOACTIVATE);
     // Eine Combobox markiert beim Größenändern ihren Text – Markierung wieder aufheben
     if (pathEdit_ && GetFocus() != pathEdit_) {

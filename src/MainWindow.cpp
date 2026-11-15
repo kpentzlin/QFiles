@@ -1723,9 +1723,14 @@ void MainWindow::Layout() {
         bottom -= h;
         int labelW = std::min<int>(S(320), rc.right / 3);
         SetWindowPos(cmdLabel_, nullptr, S(4), rcCmd_.top + S(3), labelW, h - S(6), SWP_NOZORDER | SWP_SHOWWINDOW);
+        // Höhe des Eingabefelds: Das Fensterrechteck des Kombinationsfelds kann bei aufgeklappter Auswahlliste deren
+        // Höhe enthalten – dann rutschte die Befehlszeile weit nach oben über die Listen und blieb dort stehen.
+        // Deshalb die Höhe des Auswahlfelds (CB_GETITEMHEIGHT, -1) plus Rahmen nehmen und auf die Zeile begrenzen.
+        int sel = (int)SendMessageW(cmdCombo_, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+        int ch = sel > 0 ? sel + 2 * GetSystemMetrics(SM_CYFIXEDFRAME) + S(2) : h;
         RECT cr;
-        GetWindowRect(cmdCombo_, &cr);
-        int ch = cr.bottom - cr.top;
+        if (GetWindowRect(cmdCombo_, &cr) && cr.bottom - cr.top > 0 && cr.bottom - cr.top <= h) ch = cr.bottom - cr.top;
+        ch = std::clamp(ch, 1, h);
         SetWindowPos(cmdCombo_, nullptr, S(8) + labelW, rcCmd_.top + (h - ch) / 2, rc.right - labelW - S(12), S(300),
                      SWP_NOZORDER | SWP_SHOWWINDOW);
         if (cmdEdit_ && GetFocus() != cmdEdit_) {
