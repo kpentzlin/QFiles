@@ -237,6 +237,11 @@ Start-Sleep -Milliseconds 300
 Start-Sleep -Milliseconds 500
 [W]::SendMessage($cmdCb, 0x014F, [IntPtr]0, [IntPtr]::Zero) | Out-Null
 Start-Sleep -Milliseconds 500
+# Befehlszeile aus- und wieder einblenden (Ansicht → Befehlszeile, cmd::ToggleCommandLine = 40220)
+[W]::SendMessage($main, 0x0111, [IntPtr]40220, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 400
+[W]::MoveWindow($main, $mr0.L, $mr0.T, $mr0.R - $mr0.L - 5, $mr0.B - $mr0.T, $true) | Out-Null; Start-Sleep -Milliseconds 300
+[W]::SendMessage($main, 0x0111, [IntPtr]40220, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 400
+[W]::MoveWindow($main, $mr0.L, $mr0.T, $mr0.R - $mr0.L, $mr0.B - $mr0.T, $true) | Out-Null; Start-Sleep -Milliseconds 500
 $ccr = New-Object W+RECT; [W]::GetWindowRect($cmdCb, [ref]$ccr) | Out-Null
 $maxPaneB = 0
 $hh = [IntPtr]::Zero
