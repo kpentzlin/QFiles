@@ -196,7 +196,9 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     Lesezeichen in der anderen Liste.
   - Eigene Schrift einstellbar (*Optionen → Anzeige → Schrift der Lesezeichenliste*; „Standard“ = Oberflächenschrift).
   - Hintergrundfarben: Windows-Standardverzeichnisse (Desktop, Dokumente, Downloads, Bilder, Musik, Videos,
-    Benutzerprofil, AppData, Programme, Windows usw.) **hellblau**, Cloud-Speicher (Dropbox, Google Drive,
+    Benutzerprofil, AppData, Programme, Windows usw.) und ihre Unterverzeichnisse (z. B.
+    `…\AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar`) **hellblau** (beim Sortieren
+    bei den Standardverzeichnissen), Cloud-Speicher (Dropbox, Google Drive,
     OneDrive) **lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
     Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**.
   - **Lesezeichen → Sortieren…** (nach Rückfrage): zuerst „Netzwerk“, dann die Standardverzeichnisse, die
@@ -372,7 +374,8 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   „Ersetzen“ und „Abbrechen“.
 - **Rückgängig** (Strg+Z) für Kopieren, Verschieben, Umbenennen, Anlegen und Löschen in den Papierkorb.
 - Ablegen im eigenen Verzeichnis (z. B. im selben Listenfenster) bewirkt nichts – außer bei genau **einer Datei mit
-  gedrückter Strg-Taste**: dann startet **Duplizieren** (wie F10) für diese Datei.
+  gedrückter Strg-Taste**: dann startet **Duplizieren** (wie F10) für diese Datei. Wird Strg einen Augenblick (bis
+  0,6 s) vor der Maustaste losgelassen, gilt es noch als gedrückt.
 - Drag & Drop zwischen Listen, Baum, Lesezeichen und anderen Programmen. Ziehen in ein Listenfenster **verschiebt**;
   mit gedrückter **Umschalt- oder Strg-Taste** wird kopiert. Ist das Ziel ein FTP/SFTP/WebDAV-Verzeichnis, wird erst
   nachgefragt (OK = verschieben, **Kopieren** = nur hochladen, Abbrechen). Auf Baum und Lesezeichen gilt die

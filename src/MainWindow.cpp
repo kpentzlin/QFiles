@@ -2069,6 +2069,45 @@ void MainWindow::OnPaneSplitButton(FilePane* p) {
 }
 
 // Geteilte Spalte: die Liste p nimmt drei Viertel der Höhe ein
+// „Duplizieren“ (F10, Ziehen mit Strg ins eigene Verzeichnis): Kopie neben dem Original mit abgefragtem Namen
+void MainWindow::DuplicateItems(FilePane& a, const std::vector<std::wstring>& names) {
+    if (names.empty()) return;
+    std::wstring lastNew;
+    for (auto& rel : names) {
+        std::wstring src = PathCombine(a.Dir(), rel);
+        std::wstring srcDir = PathParent(src);   // bei „Mit Unterverzeichnissen“ das Unterverzeichnis
+        std::wstring n = PathFileName(rel);
+        bool isDir = DirExists(src);
+        std::wstring stem = n, ext;
+        size_t dot = n.find_last_of(L'.');
+        if (!isDir && dot != std::wstring::npos && dot > 0) {
+            stem = n.substr(0, dot);
+            ext = n.substr(dot);
+        }
+        std::wstring target = stem + L" - Kopie" + ext;
+        std::wstring dir = srcDir;
+        if (!AskName(hwnd_, L"Duplizieren", L"Name des Duplikats von „" + n + L"“:", target, !isDir,
+                     [dir, n, isDir]() { return NumberedName(dir, n, isDir); }))
+            break;
+        if (PathExists(PathCombine(srcDir, target))) {
+            MsgError(hwnd_, L"„" + target + L"“ existiert bereits.");
+            continue;
+        }
+        if (CopyJobs(hwnd_, {{src, srcDir, target}})) {
+            std::wstring sub = PathParent(PathCombine(L"X:\\", rel)).substr(3);
+            lastNew = sub.empty() ? target : PathCombine(sub, target);
+        }
+    }
+    a.Reload();
+    if (!lastNew.empty()) a.FocusName(lastNew);
+}
+
+void MainWindow::OnPaneDuplicate(FilePane* p, const std::wstring& rel) {
+    if (!p || p->IsVirtual() || p->IsSpecialList()) return;
+    SetActive(p->Index(), true);
+    DuplicateItems(*p, {rel});
+}
+
 void MainWindow::OnPaneEnlargeButton(FilePane* p) {
     int col = p->Index() % 2;
     if (!split_[col]) return;
@@ -3203,39 +3242,9 @@ void MainWindow::OnCommand(int id) {
         }
         break;
     }
-    case cmd::Duplicate: {
-        auto names = a.SelectedOrFocusedNames();
-        if (names.empty()) break;
-        std::wstring lastNew;
-        for (auto& rel : names) {
-            std::wstring src = PathCombine(a.Dir(), rel);
-            std::wstring srcDir = PathParent(src);   // bei „Mit Unterverzeichnissen“ das Unterverzeichnis
-            std::wstring n = PathFileName(rel);
-            bool isDir = DirExists(src);
-            std::wstring stem = n, ext;
-            size_t dot = n.find_last_of(L'.');
-            if (!isDir && dot != std::wstring::npos && dot > 0) {
-                stem = n.substr(0, dot);
-                ext = n.substr(dot);
-            }
-            std::wstring target = stem + L" - Kopie" + ext;
-            std::wstring dir = srcDir;
-            if (!AskName(hwnd_, L"Duplizieren", L"Name des Duplikats von „" + n + L"“:", target, !isDir,
-                         [dir, n, isDir]() { return NumberedName(dir, n, isDir); }))
-                break;
-            if (PathExists(PathCombine(srcDir, target))) {
-                MsgError(hwnd_, L"„" + target + L"“ existiert bereits.");
-                continue;
-            }
-            if (CopyJobs(hwnd_, {{src, srcDir, target}})) {
-                std::wstring sub = PathParent(PathCombine(L"X:\\", rel)).substr(3);
-                lastNew = sub.empty() ? target : PathCombine(sub, target);
-            }
-        }
-        a.Reload();
-        if (!lastNew.empty()) a.FocusName(lastNew);
+    case cmd::Duplicate:
+        DuplicateItems(a, a.SelectedOrFocusedNames());
         break;
-    }
     case cmd::Wipe: {
         if (CurrentFocusArea() == FocusArea::Bookmarks) break;
         auto paths = a.SelectedOrFocusedPaths();

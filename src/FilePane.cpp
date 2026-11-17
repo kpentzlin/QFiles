@@ -3636,9 +3636,12 @@ LRESULT FilePane::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         if (!base.empty() && base.back() != L'\\') base += L'\\';
         if (StartsWithI(rel, base)) rel = rel.substr(base.size());
         else rel = PathFileName(file);
-        if (host_) host_->OnPaneActivated(this);
-        SelectNames({rel});
-        PostMessageW(GetAncestor(hwnd_, GA_ROOT), WM_COMMAND, cmd::Duplicate, 0);
+        // direkt mit dem gezogenen Namen duplizieren (nicht über die Markierung: die Liste wird nach dem Ziehen
+        // neu eingelesen, die Markierung war dann manchmal weg -> keine Reaktion)
+        if (host_) {
+            host_->OnPaneActivated(this);
+            host_->OnPaneDuplicate(this, rel);
+        }
         return 0;
     }
     case WM_APP_RENAMESEL: {

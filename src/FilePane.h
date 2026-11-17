@@ -37,6 +37,7 @@ public:
     virtual void OnPaneFocusItemChanged(FilePane* p) = 0;
     virtual void OnPaneSplitButton(FilePane* p) = 0;
     virtual void OnPaneEnlargeButton(FilePane*) {}                       // Liste auf drei Viertel der Spaltenhöhe
+    virtual void OnPaneDuplicate(FilePane*, const std::wstring& /*rel*/) {}   // Datei duplizieren (Ziehen mit Strg)
     virtual void OnPaneBookmarkButton(FilePane* p) = 0;
     virtual void OnPaneOpenItem(FilePane* p) = 0;                       // Eingabe/Doppelklick auf Datei
     virtual void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) = 0;

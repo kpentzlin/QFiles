@@ -41,6 +41,8 @@ public:
     void OnPaneFocusItemChanged(FilePane* p) override;
     void OnPaneSplitButton(FilePane* p) override;
     void OnPaneEnlargeButton(FilePane* p) override;
+    void OnPaneDuplicate(FilePane* p, const std::wstring& rel) override;
+    void DuplicateItems(FilePane& a, const std::vector<std::wstring>& names);
     void OnPaneBookmarkButton(FilePane* p) override;
     void OnPaneOpenItem(FilePane* p) override;
     void OnPaneContextMenu(FilePane* p, POINT screenPt, bool onItems) override;

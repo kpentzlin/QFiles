@@ -48,8 +48,9 @@ public static class W {
       mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(40);
     }
     SetCursorPos(x2, y2); mouse_event(0x0001, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(400);
+    // Strg einen Augenblick vor der Maustaste loslassen (wie oft von Hand)
+    keybd_event(0x11, 0, 2, IntPtr.Zero); System.Threading.Thread.Sleep(120);
     mouse_event(0x0004, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(100);
-    keybd_event(0x11, 0, 2, IntPtr.Zero);
   }
   public static void Key(byte vk) { keybd_event(vk, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(60); keybd_event(vk, 0, 2, IntPtr.Zero); }
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);

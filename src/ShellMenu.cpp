@@ -1140,6 +1140,7 @@ public:
     IFACEMETHODIMP DragEnter(IDataObject* data, DWORD keys, POINTL pt, DWORD* effect) override {
         files_.clear();
         rightButton_ = (keys & MK_RBUTTON) != 0;
+        lastDupTick_ = 0;
         ReadFiles(data);
         if (helper_) {
             POINT p{pt.x, pt.y};
@@ -1168,8 +1169,11 @@ public:
             helper_->Drop(data, &p, *effect);
         }
         if (files_.empty()) ReadFiles(data);
-        // genau eine Datei mit Strg ins eigene Verzeichnis: Duplizieren
-        if (!rightButton_ && DupCase(keys, resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{})) {
+        // genau eine Datei mit Strg ins eigene Verzeichnis: Duplizieren. Strg zählt auch, wenn es bis kurz vor dem
+        // Ablegen gedrückt war (Strg wird oft einen Augenblick vor der Maustaste losgelassen)
+        DropTargetInfo dupInfo = resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{};
+        bool recentCtrl = lastDupTick_ != 0 && GetTickCount64() - lastDupTick_ < 600;
+        if (!rightButton_ && (DupCase(keys, dupInfo) || (recentCtrl && DupCase(keys | MK_CONTROL, dupInfo)))) {
             if (leave_) leave_();
             std::wstring f = files_[0];
             files_.clear();
@@ -1305,7 +1309,14 @@ private:
     DWORD Decide(DWORD keys, POINTL pt, DWORD allowed) {
         if (files_.empty()) return DROPEFFECT_NONE;
         DropTargetInfo info = resolver_ ? resolver_(POINT{pt.x, pt.y}) : DropTargetInfo{};
-        if (!rightButton_ && DupCase(keys, info)) return (allowed & DROPEFFECT_COPY) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        if (!rightButton_ && DupCase(keys, info)) {
+            lastDupTick_ = GetTickCount64();
+            return (allowed & DROPEFFECT_COPY) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        }
+        // Strg gerade erst losgelassen: weiter „Duplizieren“ anzeigen – sonst meldet OLE beim Loslassen der Maustaste
+        // kein Drop (letzter Effekt „keiner“) und es passiert gar nichts
+        if (!rightButton_ && lastDupTick_ != 0 && GetTickCount64() - lastDupTick_ < 600 && DupCase(keys | MK_CONTROL, info))
+            return (allowed & DROPEFFECT_COPY) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
         // Zweifelsfall: Ablage möglich, wenn eines der beiden Ziele geht (beim Ablegen wird gefragt)
         std::wstring target = info.dir;
         if (!info.alt.empty() && !ValidTarget(info.dir)) target = info.alt;
@@ -1328,6 +1339,7 @@ private:
     std::function<void()> done_;
     std::function<void()> leave_;
     std::function<void(const std::wstring&)> duplicate_;
+    ULONGLONG lastDupTick_ = 0;   // Zeitpunkt, zu dem DragOver zuletzt „Duplizieren“ (mit Strg) zeigte
     IDropTargetHelper* helper_ = nullptr;
     std::vector<std::wstring> files_;
     bool rightButton_ = false;

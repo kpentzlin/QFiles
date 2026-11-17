@@ -70,7 +70,14 @@ int KindOf(const std::wstring& p) {
     std::wstring n = ToLower(NormalizeDir(p));
     for (auto& f : StandardFolders())
         if (f == n) return KindStandard;
-    if (IsCloudPath(p)) return KindCloud;
+    if (IsCloudPath(p)) return KindCloud;   // Cloud-Ordner im Benutzerprofil bleiben lila
+    // Unterverzeichnisse der Standardverzeichnisse (z. B. …\AppData\Roaming\Microsoft\Internet Explorer\Quick Launch)
+    // gehören ebenfalls dazu
+    for (auto& f : StandardFolders()) {
+        std::wstring pre = f;
+        if (!pre.empty() && pre.back() != L'\\') pre += L'\\';
+        if (n.size() > pre.size() && n.compare(0, pre.size(), pre) == 0) return KindStandard;
+    }
     return KindLocal;
 }
 
