@@ -1,0 +1,3 @@
+cmd.exe | Programm | 156 Zeilen | Symbol ja | Dateibeschreibung=Windows Command Processor | Format=PE32+ (64 Bit) | Prozessor=x64 (AMD64) | Subsystem=Konsole | Signatur=gültig (Windows-Katalog)
+explorer.exe | Programm | 285 Zeilen | Symbol ja | Dateibeschreibung=Windows Explorer | Format=PE32+ (64 Bit) | Prozessor=x64 (AMD64) | Subsystem=Windows (grafische Oberfläche) | Signatur=gültig (in der Datei)
+kernel32.dll | Programm | 1904 Zeilen | Symbol nein | Dateibeschreibung=Windows NT BASE API Client DLL | Format=PE32+ (64 Bit) | Prozessor=x64 (AMD64) | Subsystem=Konsole | Signatur=gültig (in der Datei)
