@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.29"
+QF_VERSION = "0.1.30"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -53,7 +53,9 @@ DATA = [
         ("Geteilte Liste per Klick auf drei Viertel der Höhe", "ja", "–", "–", "neu in QFiles 0.1.25", False),
         ("Vordefinierte Fensteraufteilungen (Ansichtenmanager)", "teilw.", "ja", "ja",
          "QFiles: feste Anordnung, nur eine/zwei Listen und Split; Idoswin: fünf Ansichten (Explorer, Commander …)", A),
-        ("Layouts speichern und umschalten", "–", "ja", "ja", "Idoswin: Ansicht je Windows-Benutzer", False),
+        ("Layouts speichern und umschalten", "ja", "ja", "ja",
+         "QFiles (neu in 0.1.30): Konfigurationen (Aufteilung, Verzeichnisse, Ansichten) als hell-ockerfarbige "
+         "Lesezeichen; Idoswin: Ansicht je Windows-Benutzer", A),
         ("Registerkarten (Tabs) je Liste", "–", "–", "ja", "SC: Basisordner, Navigationssperre, Farben je Tab", False),
         ("Lesezeichenliste als ständig sichtbare Spalte", "ja", "teilw.", "teilw.",
          "Idoswin: Lesezeichen-Menü und -Symbolleiste; SC: Ordnerfavoriten-Menü", A),
@@ -63,6 +65,7 @@ DATA = [
         ("Lesezeichen nach Art sortieren", "ja", "–", "–", "", False),
         ("Lesezeichen mit gespeichertem Filter", "ja", "–", "teilw.", "neu in QFiles 0.1.20", False),
         ("Lesezeichen mit Sortiervorgabe", "ja", "–", "teilw.", "neu in QFiles 0.1.23 (Kontextmenü „Sortierung“)", False),
+        ("Lesezeichen mit wählbarer Ordnerfarbe", "ja", "–", "?", "neu in QFiles 0.1.30: 14 Farben (Kontextmenü „Symbolfarbe“)", False),
         ("Cloud-Speicher-Ordner erkennen und als Lesezeichen anlegen", "ja", "–", "–", "Dropbox, Google Drive, OneDrive (mehrere Konten)", False),
         ("Linux-Distributionen (WSL) als Lesezeichen unter „Netzwerk“", "ja", "–", "–", "neu in QFiles 0.1.10", False),
         ("Dateien auf ein Lesezeichen ziehen", "ja", "?", "teilw.", "SC: QuickDrop-Symbole als Ziel", False),
@@ -88,6 +91,8 @@ DATA = [
         ("Minimieren in den Infobereich (Tray)", "–", "ja", "–", "", False),
         ("Andockbare Informationsfenster (Ordnerinfo, Laufwerksstatus)", "–", "–", "ja", "", False),
         ("Fenster- und Listenzustand laufend gespeichert (auch nach Absturz erhalten)", "ja", "–", "–", "", False),
+        ("Fensterlage nach geänderter Bildschirmanordnung korrigiert", "ja", "?", "?",
+         "neu in QFiles 0.1.30: Hauptbildschirm, zentriert, volle Höhe, höchstens 4:3", False),
     ]),
     ("Navigation", [
         ("Zurück/Vor je Liste", "ja", "ja", "ja", "SC: je Registerkarte", False),
@@ -122,6 +127,8 @@ DATA = [
          "QFiles: Windows-Shell, sonst WIC bzw. EXIF-Vorschau (HEIC); Vorausladen im Hintergrund (neu in 0.1.12); "
          "Idoswin: eigene Miniaturen für Bilder, Text, PDF", False),
         ("Ansicht „Mit Unterverzeichnissen“ (alle Dateien mit Teilpfad)", "ja", "–", "?", "", False),
+        ("Spaltenbreiten auf einen Klick an den Inhalt anpassen", "ja", "?", "ja",
+         "QFiles (neu in 0.1.30): Doppelklick auf „Details“, Name füllt den Rest", False),
         ("Spalten frei wählen (Explorer- und Metadatenspalten)", "teilw.", "ja", "ja",
          "QFiles: nur Typ, Attribute, Erstellt zuschaltbar", A),
         ("Metadaten-Spalten (Bildgröße, Dauer, Bitrate …)", "–", "ja", "ja", "", False),

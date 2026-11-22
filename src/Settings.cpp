@@ -320,19 +320,36 @@ std::vector<Bookmark> LoadBookmarks(const Config& c) {
     auto paths = c.GetList(L"Lesezeichen", L"Pfad");
     auto filters = c.GetList(L"Lesezeichen", L"Filter");
     auto sorts = c.GetList(L"Lesezeichen", L"Sortierung");
+    auto colors = c.GetList(L"Lesezeichen", L"Symbolfarbe");
+    auto backs = c.GetList(L"Lesezeichen", L"Hintergrund");
+    auto configs = c.GetList(L"Lesezeichen", L"Konfiguration");
     for (size_t i = 0; i < names.size() && i < paths.size(); ++i) {
         int sort = i < sorts.size() ? _wtoi(sorts[i].c_str()) : 0;
-        r.push_back({names[i], paths[i], i < filters.size() && filters[i] != L"-" ? filters[i] : std::wstring(),
-                     sort >= 0 && sort <= 10 ? sort : 0});
+        Bookmark b{names[i], paths[i], i < filters.size() && filters[i] != L"-" ? filters[i] : std::wstring(),
+                   sort >= 0 && sort <= 10 ? sort : 0};
+        int color = i < colors.size() ? _wtoi(colors[i].c_str()) : 0;
+        b.iconColor = color >= 0 && color < 14 ? color : 0;
+        b.whiteBack = i < backs.size() && EqualsI(backs[i], L"weiss");
+        if (i < configs.size() && configs[i] != L"-") {
+            b.config = configs[i];
+            b.path = kConfigBookmarkPath;
+        }
+        r.push_back(b);
     }
     return r;
 }
 
 void SaveBookmarks(Config& c, const std::vector<Bookmark>& b) {
     c.ClearSection(L"Lesezeichen");
-    std::vector<std::wstring> names, paths, filters, sorts;
-    bool anyFilter = false, anySort = false;
+    std::vector<std::wstring> names, paths, filters, sorts, colors, backs, configs;
+    bool anyFilter = false, anySort = false, anyColor = false, anyBack = false, anyConfig = false;
     for (auto& x : b) {
+        colors.push_back(std::to_wstring(x.iconColor));
+        anyColor = anyColor || x.iconColor != 0;
+        backs.push_back(x.whiteBack ? L"weiss" : L"-");
+        anyBack = anyBack || x.whiteBack;
+        configs.push_back(x.config.empty() ? L"-" : x.config);
+        anyConfig = anyConfig || !x.config.empty();
         names.push_back(x.name);
         paths.push_back(x.path);
         filters.push_back(x.filter.empty() ? L"-" : x.filter);
@@ -344,6 +361,9 @@ void SaveBookmarks(Config& c, const std::vector<Bookmark>& b) {
     c.SetList(L"Lesezeichen", L"Pfad", paths);
     if (anyFilter) c.SetList(L"Lesezeichen", L"Filter", filters);
     if (anySort) c.SetList(L"Lesezeichen", L"Sortierung", sorts);
+    if (anyColor) c.SetList(L"Lesezeichen", L"Symbolfarbe", colors);
+    if (anyBack) c.SetList(L"Lesezeichen", L"Hintergrund", backs);
+    if (anyConfig) c.SetList(L"Lesezeichen", L"Konfiguration", configs);
 }
 
 std::vector<FunctionKey> LoadFunctionKeys(const Config& c) {

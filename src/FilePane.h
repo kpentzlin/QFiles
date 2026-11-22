@@ -120,6 +120,8 @@ public:
     // Darstellung
     void SetView(PaneView v);
     PaneView View() const { return view_; }
+    // Ansicht Details mit Spalten Typ…Attr. genau auf den breitesten Eintrag, Name füllt den Rest (Doppelklick „Details“)
+    void OptimizeDetailsColumns();
     void SetSort(SortKey k, bool descending);
     SortKey Sort() const { return sortKey_; }
     bool SortDescending() const { return sortDesc_; }
@@ -253,6 +255,7 @@ private:
     void StopWatch();
     void RequestThumb(int index, bool background = false);
     void PrefetchThumbs();          // weitere Miniaturen im Hintergrund laden (Blättern ohne Wartezeit)
+    std::wstring ColumnText(Item& it, int colId);   // Text einer Zelle (Spalten-ID)
     std::wstring TileLabel(Item& it);   // Kachelbeschriftung: Name gekürzt („…“), Endung immer sichtbar
     // Markieren durch Ziehen (Liste/Details/„Mit Unterverzeichnissen“, wie Idoswin Pro): Auswahlrahmen, der neben den
     // Namen beginnt und die Dateien erfasst, deren Name (Symbol und Text) in den Rahmen ragt

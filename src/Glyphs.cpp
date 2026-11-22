@@ -1,7 +1,9 @@
 #include "Glyphs.h"
 
+#include <shellapi.h>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace qf {
 
@@ -255,6 +257,198 @@ void DrawAsterisk(HDC dc, const RECT& rc, COLORREF color, COLORREF back) {
     SelectObject(mem, old);
     DeleteObject(bmp);
     DeleteDC(mem);
+}
+
+
+void RenderAlphaCell(uint32_t* px, int stride, int x0, int sz, const std::function<void(HDC, const RECT&)>& draw) {
+    BITMAPINFO bi{};
+    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz, -sz, 1, 32, BI_RGB};
+    void* bits[2] = {};
+    HBITMAP bmp[2] = {CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits[0], nullptr, 0),
+                      CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits[1], nullptr, 0)};
+    if (!bmp[0] || !bmp[1] || !bits[0] || !bits[1]) {
+        for (auto b : bmp)
+            if (b) DeleteObject(b);
+        return;
+    }
+    HDC dc = CreateCompatibleDC(nullptr);
+    RECT rc{0, 0, sz, sz};
+    for (int k = 0; k < 2; ++k) {
+        HGDIOBJ old = SelectObject(dc, bmp[k]);
+        FillRect(dc, &rc, (HBRUSH)GetStockObject(k == 0 ? BLACK_BRUSH : WHITE_BRUSH));
+        draw(dc, rc);
+        GdiFlush();
+        SelectObject(dc, old);
+    }
+    DeleteDC(dc);
+    auto* b = (const uint32_t*)bits[0];
+    auto* w = (const uint32_t*)bits[1];
+    for (int y = 0; y < sz; ++y)
+        for (int x = 0; x < sz; ++x) {
+            uint32_t cb = b[y * sz + x], cw = w[y * sz + x];
+            int diff = 0, ch[3];
+            for (int c = 0; c < 3; ++c) {
+                int vb = (cb >> (8 * c)) & 0xFF, vw = (cw >> (8 * c)) & 0xFF;
+                diff += vw - vb;
+                ch[c] = vb;
+            }
+            int alpha = std::clamp(255 - diff / 3, 0, 255);
+            uint32_t out = 0;
+            if (alpha > 0) {
+                for (int c = 0; c < 3; ++c) out |= (uint32_t)std::min(255, ch[c] * 255 / alpha) << (8 * c);
+                out |= (uint32_t)alpha << 24;
+            }
+            px[y * stride + x0 + x] = out;
+        }
+    DeleteObject(bmp[0]);
+    DeleteObject(bmp[1]);
+}
+
+void DrawConfigSymbol(HDC dc, const RECT& rc) {
+    int sz = std::min(rc.right - rc.left, rc.bottom - rc.top);
+    int x0 = rc.left + (rc.right - rc.left - sz) / 2, y0 = rc.top + (rc.bottom - rc.top - sz) / 2;
+    int lw = std::max(1, sz / 16);
+    int l = x0 + lw / 2, r = x0 + sz - (lw + 1) / 2;
+    int t = y0 + sz / 8, b = y0 + sz - sz / 8;
+    const COLORREF line = RGB(70, 60, 45), title = RGB(200, 150, 62), active = RGB(205, 228, 250);
+    HBRUSH white = CreateSolidBrush(RGB(255, 255, 255)), tb = CreateSolidBrush(title), ab = CreateSolidBrush(active);
+    RECT all{l, t, r, b};
+    FillRect(dc, &all, white);
+    int th = std::max(2, sz * 3 / 16);
+    RECT bar{l, t, r, t + th};
+    FillRect(dc, &bar, tb);
+    int mx = (l + r) / 2, my = (t + th + b) / 2;
+    RECT act{mx, t + th, r, my};
+    FillRect(dc, &act, ab);
+    HPEN pen = CreatePen(PS_SOLID, lw, line);
+    {
+        GdiSel sp(dc, pen), sb(dc, GetStockObject(NULL_BRUSH));
+        Rectangle(dc, l, t, r + 1, b + 1);
+        MoveToEx(dc, l, t + th, nullptr);
+        LineTo(dc, r, t + th);
+        MoveToEx(dc, mx, t + th, nullptr);
+        LineTo(dc, mx, b);
+        MoveToEx(dc, mx, my, nullptr);
+        LineTo(dc, r, my);
+    }
+    DeleteObject(pen);
+    DeleteObject(white);
+    DeleteObject(tb);
+    DeleteObject(ab);
+}
+
+const wchar_t* FolderColorName(int index) {
+    static const wchar_t* names[kFolderColorCount] = {L"gelb",  L"hell-ocker", L"braun",      L"orange", L"hellrot",
+                                                      L"rot",   L"hellgrün",   L"grün",       L"hellblau", L"blau",
+                                                      L"helltürkis", L"türkis", L"hell-lila", L"lila"};
+    return index >= 0 && index < kFolderColorCount ? names[index] : L"";
+}
+
+namespace {
+
+void RgbToHsl(double r, double g, double b, double& h, double& s, double& l) {
+    double mx = std::max({r, g, b}), mn = std::min({r, g, b});
+    l = (mx + mn) / 2;
+    if (mx - mn < 1e-6) {
+        h = s = 0;
+        return;
+    }
+    double d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx == r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (mx == g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+}
+
+double HueToRgb(double p, double q, double t) {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+    if (t < 0.5) return q;
+    if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+    return p;
+}
+
+void HslToRgb(double h, double s, double l, double& r, double& g, double& b) {
+    if (s <= 0) {
+        r = g = b = l;
+        return;
+    }
+    double q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q, hh = h / 360;
+    r = HueToRgb(p, q, hh + 1.0 / 3);
+    g = HueToRgb(p, q, hh);
+    b = HueToRgb(p, q, hh - 1.0 / 3);
+}
+
+} // namespace
+
+HICON CreateTintedFolderIcon(int size, int index) {
+    // Zielfarben (mittlerer Farbton des Ordners); Index wie FolderColorName
+    static const COLORREF targets[kFolderColorCount] = {
+        0,                   RGB(226, 196, 136), RGB(150, 98, 52),  RGB(246, 148, 36),  RGB(246, 142, 142),
+        RGB(214, 44, 44),    RGB(150, 214, 128), RGB(56, 158, 60),  RGB(140, 190, 242), RGB(46, 108, 212),
+        RGB(128, 222, 216),  RGB(24, 162, 164),  RGB(202, 166, 236), RGB(138, 66, 190)};
+    if (index <= 0 || index >= kFolderColorCount || size <= 0) return nullptr;
+    std::vector<uint32_t> px((size_t)size * size, 0);
+    RenderAlphaCell(px.data(), size, 0, size, [&](HDC d, const RECT&) {
+        SHSTOCKICONINFO si{sizeof(si)};
+        UINT flags = SHGSI_ICON | (size > GetSystemMetrics(SM_CXSMICON) ? SHGSI_LARGEICON : SHGSI_SMALLICON);
+        if (SUCCEEDED(SHGetStockIconInfo(SIID_FOLDER, flags, &si))) {
+            DrawIconEx(d, 0, 0, si.hIcon, size, size, 0, nullptr, DI_NORMAL);
+            DestroyIcon(si.hIcon);
+        }
+    });
+    // Ordnerfläche: gelbe bis orange Bildpunkte (Farbton 15°–75°, nicht grau); deren mittlere Helligkeit und Sättigung
+    // werden auf die Zielfarbe gelegt, Abstufungen (Schattierung, Kanten) bleiben erhalten
+    struct Hsl { double h, s, l; };
+    std::vector<Hsl> hsl(px.size());
+    std::vector<bool> tint(px.size(), false);
+    double sumL = 0, sumS = 0, wsum = 0;
+    for (size_t i = 0; i < px.size(); ++i) {
+        uint32_t c = px[i];
+        double a = (c >> 24) / 255.0;
+        if (a <= 0) continue;
+        Hsl& v = hsl[i];
+        RgbToHsl(((c >> 16) & 0xFF) / 255.0, ((c >> 8) & 0xFF) / 255.0, (c & 0xFF) / 255.0, v.h, v.s, v.l);
+        if (v.s > 0.15 && v.h >= 15 && v.h <= 75) {
+            tint[i] = true;
+            sumL += v.l * a;
+            sumS += v.s * a;
+            wsum += a;
+        }
+    }
+    if (wsum <= 0) return nullptr;
+    double l0 = sumL / wsum, s0 = std::max(0.05, sumS / wsum);
+    COLORREF t = targets[index];
+    double th, ts, tl;
+    RgbToHsl(GetRValue(t) / 255.0, GetGValue(t) / 255.0, GetBValue(t) / 255.0, th, ts, tl);
+    for (size_t i = 0; i < px.size(); ++i) {
+        if (!tint[i]) continue;
+        const Hsl& v = hsl[i];
+        double l = std::clamp(tl + (v.l - l0), 0.0, 1.0);
+        double s = std::clamp(ts * v.s / s0, 0.0, 1.0);
+        double r, g, b;
+        HslToRgb(th, s, l, r, g, b);
+        px[i] = (px[i] & 0xFF000000u) | ((uint32_t)std::lround(r * 255) << 16) | ((uint32_t)std::lround(g * 255) << 8) |
+                (uint32_t)std::lround(b * 255);
+    }
+    BITMAPINFO bi{};
+    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), size, -size, 1, 32, BI_RGB};
+    void* bits = nullptr;
+    HBITMAP color = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!color || !bits) {
+        if (color) DeleteObject(color);
+        return nullptr;
+    }
+    memcpy(bits, px.data(), px.size() * 4);
+    std::vector<BYTE> maskBits((size_t)((size + 15) / 16 * 2) * size, 0);
+    HBITMAP mask = CreateBitmap(size, size, 1, 1, maskBits.data());
+    ICONINFO ii{TRUE, 0, 0, mask, color};
+    HICON icon = CreateIconIndirect(&ii);
+    DeleteObject(color);
+    DeleteObject(mask);
+    return icon;
 }
 
 } // namespace qf

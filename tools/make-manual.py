@@ -62,6 +62,11 @@ FIGURES = {
         ("screenshot32.png", "Werkzeugleiste anpassen", WIN),
         ("screenshot34.png", "Markieren durch Ziehen: Auswahlrahmen neben den Namen", WIN),
         ("screenshot39.png", "Mittlere Maustaste auf einer Datei: Auswahl „Öffnen mit“", WIN),
+        ("screenshot51.png", "Lesezeichen „Sub“ mit rotem Ordnersymbol; Kontextmenü mit dem Untermenü „Symbolfarbe“", WIN),
+        ("screenshot52.png", "Konfiguration speichern: Abfrage des Namens", WIN),
+        ("screenshot53.png", "Konfiguration aufgerufen; sie steht hell-ocker am Ende der Lesezeichenliste", WIN),
+        ("screenshot54.png", "Nach einem Doppelklick auf „Details“: Spalten Typ bis Attr. passend, Attr. am rechten Rand", WIN),
+        ("screenshot55.png", "Start nach geänderter Bildschirmanordnung: Hauptbildschirm, zentriert, volle Höhe", FULL),
     ],
     "Favoriten": [
         ("screenshot24.png", "Favoriten in Liste 1 (hellgelb, mit Spalte „Verzeichnis“)", WIN),

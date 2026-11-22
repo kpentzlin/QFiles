@@ -201,10 +201,26 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     bei den Standardverzeichnissen), Cloud-Speicher (Dropbox, Google Drive,
     OneDrive) **lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
     Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**, Smartphones, Tablets und Kameras (MTP)
-    in einem **etwas dunkleren Hellrot**.
+    in einem **etwas dunkleren Hellrot**, gespeicherte Konfigurationen **hell-ocker**.
+  - Bei Unterverzeichnissen von Standardverzeichnissen lässt sich über das Kontextmenü **Hintergrund** wählen, ob sie
+    **hellblau** (wie die Standardverzeichnisse) oder **weiß** (wie lokale Verzeichnisse) erscheinen; danach richtet
+    sich auch die Gruppe beim Sortieren.
+  - **Symbolfarbe:** Lesezeichen mit dem normalen Ordnersymbol (also nicht Filter, Papierkorb, Laufwerk, Netzwerk,
+    FTP usw.) lassen sich über das Kontextmenü umfärben: gelb (wie bisher), hell-ocker, braun, orange, hellrot, rot,
+    hellgrün, grün, hellblau, blau, helltürkis, türkis, hell-lila oder lila. Das Ordnersymbol erscheint danach in
+    dieser Farbe, im Namen und in der grauen Symbolspalte.
   - **Lesezeichen → Sortieren…** (nach Rückfrage): zuerst „Netzwerk“, dann die Standardverzeichnisse, die
-    Cloud-Speicher, die FTP/SFTP/WebDAV-Zugänge (gemeinsam), die übrigen Netzwerkpfade, die Geräte (MTP) und zuletzt
-    die lokalen Verzeichnisse – jeweils alphabetisch.
+    Cloud-Speicher, die FTP/SFTP/WebDAV-Zugänge (gemeinsam), die übrigen Netzwerkpfade, die Geräte (MTP), die lokalen
+    Verzeichnisse und zuletzt die Konfigurationen – jeweils alphabetisch.
+  - **Konfigurationen:** Die Schaltfläche **Konfiguration speichern** (Fenster mit drei Listen; in der Werkzeugleiste
+    links neben „P“, auch im Menü *Lesezeichen*) fragt nach einem Namen (Abbrechen möglich) und speichert die
+    Aufteilung der Listen (eine/zwei Listen, geteilt, Größenverhältnisse), die aktive Liste sowie Verzeichnis und
+    Ansicht jeder sichtbaren Liste. Eine Dateianzeige (F11) zählt dabei nicht, maßgeblich ist die Liste darunter. Gibt
+    es den Namen schon, fragt QFiles, ob die Konfiguration ersetzt werden soll (bei „Nein“ bleibt alles unverändert).
+    Konfigurationen stehen hell-ocker mit diesem Symbol am Ende der Lesezeichenliste (die graue Symbolspalte bleibt
+    leer); der Tooltip beschreibt Aufteilung, Verzeichnisse und Ansichten. Ein Klick stellt die Konfiguration her und
+    beendet eine Dateianzeige (F11). Die Verzeichnisse wirken dabei so, als wären sie in der jeweiligen Liste einzeln
+    neu gewählt worden (Zurück/Vor, zuletzt besuchte Verzeichnisse); bereits angezeigte bleiben unverändert.
   - **Lesezeichen → Cloud-Speicher hinzufügen…** findet die Ordner der Desktop-Programme von Dropbox, Google Drive und
     Microsoft OneDrive (auch mehrere Konten, z. B. „OneDrive – Firma“) und legt sie als Lesezeichen an.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
@@ -242,6 +258,10 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
   Codec installiert ist), und bei Handyfotos im Format HEIC/HEIF ohne HEVC-Decoder nimmt es das in den EXIF-Daten
   eingebettete Vorschaubild (falls vorhanden). Für vollständige HEIC-Bilder unter Windows: „HEIF-Bilderweiterungen“
   und „HEVC-Videoerweiterungen“ aus dem Microsoft Store.
+- **Doppelklick auf „Details“** in der Werkzeugleiste: Die aktive Liste schaltet auf „Details“ und passt die Spalten
+  an – von rechts nach links Attr., Geändert (bzw. Erstellt oder beide), Größe und Typ werden genau so breit wie ihr
+  breitester Eintrag (alle Zeilen, auch die erst nach dem Blättern sichtbaren; mindestens so breit wie die
+  Überschrift), Attr. schließt am rechten Rand ab, der Name erhält die übrige Breite.
 - Ansichten: Details, Liste, Symbole, Miniaturansicht und
   **Mit Unterverzeichnissen** (Strg+Umschalt+5): wie Details, aber statt „Name“ die Spalten „Dateiname“ und
   „Unterverzeichnis“. Gezeigt werden alle Dateien des Verzeichnisses und seiner Unterverzeichnisse; „Unterverzeichnis“
@@ -600,12 +620,16 @@ Weitere:
 Gespeichert werden:
 
 - alle Optionen,
-- Fensterposition und -größe,
+- Fensterposition und -größe. Passt das Fenster beim Start nicht mehr vollständig auf einen der angeschlossenen
+  Bildschirme (z. B. nach dem Abstecken eines Bildschirms oder einer geänderten Auflösung), öffnet QFiles es auf dem
+  Hauptbildschirm zentriert in voller Höhe, höchstens vier Drittel so breit wie hoch (auf schmaleren Bildschirmen in
+  voller Breite); Taskleisten bleiben frei,
 - Breiten von Baum und Lesezeichenliste,
 - Teilungsverhältnisse und Split-Zustand,
 - die zuletzt in den **vier Listenfenstern** angezeigten Verzeichnisse mit Ansicht, Sortierung, Spaltenbreiten,
   zuletzt gewähltem Filter, Verzeichnisverlauf und Zurück/Vor-Liste (im privaten Modus der Stand beim Einschalten),
-- die Lesezeichen (mit Filter) und die Favoriten, der Verlauf der Filtermasken,
+- die Lesezeichen (mit Filter, Sortierung, Symbolfarbe, Hintergrund) und die Konfigurationen, die Favoriten, der Verlauf
+  der Filtermasken,
 - die Funktionstasten,
 - der Befehlszeilen-Verlauf,
 - Größe, Position und Spaltenbreiten des Suchfensters.

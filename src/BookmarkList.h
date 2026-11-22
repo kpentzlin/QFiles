@@ -21,6 +21,7 @@ public:
         std::function<void()> changed;     // Liste geändert -> speichern
         std::function<void()> activated;
         std::function<std::wstring()> currentDir; // Verzeichnis der aktiven Liste
+        std::function<void(const std::wstring& config)> openConfig;   // Konfigurations-Lesezeichen aufrufen
     };
     bool Create(HWND parent, int id, Callbacks cb);
     HWND Hwnd() const { return list_; }
@@ -28,6 +29,10 @@ public:
     const std::vector<Bookmark>& Get() const { return items_; }
     int FindPath(const std::wstring& path) const;   // -1 wenn nicht vorhanden
     void Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter = L"", int sort = 0);
+    // Konfigurationen (hell-ocker, Symbol wie die Schaltfläche „Konfiguration speichern“)
+    int FindConfig(const std::wstring& name) const;   // -1 wenn nicht vorhanden
+    void AppendConfig(const std::wstring& name, const std::wstring& config);
+    void SetConfig(int index, const std::wstring& config);
     void DeleteSelected();
     void RenameSelected();
     void MoveSelected(int delta);
@@ -59,6 +64,11 @@ private:
     std::wstring RowFilter(int row) const;   // Filter des Lesezeichens einer Zeile ("" = ohne)
     int RowSort(int row) const;              // Sortiervorgabe des Lesezeichens einer Zeile (0 = keine)
     std::wstring RowPath(int row) const;   // Ziel einer Zeile (Lesezeichen, „Favoriten“, „Linux“), "" = keins
+    std::wstring RowConfig(int row) const; // Konfiguration einer Zeile ("" = keine)
+    bool OpenRow(int row, bool other);     // Zeile öffnen (Verzeichnis bzw. Konfiguration)
+    bool UsesFolderIcon(size_t i) const;   // Lesezeichen mit dem normalen Ordnersymbol (Symbolfarbe wählbar)
+    HICON TintedFolder(int color);         // umgefärbtes Ordnersymbol (zwischengespeichert)
+    void FreeTinted();
     void DrawFavoritesRow(NMLVCUSTOMDRAW* cd);
     int IconColumnWidth() const;
     int IconColumnItemAt(POINT screenPt) const;
@@ -75,6 +85,9 @@ private:
     std::vector<int> rows_;    // Zeile -> Index in items_ bzw. kRowFavorites/kRowLinux
     std::vector<std::wstring> wsl_;   // Linux-Distributionen (WSL); nicht leer -> Eintrag „Linux“ unter „Netzwerk“
     int linuxIcon_ = -1;
+    int folderIcon_ = -1;      // Index des Ordnersymbols in der System-Bildliste
+    std::vector<HICON> tinted_;   // umgefärbte Ordnersymbole je Farbe
+    int tintedSize_ = 0;
     size_t favCount_ = 0;      // Anzahl der Favoriten (Tooltip)
 };
 

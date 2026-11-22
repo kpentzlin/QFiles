@@ -25,6 +25,7 @@
 #include "Thumbnail.h"
 #include "ArchiveCore.h"
 #include "Drives.h"
+#include "Configuration.h"
 #include "Location.h"
 #include "PaneFilter.h"
 #include "Settings.h"
@@ -524,6 +525,27 @@ static void TestLocations() {
     CHECK(LocationParent(L"mtp://Pixel/").empty());
     CHECK(LocationFileName(L"mtp://Pixel/") == L"Pixel" && LocationFileName(L"mtp://Pixel/A/Camera") == L"Camera");
     CHECK(LocationCombine(L"mtp://Pixel/", L"A") == L"mtp://Pixel/A");
+    // Konfigurationen: Aufteilung, Verzeichnisse (auch mit Trennzeichen) und Ansichten bleiben erhalten
+    {
+        LayoutConfig c;
+        c.twoPanes = true;
+        c.split[1] = true;
+        c.colRatio = 0.4;
+        c.rowRatio[1] = 0.75;
+        c.active = 3;
+        c.panes[0] = {true, 0, L"C:\\Daten"};
+        c.panes[1] = {true, 4, L"D:\\a|b;c=d%e"};
+        c.panes[3] = {true, 1, L"mtp://Pixel 7/Interner Speicher"};
+        LayoutConfig r;
+        CHECK(LayoutConfig::FromString(c.ToString(), r));
+        CHECK(r.twoPanes && !r.split[0] && r.split[1] && r.active == 3);
+        CHECK(r.colRatio > 0.399 && r.colRatio < 0.401 && r.rowRatio[1] > 0.749 && r.rowRatio[1] < 0.751);
+        CHECK(r.panes[0].used && r.panes[0].dir == L"C:\\Daten" && r.panes[0].view == 0);
+        CHECK(r.panes[1].dir == L"D:\\a|b;c=d%e" && r.panes[1].view == 4);
+        CHECK(!r.panes[2].used && r.panes[3].dir == L"mtp://Pixel 7/Interner Speicher" && r.panes[3].view == 1);
+        CHECK(!LayoutConfig::FromString(L"v1|zwei=1", r) && !LayoutConfig::FromString(L"", r));
+        CHECK(r.Describe().find(L"Rechts unten: mtp://Pixel 7/Interner Speicher (Liste) – aktiv") != std::wstring::npos);
+    }
     CHECK(NormalizeSpecialLocation(L"mtp://Pixel\\A\\B") == L"mtp://Pixel/A/B");
     CHECK(LocationParent(L"sftp://k@h/a/b") == L"sftp://k@h/a");
     CHECK(LocationParent(L"sftp://k@h/a") == L"sftp://k@h/");

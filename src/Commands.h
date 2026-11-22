@@ -68,6 +68,7 @@ enum : int {
     ToggleFKeyBar,
     ToggleCommandLine,
     ToggleStatusBar,
+    ConfigSave,        // Konfiguration speichern (Aufteilung, Verzeichnisse, Ansichten)
 
     // Gehe zu
     GoBack = 40300,

@@ -122,7 +122,13 @@ struct Bookmark {
     std::wstring path;
     std::wstring filter;   // gespeicherter Listenfilter (PaneFilter::ToString), leer = ohne Filter
     int sort = 0;          // Sortierung beim Öffnen (FilterSort, 0 = keine Vorgabe); nur ohne Filter
+    int iconColor = 0;     // Farbe des Ordnersymbols (FolderColorName, 0 = gelb)
+    bool whiteBack = false;   // Unterverzeichnis eines Standardverzeichnisses: weiß statt hellblau
+    std::wstring config;   // gespeicherte Konfiguration (LayoutConfig::ToString); nicht leer = Konfigurations-Lesezeichen
 };
+
+// Pfad der Konfigurations-Lesezeichen (Platzhalter; das Ziel steht in Bookmark::config)
+inline constexpr const wchar_t* kConfigBookmarkPath = L"Konfiguration:";
 
 struct FunctionKey {
     std::wstring label;      // Beschriftung

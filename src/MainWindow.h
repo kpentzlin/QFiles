@@ -95,6 +95,14 @@ private:
     void ReloadOthers();
     void AddBookmarkFor(FilePane& p);
     bool OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter, int sort = 0);
+    // Konfigurationen: Aufteilung, Verzeichnisse und Ansichten der sichtbaren Listen speichern bzw. herstellen
+    void SaveConfiguration();
+    std::wstring CaptureConfiguration() const;
+    void ApplyConfiguration(const std::wstring& config);
+    // Doppelklick auf „Details“: Ansicht Details, Spalten Typ…Attr. auf den Inhalt, Name füllt den Rest
+    void OptimizeDetails();
+    DWORD lastDetailsClick_ = 0;   // Zeitpunkt des letzten Klicks auf „Details“ (Doppelklick erkennen)
+    DWORD lastDetailsOptimize_ = 0;
     void RunCommandLine();
     void CopyOrMove(bool move);
     void DeleteSelection(bool permanent);

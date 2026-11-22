@@ -1721,15 +1721,9 @@ int FilePane::ItemIconIndex(Item& it) {
     return it.icon;
 }
 
-void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
-    int i = di->item.iItem;
-    if (i < 0 || i >= (int)items_.size()) return;
-    Item& it = items_[i];
-    if (di->item.mask & LVIF_TEXT) {
-        std::wstring s;
-        int sub = di->item.iSubItem;
-        int colId = (sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub;
-        switch (colId) {
+std::wstring FilePane::ColumnText(Item& it, int colId) {
+    std::wstring s;
+    switch (colId) {
         case ColName: s = view_ == PaneView::Thumbnails && !it.isParent ? TileLabel(it) : DispName(it); break;
         case ColSubdir: s = DispDir(it); break;
         case ColExt:
@@ -1756,7 +1750,75 @@ void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
         case ColAttr:
             if (!it.isParent) s = FormatAttributes(it.e.attributes);
             break;
+    }
+    return s;
+}
+
+// Doppelklick auf „Details“: Ansicht Details; von rechts nach links Attr., Erstellt/Geändert, Größe und Typ genau so
+// breit wie ihr breitester Eintrag (alle Zeilen, auch die erst nach dem Blättern sichtbaren), Attr. schließt am rechten
+// Rand ab, der Name erhält die übrige Breite
+void FilePane::OptimizeDetailsColumns() {
+    if (view_ != PaneView::Details) SetView(PaneView::Details);
+    if (view_ != PaneView::Details || !list_) return;
+    HWND header = ListView_GetHeader(list_);
+    int n = Header_GetItemCount(header);
+    HDC dc = GetDC(list_);
+    HGDIOBJ oldFont = SelectObject(dc, (HFONT)SendMessageW(list_, WM_GETFONT, 0, 0));
+    HFONT headerFont = (HFONT)SendMessageW(header, WM_GETFONT, 0, 0);
+    auto textWidth = [&](const std::wstring& s) {
+        SIZE sz{};
+        if (!s.empty()) GetTextExtentPoint32W(dc, s.c_str(), (int)s.size(), &sz);
+        return (int)sz.cx;
+    };
+    const int pad = ToPx(14);   // Innenabstand der Zellen links und rechts
+    int total = 0, nameCol = -1;
+    for (int c = 0; c < n; ++c) {
+        LVCOLUMNW col{};
+        col.mask = LVCF_SUBITEM;
+        if (!ListView_GetColumn(list_, c, &col)) continue;
+        int id = col.iSubItem;
+        if (id == ColName) {
+            nameCol = c;
+            continue;
         }
+        int w = 0;
+        for (auto& it : items_) w = std::max(w, textWidth(ColumnText(it, id)));
+        // Spaltenüberschrift lesbar lassen
+        wchar_t title[64] = {};
+        HDITEMW hi{};
+        hi.mask = HDI_TEXT;
+        hi.pszText = title;
+        hi.cchTextMax = 64;
+        Header_GetItem(header, c, &hi);
+        HGDIOBJ f = headerFont ? SelectObject(dc, headerFont) : nullptr;
+        int tw = textWidth(title);
+        if (f) SelectObject(dc, f);
+        w = std::max(w, tw) + pad;
+        ListView_SetColumnWidth(list_, c, w);
+        total += w;
+    }
+    SelectObject(dc, oldFont);
+    ReleaseDC(list_, dc);
+    if (nameCol >= 0) {
+        RECT rc{};
+        GetClientRect(list_, &rc);
+        ListView_SetColumnWidth(list_, nameCol, std::max<int>(ToPx(60), rc.right - rc.left - total));
+        // Falls sich dadurch die senkrechte Bildlaufleiste ein- oder ausgeblendet hat: erneut anpassen
+        RECT rc2{};
+        GetClientRect(list_, &rc2);
+        if (rc2.right != rc.right) ListView_SetColumnWidth(list_, nameCol, std::max<int>(ToPx(60), rc2.right - rc2.left - total));
+    }
+    CaptureColumnWidths();
+}
+
+void FilePane::OnGetDispInfo(NMLVDISPINFOW* di) {
+    int i = di->item.iItem;
+    if (i < 0 || i >= (int)items_.size()) return;
+    Item& it = items_[i];
+    if (di->item.mask & LVIF_TEXT) {
+        int sub = di->item.iSubItem;
+        int colId = (sub >= 0 && sub < (int)colIds_.size()) ? colIds_[sub] : sub;
+        std::wstring s = ColumnText(it, colId);
         CopyToBuf(di->item.pszText, di->item.cchTextMax, s);
     }
     if (di->item.mask & LVIF_IMAGE) {

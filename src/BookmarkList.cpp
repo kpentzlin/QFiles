@@ -2,6 +2,7 @@
 #include "RecycleBin.h"
 #include "App.h"
 #include "Cloud.h"
+#include "Configuration.h"
 #include "Favorites.h"
 #include "Glyphs.h"
 #include "Location.h"
@@ -22,7 +23,8 @@ namespace qf {
 
 namespace {
 enum : int { MenuOpen = 1, MenuOpenOther, MenuRename, MenuChangePath, MenuUp, MenuDown, MenuDelete, MenuAddCurrent, MenuNewFtp, MenuSort,
-             MenuSortPreset = 100 /* bis 110: Sortiervorgabe 0…10 */ };
+             MenuSortPreset = 100 /* bis 110: Sortiervorgabe 0…10 */, MenuIconColor = 120 /* bis 133: Symbolfarbe */,
+             MenuBackBlue = 140, MenuBackWhite = 141 };
 
 int StockIndex(SHSTOCKICONID id) {
     SHSTOCKICONINFO sii{sizeof(sii)};
@@ -37,8 +39,10 @@ const COLORREF kRemoteBack = RGB(220, 244, 220);    // hellgrün: FTP/SFTP
 const COLORREF kWebDavBack = RGB(234, 250, 234);    // noch heller grün: WebDAV
 const COLORREF kStandardBack = RGB(228, 240, 253);  // hellblau: Windows-Standardverzeichnisse
 const COLORREF kCloudBack = RGB(226, 210, 248);     // hell-lila: Dropbox, Google Drive, OneDrive
+const COLORREF kConfigBack = RGB(243, 229, 199);    // hell-ocker: gespeicherte Konfigurationen
 
-enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3, KindWebDav = 4, KindCloud = 5, KindMtp = 6 };
+enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3, KindWebDav = 4, KindCloud = 5, KindMtp = 6,
+            KindConfig = 7 };
 
 // Windows-Standardverzeichnisse (Benutzerordner, öffentliche Ordner, Systemordner)
 const std::vector<std::wstring>& StandardFolders() {
@@ -64,7 +68,9 @@ const std::vector<std::wstring>& StandardFolders() {
     return list;
 }
 
-int KindOf(const std::wstring& p) {
+// subdir: true, wenn p nur als Unterverzeichnis eines Standardverzeichnisses zu KindStandard zählt
+int KindOf(const std::wstring& p, bool* subdir = nullptr) {
+    if (subdir) *subdir = false;
     if (IsRecycleBinLocation(p)) return KindStandard;   // Papierkorb: bei den Windows-Standardverzeichnissen
     if (IsMtpUrl(p)) return KindMtp;
     if (IsWebDavUrl(p)) return KindWebDav;
@@ -79,9 +85,25 @@ int KindOf(const std::wstring& p) {
     for (auto& f : StandardFolders()) {
         std::wstring pre = f;
         if (!pre.empty() && pre.back() != L'\\') pre += L'\\';
-        if (n.size() > pre.size() && n.compare(0, pre.size(), pre) == 0) return KindStandard;
+        if (n.size() > pre.size() && n.compare(0, pre.size(), pre) == 0) {
+            if (subdir) *subdir = true;
+            return KindStandard;
+        }
     }
     return KindLocal;
+}
+
+// Art eines Lesezeichens: Konfiguration; Unterverzeichnis eines Standardverzeichnisses wahlweise weiß (lokal)
+int KindOfBookmark(const Bookmark& b) {
+    if (!b.config.empty()) return KindConfig;
+    bool subdir = false;
+    int k = KindOf(b.path, &subdir);
+    return k == KindStandard && subdir && b.whiteBack ? KindLocal : k;
+}
+
+bool IsStandardSubdir(const std::wstring& p) {
+    bool subdir = false;
+    return KindOf(p, &subdir) == KindStandard && subdir;
 }
 
 COLORREF KindColor(int k) {
@@ -92,6 +114,7 @@ COLORREF KindColor(int k) {
     case KindStandard: return kStandardBack;
     case KindCloud: return kCloudBack;
     case KindMtp: return kMtpBack;
+    case KindConfig: return kConfigBack;
     }
     return CLR_DEFAULT;
 }
@@ -138,7 +161,7 @@ bool BookmarkList::Create(HWND parent, int id, Callbacks cb) {
             ht.pt = pt;
             ScreenToClient(list_, &ht.pt);
             int i = ItemOfRow(ListView_HitTest(list_, &ht));
-            if (i >= 0 && i < (int)items_.size() && !IsVirtualLocation(items_[i].path) &&
+            if (i >= 0 && i < (int)items_.size() && items_[i].config.empty() && !IsVirtualLocation(items_[i].path) &&
                 !IsRecycleBinLocation(items_[i].path))
                 return items_[i].path;
             return L"";
@@ -263,13 +286,16 @@ void BookmarkList::Rebuild(int select) {
             linuxDone = true;
         }
     }
+    folderIcon_ = folder;
     kinds_.assign(items_.size(), 0);
     icons_.assign(items_.size(), folder);
     for (size_t i = 0; i < items_.size(); ++i) {
         const std::wstring& p = items_[i].path;
         int icon = folder;
-        kinds_[i] = KindOf(p);
-        if (kinds_[i] == KindMtp) {
+        kinds_[i] = KindOfBookmark(items_[i]);
+        if (kinds_[i] == KindConfig) {
+            icon = -1;   // Symbol zeichnet NM_CUSTOMDRAW; die graue Symbolspalte bleibt leer
+        } else if (kinds_[i] == KindMtp) {
             const MtpDevice* d = MtpDeviceForUrl(p);
             icon = StockIndex(d && d->camera ? SIID_DEVICECAMERA : SIID_DEVICECELLPHONE);
         } else if (kinds_[i] == KindRemote || kinds_[i] == KindWebDav) {
@@ -294,7 +320,10 @@ void BookmarkList::Rebuild(int select) {
         // „Favoriten“: Symbol und Hintergrund zeichnet NM_CUSTOMDRAW (Ordnersymbol nur für die Zeilengeometrie)
         it.pszText = const_cast<wchar_t*>(k == kRowFavorites ? kFavoritesLocation : k == kRowLinux ? L"Linux" : items_[k].name.c_str());
         it.iImage = k == kRowFavorites ? folder : k == kRowLinux ? linuxIcon_ : icons_[k];
-        if (k >= 0 && !items_[k].filter.empty()) it.iImage = I_IMAGENONE;   // Trichter zeichnet NM_CUSTOMDRAW
+        // Trichter, Konfigurationssymbol und farbige Ordner zeichnet NM_CUSTOMDRAW
+        if (k >= 0 && (!items_[k].filter.empty() || kinds_[k] == KindConfig ||
+                       (items_[k].iconColor > 0 && UsesFolderIcon((size_t)k))))
+            it.iImage = I_IMAGENONE;
         ListView_InsertItem(list_, &it);
     }
     if (select >= 0 && select < (int)items_.size()) {
@@ -316,7 +345,46 @@ std::wstring BookmarkList::RowPath(int row) const {
     int k = ItemOfRow(row);
     if (k == kRowFavorites) return kFavoritesLocation;
     if (k == kRowLinux) return kWslRoot;
-    return k >= 0 && k < (int)items_.size() ? items_[k].path : L"";
+    return k >= 0 && k < (int)items_.size() && items_[k].config.empty() ? items_[k].path : L"";
+}
+
+std::wstring BookmarkList::RowConfig(int row) const {
+    int k = ItemOfRow(row);
+    return k >= 0 && k < (int)items_.size() ? items_[k].config : L"";
+}
+
+bool BookmarkList::OpenRow(int row, bool other) {
+    std::wstring config = RowConfig(row);
+    if (!config.empty()) {
+        if (cb_.openConfig) cb_.openConfig(config);
+        return true;
+    }
+    std::wstring target = RowPath(row);
+    if (target.empty() || !cb_.navigate) return false;
+    cb_.navigate(target, other, RowFilter(row), RowSort(row));
+    return true;
+}
+
+bool BookmarkList::UsesFolderIcon(size_t i) const {
+    return i < items_.size() && i < icons_.size() && items_[i].config.empty() && items_[i].filter.empty() &&
+           folderIcon_ >= 0 && icons_[i] == folderIcon_;
+}
+
+HICON BookmarkList::TintedFolder(int color) {
+    int sz = DpiScale(list_, 16);
+    if (sz != tintedSize_) {
+        FreeTinted();
+        tintedSize_ = sz;
+    }
+    if (color <= 0 || color >= kFolderColorCount) return nullptr;
+    if (tinted_.size() < (size_t)kFolderColorCount) tinted_.resize(kFolderColorCount, nullptr);
+    if (!tinted_[color]) tinted_[color] = CreateTintedFolderIcon(sz, color);
+    return tinted_[color];
+}
+
+void BookmarkList::FreeTinted() {
+    for (auto& h : tinted_)
+        if (h) DestroyIcon(h), h = nullptr;
 }
 
 std::wstring BookmarkList::RowFilter(int row) const {
@@ -343,8 +411,29 @@ int BookmarkList::FindPath(const std::wstring& path) const {
     };
     std::wstring target = norm(path);
     for (size_t i = 0; i < items_.size(); ++i)
-        if (EqualsI(norm(items_[i].path), target)) return (int)i;
+        if (items_[i].config.empty() && EqualsI(norm(items_[i].path), target)) return (int)i;
     return -1;
+}
+
+int BookmarkList::FindConfig(const std::wstring& name) const {
+    for (size_t i = 0; i < items_.size(); ++i)
+        if (!items_[i].config.empty() && EqualsI(Trim(items_[i].name), Trim(name))) return (int)i;
+    return -1;
+}
+
+void BookmarkList::AppendConfig(const std::wstring& name, const std::wstring& config) {
+    Bookmark b{name, kConfigBookmarkPath};
+    b.config = config;
+    items_.push_back(b);
+    Rebuild((int)items_.size() - 1);
+    if (cb_.changed) cb_.changed();
+}
+
+void BookmarkList::SetConfig(int index, const std::wstring& config) {
+    if (index < 0 || index >= (int)items_.size()) return;
+    items_[index].config = config;
+    Rebuild(index);
+    if (cb_.changed) cb_.changed();
 }
 
 void BookmarkList::Append(const std::wstring& name, const std::wstring& path, const std::wstring& filter, int sort) {
@@ -356,9 +445,11 @@ void BookmarkList::Append(const std::wstring& name, const std::wstring& path, co
 void BookmarkList::SortByCategory() {
     // Reihenfolge: „Netzwerk“, Standardverzeichnisse (blau), Cloud (lila), FTP/SFTP/WebDAV (grün),
     // übrige Netzwerkpfade (hellrot), Geräte/MTP (etwas dunkleres Hellrot), lokal; innerhalb jeder Gruppe alphabetisch nach Namen
+    // dahinter die gespeicherten Konfigurationen (hell-ocker)
     auto rank = [](const Bookmark& b) {
+        if (!b.config.empty()) return 7;
         if (IsNetworkRoot(b.path)) return 0;
-        switch (KindOf(b.path)) {
+        switch (KindOfBookmark(b)) {
         case KindStandard: return 1;
         case KindCloud: return 2;
         case KindRemote:
@@ -369,7 +460,7 @@ void BookmarkList::SortByCategory() {
         }
     };
     int sel = Selected();
-    std::wstring selPath = sel >= 0 ? items_[sel].path : L"";
+    std::wstring selPath = sel >= 0 ? items_[sel].path : L"", selName = sel >= 0 ? items_[sel].name : L"";
     std::stable_sort(items_.begin(), items_.end(), [&](const Bookmark& a, const Bookmark& b) {
         int ra = rank(a), rb = rank(b);
         if (ra != rb) return ra < rb;
@@ -379,7 +470,7 @@ void BookmarkList::SortByCategory() {
     });
     int newSel = -1;
     for (size_t i = 0; i < items_.size(); ++i)
-        if (!selPath.empty() && items_[i].path == selPath) newSel = (int)i;
+        if (!selPath.empty() && items_[i].path == selPath && items_[i].name == selName) newSel = (int)i;
     Rebuild(newSel);
     if (cb_.changed) cb_.changed();
 }
@@ -416,14 +507,19 @@ void BookmarkList::ContextMenu(POINT pt) {
     HMENU m = CreatePopupMenu();
     UINT has = i >= 0 ? MF_STRING : (MF_STRING | MF_GRAYED);
     UINT canOpen = (i >= 0 || fav) ? MF_STRING : (MF_STRING | MF_GRAYED);
-    AppendMenuW(m, canOpen, MenuOpen, L"In aktiver Liste &öffnen\tEingabe");
-    AppendMenuW(m, canOpen, MenuOpenOther, L"In &anderer Liste öffnen\tUmschalt+Eingabe");
+    bool isConfig = i >= 0 && !items_[i].config.empty();
+    if (isConfig) {
+        AppendMenuW(m, MF_STRING, MenuOpen, L"Konfiguration &aufrufen\tEingabe");
+    } else {
+        AppendMenuW(m, canOpen, MenuOpen, L"In aktiver Liste &öffnen\tEingabe");
+        AppendMenuW(m, canOpen, MenuOpenOther, L"In &anderer Liste öffnen\tUmschalt+Eingabe");
+    }
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, has, MenuRename, L"&Umbenennen\tF2");
-    AppendMenuW(m, has, MenuChangePath, L"&Pfad ändern…");
+    AppendMenuW(m, (i >= 0 && !isConfig) ? MF_STRING : MF_GRAYED, MenuChangePath, L"&Pfad ändern…");
     // Sortierung beim Öffnen (wie im Filter); bei Lesezeichen mit Filter legt der Filter die Sortierung fest
     HMENU sortMenu = CreatePopupMenu();
-    bool withFilter = i >= 0 && !items_[i].filter.empty();
+    bool withFilter = i >= 0 && (!items_[i].filter.empty() || isConfig);
     for (int s = 0; s <= 10; ++s) {
         AppendMenuW(sortMenu, MF_STRING, MenuSortPreset + s, FilterSortName(s).c_str());
         if (s == 0) AppendMenuW(sortMenu, MF_SEPARATOR, 0, nullptr);
@@ -431,7 +527,23 @@ void BookmarkList::ContextMenu(POINT pt) {
     if (i >= 0 && !withFilter)
         CheckMenuRadioItem(sortMenu, MenuSortPreset, MenuSortPreset + 10, MenuSortPreset + items_[i].sort, MF_BYCOMMAND);
     AppendMenuW(m, MF_POPUP | ((i >= 0 && !withFilter) ? MF_STRING : MF_GRAYED), (UINT_PTR)sortMenu,
-                withFilter ? L"So&rtierung (im Filter festgelegt)" : L"So&rtierung");
+                withFilter && !isConfig ? L"So&rtierung (im Filter festgelegt)" : L"So&rtierung");
+    // Symbolfarbe: nur bei Lesezeichen mit dem normalen (gelben) Ordnersymbol
+    HMENU colorMenu = CreatePopupMenu();
+    for (int c = 0; c < kFolderColorCount; ++c) AppendMenuW(colorMenu, MF_STRING, MenuIconColor + c, FolderColorName(c));
+    bool canColor = i >= 0 && UsesFolderIcon((size_t)i);
+    if (canColor)
+        CheckMenuRadioItem(colorMenu, MenuIconColor, MenuIconColor + kFolderColorCount - 1, MenuIconColor + items_[i].iconColor,
+                           MF_BYCOMMAND);
+    AppendMenuW(m, MF_POPUP | (canColor ? MF_STRING : MF_GRAYED), (UINT_PTR)colorMenu, L"Sym&bolfarbe");
+    // Hintergrund: Unterverzeichnisse von Standardverzeichnissen wahlweise hellblau (wie diese) oder weiß
+    HMENU backMenu = CreatePopupMenu();
+    AppendMenuW(backMenu, MF_STRING, MenuBackBlue, L"&hellblau (Standardverzeichnisse)");
+    AppendMenuW(backMenu, MF_STRING, MenuBackWhite, L"&weiß (lokale Verzeichnisse)");
+    bool canBack = i >= 0 && !isConfig && IsStandardSubdir(items_[i].path);
+    if (canBack)
+        CheckMenuRadioItem(backMenu, MenuBackBlue, MenuBackWhite, items_[i].whiteBack ? MenuBackWhite : MenuBackBlue, MF_BYCOMMAND);
+    AppendMenuW(m, MF_POPUP | (canBack ? MF_STRING : MF_GRAYED), (UINT_PTR)backMenu, L"Hinter&grund");
     AppendMenuW(m, (i > 0) ? MF_STRING : MF_GRAYED, MenuUp, L"Nach &oben\tAlt+↑");
     AppendMenuW(m, (i >= 0 && i + 1 < (int)items_.size()) ? MF_STRING : MF_GRAYED, MenuDown, L"Nach u&nten\tAlt+↓");
     AppendMenuW(m, has, MenuDelete, L"&Entfernen\tEntf");
@@ -444,8 +556,20 @@ void BookmarkList::ContextMenu(POINT pt) {
     switch (id) {
     case MenuOpen:
     case MenuOpenOther:
+        if (isConfig) {
+            if (cb_.openConfig) cb_.openConfig(items_[i].config);
+            break;
+        }
         if (cb_.navigate && (i >= 0 || fav)) cb_.navigate(fav ? specialPath : items_[i].path, id == MenuOpenOther, fav ? L"" : items_[i].filter,
                                        fav ? 0 : RowSort(SelectedRow()));
+        break;
+    case MenuBackBlue:
+    case MenuBackWhite:
+        if (i >= 0 && (id == MenuBackWhite) != items_[i].whiteBack) {
+            items_[i].whiteBack = id == MenuBackWhite;
+            Rebuild(i);
+            if (cb_.changed) cb_.changed();
+        }
         break;
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
@@ -492,6 +616,12 @@ void BookmarkList::ContextMenu(POINT pt) {
     case MenuNewFtp: PostMessageW(App::MainWindow(), WM_COMMAND, 40401 /* cmd::BookmarkNewRemote */, 0); break;
     case MenuSort: PostMessageW(App::MainWindow(), WM_COMMAND, 40402 /* cmd::BookmarkSort */, 0); break;
     default:
+        if (id >= MenuIconColor && id < MenuIconColor + (UINT)kFolderColorCount && i >= 0) {
+            items_[i].iconColor = (int)id - MenuIconColor;
+            Rebuild(i);
+            if (cb_.changed) cb_.changed();
+            break;
+        }
         if (id >= MenuSortPreset && id <= MenuSortPreset + 10 && i >= 0 && items_[i].filter.empty()) {
             items_[i].sort = (int)id - MenuSortPreset;
             if (cb_.changed) cb_.changed();
@@ -547,16 +677,13 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
     case LVN_ITEMACTIVATE: {
         auto* ia = (NMITEMACTIVATE*)nm;
         int row = ia->iItem >= 0 ? ia->iItem : SelectedRow();
-        std::wstring target = RowPath(row);
-        if (!target.empty() && cb_.navigate) {
-            bool other = (ia->uKeyFlags & LVKF_SHIFT) != 0;
-            // Klick auf das Symbol in der linken Spalte: in der anderen Liste öffnen (nicht bei der Eingabetaste)
-            if (GetKeyState(VK_RETURN) >= 0) {
-                DWORD mp = GetMessagePos();
-                if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == row) other = true;
-            }
-            cb_.navigate(target, other, RowFilter(row), RowSort(row));
+        bool other = (ia->uKeyFlags & LVKF_SHIFT) != 0;
+        // Klick auf das Symbol in der linken Spalte: in der anderen Liste öffnen (nicht bei der Eingabetaste)
+        if (GetKeyState(VK_RETURN) >= 0) {
+            DWORD mp = GetMessagePos();
+            if (IconColumnItemAt(POINT{GET_X_LPARAM(mp), GET_Y_LPARAM(mp)}) == row) other = true;
         }
+        OpenRow(row, other);
         return 0;
     }
     case NM_RCLICK: {
@@ -574,6 +701,11 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         } else if (IsLinuxRow(ti->iItem)) {
             std::wstring s = L"Linux (WSL): " + Join(wsl_, L", ") + L"\n" + kWslRoot;
+            wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
+        } else if (k >= 0 && k < (int)items_.size() && !items_[k].config.empty()) {
+            LayoutConfig c;
+            std::wstring s = L"Konfiguration „" + items_[k].name + L"“";
+            if (LayoutConfig::FromString(items_[k].config, c)) s += L"\n" + c.Describe();
             wcsncpy_s(ti->pszText, ti->cchTextMax, s.c_str(), _TRUNCATE);
         } else if (k >= 0 && k < (int)items_.size()) {
             std::wstring s = LocationDisplay(items_[k].path);
@@ -631,20 +763,29 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
             }
             {
                 int k0 = ItemOfRow((int)cd->nmcd.dwItemSpec);
-                if (k0 >= 0 && k0 < (int)items_.size() && !items_[k0].filter.empty())
+                if (k0 >= 0 && k0 < (int)items_.size() &&
+                    (!items_[k0].filter.empty() || !items_[k0].config.empty() ||
+                     (items_[k0].iconColor > 0 && UsesFolderIcon((size_t)k0))))
                     return CDRF_NOTIFYSUBITEMDRAW | CDRF_NOTIFYPOSTPAINT;
             }
             return CDRF_NOTIFYSUBITEMDRAW;
         case CDDS_ITEMPOSTPAINT: {
-            // Lesezeichen mit Filter: Trichter als Symbol vor dem Namen
+            // Symbol vor dem Namen: Trichter (Lesezeichen mit Filter), Konfiguration bzw. farbiger Ordner
             int row = (int)cd->nmcd.dwItemSpec;
+            int k = ItemOfRow(row);
             RECT ic{};
-            if (ListView_GetItemRect(list_, row, &ic, LVIR_ICON)) {
+            if (k >= 0 && k < (int)items_.size() && ListView_GetItemRect(list_, row, &ic, LVIR_ICON)) {
                 int sz = DpiScale(list_, 16);
                 RECT g{(ic.left + ic.right - sz) / 2, (ic.top + ic.bottom - sz) / 2, 0, 0};
                 g.right = g.left + sz;
                 g.bottom = g.top + sz;
-                DrawGlyph(cd->nmcd.hdc, Glyph::Filter, g, RGB(0, 0, 0));
+                if (!items_[k].config.empty()) {
+                    DrawConfigSymbol(cd->nmcd.hdc, g);
+                } else if (!items_[k].filter.empty()) {
+                    DrawGlyph(cd->nmcd.hdc, Glyph::Filter, g, RGB(0, 0, 0));
+                } else if (HICON t = TintedFolder(items_[k].iconColor)) {
+                    DrawIconEx(cd->nmcd.hdc, g.left, g.top, t, sz, sz, 0, nullptr, DI_NORMAL);
+                }
             }
             return CDRF_DODEFAULT;
         }
@@ -660,12 +801,19 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
                 HIMAGELIST il = ListView_GetImageList(list_, LVSIL_SMALL);
                 int sz = DpiScale(list_, 16);
                 int iconIndex = k == kRowLinux ? linuxIcon_ : (i < icons_.size() ? icons_[i] : -1);
-                if (i < items_.size() && !items_[i].filter.empty()) {
+                HICON tinted = i < items_.size() && items_[i].iconColor > 0 && UsesFolderIcon(i)
+                                   ? TintedFolder(items_[i].iconColor) : nullptr;
+                if (i < items_.size() && !items_[i].config.empty()) {
+                    // Konfiguration: Symbolspalte bleibt leer (öffnet nicht in der anderen Liste)
+                } else if (i < items_.size() && !items_[i].filter.empty()) {
                     // Lesezeichen mit Filter: Trichter statt Mappe
                     RECT g{(rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2, 0, 0};
                     g.right = g.left + sz;
                     g.bottom = g.top + sz;
                     DrawGlyph(cd->nmcd.hdc, Glyph::Filter, g, RGB(0, 0, 0));
+                } else if (tinted) {
+                    DrawIconEx(cd->nmcd.hdc, (rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2, tinted, sz, sz, 0,
+                               nullptr, DI_NORMAL);
                 } else if (il && iconIndex >= 0)
                     ImageList_DrawEx(il, iconIndex, cd->nmcd.hdc, (rc.left + rc.right - sz) / 2, (rc.top + rc.bottom - sz) / 2,
                                      sz, sz, CLR_NONE, CLR_NONE, ILD_TRANSPARENT);
@@ -736,10 +884,7 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         break;
     case WM_KEYDOWN:
         if (wp == VK_RETURN) {
-            std::wstring target = self->RowPath(self->SelectedRow());
-            if (!target.empty() && self->cb_.navigate)
-                self->cb_.navigate(target, GetKeyState(VK_SHIFT) < 0, self->RowFilter(self->SelectedRow()),
-                                   self->RowSort(self->SelectedRow()));
+            self->OpenRow(self->SelectedRow(), GetKeyState(VK_SHIFT) < 0);
             return 0;
         }
         break;
@@ -752,6 +897,7 @@ LRESULT CALLBACK BookmarkList::Subclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, 
         return r;
     }
     case WM_NCDESTROY:
+        self->FreeTinted();
         RevokeFileDropTarget(h);
         RemoveWindowSubclass(h, Subclass, 1);
         break;

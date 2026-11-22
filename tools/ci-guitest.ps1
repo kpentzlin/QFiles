@@ -26,6 +26,37 @@ public static class W {
   [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr h);
   [StructLayout(LayoutKind.Sequential)] public struct PT { public int X, Y; }
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(PT p);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref PT p);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+  [DllImport("kernel32.dll")] public static extern IntPtr VirtualAllocEx(IntPtr p, IntPtr a, UIntPtr size, uint type, uint prot);
+  [DllImport("kernel32.dll")] public static extern bool VirtualFreeEx(IntPtr p, IntPtr a, UIntPtr size, uint type);
+  [DllImport("kernel32.dll")] public static extern bool ReadProcessMemory(IntPtr p, IntPtr a, byte[] buf, UIntPtr size, out UIntPtr read);
+  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+  // Rechteck einer Schaltfläche der Werkzeugleiste (Bildschirmkoordinaten) über TB_GETITEMRECT im Speicher von QFiles
+  public static RECT ToolbarButtonRect(IntPtr tb, int cmd) {
+    RECT r = new RECT();
+    int idx = (int)SendMessage(tb, 0x0419, (IntPtr)cmd, IntPtr.Zero);   // TB_COMMANDTOINDEX
+    if (idx < 0) return r;
+    uint pid; GetWindowThreadProcessId(tb, out pid);
+    IntPtr hp = OpenProcess(0x0438, false, pid);
+    if (hp == IntPtr.Zero) return r;
+    IntPtr mem = VirtualAllocEx(hp, IntPtr.Zero, (UIntPtr)16, 0x3000, 0x04);
+    SendMessage(tb, 0x041D, (IntPtr)idx, mem);   // TB_GETITEMRECT
+    byte[] b = new byte[16]; UIntPtr rd; ReadProcessMemory(hp, mem, b, (UIntPtr)16, out rd);
+    VirtualFreeEx(hp, mem, UIntPtr.Zero, 0x8000); CloseHandle(hp);
+    PT a; a.X = BitConverter.ToInt32(b, 0); a.Y = BitConverter.ToInt32(b, 4); ClientToScreen(tb, ref a);
+    PT c; c.X = BitConverter.ToInt32(b, 8); c.Y = BitConverter.ToInt32(b, 12); ClientToScreen(tb, ref c);
+    r.L = a.X; r.T = a.Y; r.R = c.X; r.B = c.Y; return r;
+  }
+  public static void DoubleClick(int x, int y) {
+    SetCursorPos(x, y); System.Threading.Thread.Sleep(150);
+    mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(30); mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
+    System.Threading.Thread.Sleep(60);
+    mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); System.Threading.Thread.Sleep(30); mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
+  }
   public static IntPtr WindowAt(int x, int y) { PT p; p.X = x; p.Y = y; return WindowFromPoint(p); }
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
   public static void Drag(int x1, int y1, int x2, int y2) {
@@ -1281,6 +1312,74 @@ $t6 = PathText
 Shot "screenshot46.png"   # Kontextmenü eines Lesezeichens mit Untermenü „Sortierung“
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 300
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 300
+# 7) Symbolfarbe: Lesezeichen eines Ordners (Ordnersymbol) über das Kontextmenü „Symbolfarbe“ rot färben
+function GoPath([string]$path) {
+  $er = New-Object W+RECT; [W]::GetWindowRect($fEdit, [ref]$er) | Out-Null
+  [W]::Click($er.L + 30, [int](($er.T + $er.B) / 2), $false); Start-Sleep -Milliseconds 300
+  [System.Windows.Forms.SendKeys]::SendWait("^a"); Start-Sleep -Milliseconds 100
+  [System.Windows.Forms.SendKeys]::SendWait($path); Start-Sleep -Milliseconds 300
+  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+}
+GoPath "C:\QFilesFilter\Projekt\Sub"
+$t7 = PathText
+[System.Windows.Forms.SendKeys]::SendWait("^d"); Start-Sleep -Seconds 1
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 1
+[W]::Click($blr.L + 60, $blr.B - 6, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("b"); Start-Sleep -Milliseconds 600
+for ($k = 0; $k -lt 5; $k++) { [System.Windows.Forms.SendKeys]::SendWait("{DOWN}"); Start-Sleep -Milliseconds 150 }
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Milliseconds 800
+Check-Alive "Symbolfarbe"
+[System.Windows.Forms.SendKeys]::SendWait("+{F10}"); Start-Sleep -Milliseconds 800
+[System.Windows.Forms.SendKeys]::SendWait("b"); Start-Sleep -Milliseconds 600
+Shot "screenshot51.png"   # Lesezeichen mit rotem Ordnersymbol, Untermenü „Symbolfarbe“
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 300
+# 8) Konfiguration speichern (Befehl der Schaltfläche, Name abfragen), auf eine Liste umschalten, Konfiguration aufrufen
+function VisiblePanes() {
+  $n = 0; $h = [IntPtr]::Zero
+  while ($true) { $h = [W]::FindWindowEx($fw, $h, "QFilesPane", $null); if ($h -eq [IntPtr]::Zero) { break }; if ([W]::IsWindowVisible($h)) { $n++ } }
+  return $n
+}
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+$panesBefore = VisiblePanes
+[W]::PostMessage($fw, 0x0111, [IntPtr]40222, [IntPtr]::Zero) | Out-Null; Start-Sleep -Seconds 1   # cmd::ConfigSave
+[System.Windows.Forms.SendKeys]::SendWait("Zwei Listen Test"); Start-Sleep -Milliseconds 300
+Shot "screenshot52.png"   # Abfrage des Namens der Konfiguration
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 1
+Check-Alive "Konfiguration speichern"
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^+l"); Start-Sleep -Seconds 1
+$panesOne = VisiblePanes
+[W]::Click($blr.L + 60, $blr.B - 6, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("{END}"); Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}"); Start-Sleep -Seconds 2
+Check-Alive "Konfiguration aufrufen"
+$panesAfter = VisiblePanes
+$t8 = PathText
+Shot "screenshot53.png"   # Konfiguration (hell-ocker) aufgerufen: wieder zwei Listen
+# 9) Doppelklick auf „Details“ in der Werkzeugleiste: Spalten Typ…Attr. auf den Inhalt, Attr. am rechten Rand
+GoPath "C:\Windows"
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^+2"); Start-Sleep -Milliseconds 800
+$tb = [W]::FindWindowEx($fw, [IntPtr]::Zero, "ToolbarWindow32", $null)
+$dr = [W]::ToolbarButtonRect($tb, 40202)   # cmd::ViewDetails
+[W]::DoubleClick([int](($dr.L + $dr.R) / 2), [int](($dr.T + $dr.B) / 2)); Start-Sleep -Seconds 2
+Check-Alive "Details optimieren"
+$view9 = ([W]::SendMessage($fList, 0x108F, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+$hdr9 = [W]::SendMessage($fList, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+$n9 = ([W]::SendMessage($hdr9, 0x1200, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+$sum9 = 0; $ws9 = @()
+for ($k = 0; $k -lt $n9; $k++) { $w = ([W]::SendMessage($fList, 0x101D, [IntPtr]$k, [IntPtr]::Zero)).ToInt32(); $sum9 += $w; $ws9 += $w }
+$cr9 = New-Object W+RECT; [W]::GetClientRect($fList, [ref]$cr9) | Out-Null
+Shot "screenshot54.png"   # Details nach Doppelklick: Spalten optimiert
+$extraInfo = "Symbolfarbe in [$t7]; Konfiguration: Listen vorher $panesBefore, eine Liste $panesOne, nach Aufruf $panesAfter [$t8]; " +
+             "Details: Ansicht $view9, Spalten $($ws9 -join '/') = $sum9 bei Breite $($cr9.R - $cr9.L) (Schaltfläche $($dr.L),$($dr.T))"
+$extraOk = $t7 -eq 'C:\QFilesFilter\Projekt\Sub' -and $panesBefore -eq 2 -and $panesOne -eq 1 -and $panesAfter -eq 2 -and
+           $view9 -eq 1 -and [Math]::Abs($sum9 - ($cr9.R - $cr9.L)) -le 2
+if ($extraOk) { Write-Output "::notice title=Symbolfarbe, Konfiguration, Details::$extraInfo" }
+else { Write-Output "::error title=Symbolfarbe, Konfiguration, Details::$extraInfo" }
 # Bedienungshilfen vereinfacht (Standard): die Dateiliste meldet sich per UI Automation als Liste ohne Einträge
 $uiaInfo = ""; $uiaOk = $false
 try {
@@ -1302,6 +1401,37 @@ if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 $iniF = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
 $bmFilter = $iniF -match 'Filter\d+=v1\|[^\r\n]*g=1'
 $bmSort = $iniF -match 'Sortierung\d+=1\b'
+$bmColor = $iniF -match 'Symbolfarbe\d+=5\b'
+$bmConfig = $iniF -match 'Konfiguration\d+=v1\|zwei=1'
+if ($bmColor -and $bmConfig -and $extraOk) { Write-Output "::notice title=Lesezeichen (INI)::Symbolfarbe $bmColor, Konfiguration $bmConfig" }
+else {
+  Write-Output "::error title=Lesezeichen (INI)::Symbolfarbe $bmColor, Konfiguration $bmConfig; $extraInfo"
+  "Symbolfarbe/Konfiguration/Details nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
+# Fensterlage: gespeicherte Lage außerhalb aller Bildschirme -> Hauptbildschirm, volle Höhe, zentriert
+$iniPos = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
+$iniPos = $iniPos -replace '(?m)^X=-?\d+', 'X=9000' -replace '(?m)^Y=-?\d+', 'Y=9000'
+[System.IO.File]::WriteAllText("C:\ProgramData\QFiles\QFiles.ini", $iniPos, (New-Object System.Text.UTF8Encoding($true)))
+$script:p = Start-Process -FilePath $Exe -PassThru
+Start-Sleep -Seconds 6
+Check-Alive "Start (Fensterlage)"
+$pw = [IntPtr]::Zero
+for ($t = 0; $t -lt 20 -and $pw -eq [IntPtr]::Zero; $t++) { $pw = [W]::FindWindow("QFilesMain", [NullString]::Value); if ($pw -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+$wr = New-Object W+RECT; [W]::GetWindowRect($pw, [ref]$wr) | Out-Null
+$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+Shot "screenshot55.png"   # Start nach geänderter Bildschirmanordnung: Hauptbildschirm, volle Höhe, zentriert
+$p.CloseMainWindow() | Out-Null
+Start-Sleep -Seconds 3
+if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$posInfo = "Fenster $($wr.L),$($wr.T)–$($wr.R),$($wr.B); Arbeitsbereich $($wa.Left),$($wa.Top)–$($wa.Right),$($wa.Bottom)"
+$cx = ($wr.L + $wr.R) / 2; $wcx = $wa.Left + $wa.Width / 2
+$posOk = $wr.T -ge $wa.Top - 16 -and $wr.B -le $wa.Bottom + 16 -and ($wr.B - $wr.T) -ge $wa.Height - 16 -and
+         [Math]::Abs($cx - $wcx) -le 16 -and ($wr.R - $wr.L) -le [Math]::Min($wa.Width, $wa.Height * 4 / 3) + 32
+if ($posOk) { Write-Output "::notice title=Fensterlage::$posInfo" }
+else {
+  Write-Output "::error title=Fensterlage::$posInfo"
+  "Fensterlage nach Bildschirmwechsel nicht wie erwartet" | Tee-Object -FilePath smoke-log.txt; exit 1
+}
 $redOk = $c1.R -ge 235 -and $c1.G -lt 238 -and $c1.B -lt 238 -and $c1.R -gt $c1.B + 12
 $purpleOk = $c3.B -ge 235 -and $c3.G -lt 225 -and $c3.B -gt $c3.G + 15
 $fInfo = "ungefiltert $fAll; Masken: $f1 (erwartet $($parentRow + 2)) [$t1] Farbe $($c1.R),$($c1.G),$($c1.B); Git-Wahl frei: $gitEnabled; " +

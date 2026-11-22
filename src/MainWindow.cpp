@@ -3,6 +3,7 @@
 #include "App.h"
 #include "Cloud.h"
 #include "Commands.h"
+#include "Configuration.h"
 #include "Dialog.h"
 #include "Favorites.h"
 #include "RecycleBin.h"
@@ -236,6 +237,34 @@ int AskChoice(HWND owner, const std::wstring& title, const std::wstring& prompt,
 }
 
 
+// Passt das Fensterrechteck (Bildschirmkoordinaten) vollständig in den Arbeitsbereich eines Bildschirms? Die
+// unsichtbaren Fensterränder (Windows 10/11, einige Bildpunkte außerhalb des sichtbaren Rahmens) sind erlaubt.
+bool WindowRectFitsAnyMonitor(const RECT& r) {
+    struct Ctx {
+        RECT r;
+        bool fits;
+    } ctx{r, false};
+    EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR mon, HDC, LPRECT, LPARAM lp) -> BOOL {
+        auto* c = (Ctx*)lp;
+        MONITORINFO mi{sizeof(mi)};
+        if (!GetMonitorInfoW(mon, &mi)) return TRUE;
+        UINT dx = 96, dy = 96;
+        using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+        static auto fn = (GetDpiForMonitorFn)GetProcAddress(LoadLibraryW(L"shcore.dll"), "GetDpiForMonitor");
+        if (fn) fn(mon, 0, &dx, &dy);
+        int tol = MulDiv(16, (int)dx, 96);
+        RECT wa = mi.rcWork;
+        InflateRect(&wa, tol, tol);
+        if (c->r.left >= wa.left && c->r.top >= wa.top && c->r.right <= wa.right && c->r.bottom <= wa.bottom &&
+            c->r.right - c->r.left > 0 && c->r.bottom - c->r.top > 0) {
+            c->fits = true;
+            return FALSE;
+        }
+        return TRUE;
+    }, (LPARAM)&ctx);
+    return ctx.fits;
+}
+
 const wchar_t* PanePositionName(int i, bool twoPanes, bool splitCol) {
     static const wchar_t* withSplit[4] = {L"links oben", L"rechts oben", L"links unten", L"rechts unten"};
     if (!splitCol) return twoPanes ? (i % 2 == 0 ? L"links" : L"rechts") : L"";
@@ -302,33 +331,24 @@ bool MainWindow::Create(int nCmdShow) {
     int y = c.GetInt(L"Fenster", L"Y", CW_USEDEFAULT);
     int w = c.GetInt(L"Fenster", L"B", 1280);
     int h = c.GetInt(L"Fenster", L"H", 800);
-    // Fenster muss auf einem Monitor liegen und in dessen Arbeitsbereich passen
+    // Gespeicherte Lage nur übernehmen, wenn das Fenster vollständig in den Arbeitsbereich (ohne Taskleisten) eines
+    // angeschlossenen Bildschirms passt; sonst (Bildschirme geändert): Hauptbildschirm, zentriert, volle Höhe, Breite
+    // höchstens vier Drittel der Höhe
     {
-        RECT r{x == CW_USEDEFAULT ? 0 : x, y == CW_USEDEFAULT ? 0 : y, 0, 0};
-        r.right = r.left + w;
-        r.bottom = r.top + h;
-        HMONITOR mon = MonitorFromRect(&r, MONITOR_DEFAULTTONULL);
-        if (!mon) {
-            x = y = CW_USEDEFAULT;
-            mon = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-        }
-        MONITORINFO mi{sizeof(mi)};
-        if (GetMonitorInfoW(mon, &mi)) {
-            const RECT& wa = mi.rcWork;
-            int waW = wa.right - wa.left, waH = wa.bottom - wa.top;
-            if (!c.Has(L"Fenster", L"B")) {
-                w = std::min(w, waW * 92 / 100);
-                h = std::min(h, waH * 92 / 100);
-                x = wa.left + (waW - w) / 2;
-                y = wa.top + (waH - h) / 2;
-            } else {
-                w = std::min(w, waW);
-                h = std::min(h, waH);
-                if (x != CW_USEDEFAULT) {
-                    x = std::clamp(x, (int)wa.left, (int)wa.right - w);
-                    y = std::clamp(y, (int)wa.top, (int)wa.bottom - h);
-                }
-            }
+        MONITORINFO pmi{sizeof(pmi)};
+        GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &pmi);
+        const RECT wa = pmi.rcWork;
+        int waW = wa.right - wa.left, waH = wa.bottom - wa.top;
+        if (!c.Has(L"Fenster", L"B") || x == CW_USEDEFAULT || y == CW_USEDEFAULT) {
+            w = std::min(w, waW * 92 / 100);
+            h = std::min(h, waH * 92 / 100);
+            x = wa.left + (waW - w) / 2;
+            y = wa.top + (waH - h) / 2;
+        } else if (!WindowRectFitsAnyMonitor(RECT{x, y, x + w, y + h})) {
+            h = waH;
+            w = std::min(waW, h * 4 / 3);
+            x = wa.left + (waW - w) / 2;
+            y = wa.top;
         }
     }
     hwnd_ = CreateWindowExW(0, kMainClass, L"QFiles", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, x, y, w, h, nullptr, nullptr,
@@ -370,6 +390,7 @@ bool MainWindow::Create(int nCmdShow) {
     };
     cb.activated = []() {};
     cb.currentDir = [this]() { return Active().Dir(); };
+    cb.openConfig = [this](const std::wstring& config) { ApplyConfiguration(config); };
     bookmarks_.Create(hwnd_, cmd::IdBookmarks, cb);
     bookmarks_.Set(LoadBookmarks(App::Cfg()));
     LoadFavorites(App::Cfg());
@@ -465,6 +486,12 @@ void MainWindow::LoadState() {
         toolLayout_.clear();
         for (auto& k : Split(c.Get(L"Werkzeugleiste", L"Schaltflaechen"), L','))
             if (!Trim(k).empty()) toolLayout_.push_back(Trim(k));
+        // Angepasste Leisten aus älteren Versionen: neue Schaltfläche „Konfiguration“ einmalig links neben „P“ einfügen
+        if (!toolLayout_.empty() && !c.GetBool(L"Werkzeugleiste", L"KonfigurationErgaenzt", false) &&
+            std::find(toolLayout_.begin(), toolLayout_.end(), L"Konfiguration") == toolLayout_.end()) {
+            auto it = std::find(toolLayout_.begin(), toolLayout_.end(), L"PrivaterModus");
+            toolLayout_.insert(it, L"Konfiguration");
+        }
         if (toolLayout_ == DefaultToolLayout()) toolLayout_.clear();
         if (!toolLayout_.empty()) ApplyToolbarLayout();
     }
@@ -480,10 +507,20 @@ void MainWindow::SaveState() {
     const wchar_t* S = L"Fenster";
     WINDOWPLACEMENT wp{sizeof(wp)};
     GetWindowPlacement(hwnd_, &wp);
-    c.SetInt(S, L"X", wp.rcNormalPosition.left);
-    c.SetInt(S, L"Y", wp.rcNormalPosition.top);
-    c.SetInt(S, L"B", wp.rcNormalPosition.right - wp.rcNormalPosition.left);
-    c.SetInt(S, L"H", wp.rcNormalPosition.bottom - wp.rcNormalPosition.top);
+    // Lage in Bildschirmkoordinaten (rcNormalPosition bezieht sich auf den Arbeitsbereich: bei einer Taskleiste oben
+    // oder links verschoben)
+    RECT normal = wp.rcNormalPosition;
+    if (!IsZoomed(hwnd_) && !IsIconic(hwnd_)) {
+        GetWindowRect(hwnd_, &normal);
+    } else {
+        MONITORINFO pmi{sizeof(pmi)};
+        if (GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &pmi))
+            OffsetRect(&normal, pmi.rcWork.left - pmi.rcMonitor.left, pmi.rcWork.top - pmi.rcMonitor.top);
+    }
+    c.SetInt(S, L"X", normal.left);
+    c.SetInt(S, L"Y", normal.top);
+    c.SetInt(S, L"B", normal.right - normal.left);
+    c.SetInt(S, L"H", normal.bottom - normal.top);
     c.SetBool(S, L"Max", wp.showCmd == SW_SHOWMAXIMIZED || IsZoomed(hwnd_) ||
                              (wp.showCmd == SW_SHOWMINIMIZED && (wp.flags & WPF_RESTORETOMAXIMIZED)));
     c.SetBool(S, L"ZweiListen", twoPanes_);
@@ -496,6 +533,7 @@ void MainWindow::SaveState() {
     c.SetInt(S, L"LesezeichenBreite", bookmarkWidth_);
     c.SetBool(S, L"Werkzeugleiste", showToolbar_);
     c.Set(L"Werkzeugleiste", L"Schaltflaechen", Join(toolLayout_, L","));   // leer = Standard
+    c.SetBool(L"Werkzeugleiste", L"KonfigurationErgaenzt", true);
     c.SetBool(S, L"Funktionstastenleiste", showFKeys_);
     c.SetBool(S, L"Befehlszeile", showCmdLine_);
     c.SetBool(S, L"Statusleiste", showStatus_);
@@ -719,13 +757,15 @@ void MainWindow::BuildBookmarkMenu(HMENU m) {
     AddItem(m, cmd::BookmarkNewRemote, L"Neuer &FTP/sFTP/WebDAV-Zugriff…");
     AddItem(m, cmd::BookmarkAddCloud, L"&Cloud-Speicher hinzufügen (Dropbox, Google Drive, OneDrive)…");
     AddItem(m, cmd::BookmarkSort, L"&Sortieren…");
+    AddItem(m, cmd::ConfigSave, L"&Konfiguration speichern…");
     AddItem(m, cmd::FocusBookmarks, L"Lesezeichenliste &bearbeiten\tAlt+F2");
     const auto& b = bookmarks_.Get();
     if (!b.empty() || !Favorites().empty()) AddSep(m);
     if (!Favorites().empty()) AddItem(m, cmd::BookmarkFavorites, L"&*  Favoriten");
     for (size_t i = 0; i < b.size() && i <= (size_t)(cmd::BookmarkLast - cmd::BookmarkFirst); ++i) {
         std::wstring t = (i < 9 ? (L"&" + std::to_wstring(i + 1) + L"  ") : L"    ") + ReplaceAll(b[i].name, L"&", L"&&") +
-                         L"\t" + ReplaceAll(LocationDisplay(b[i].path), L"&", L"&&");
+                         L"\t" + (b[i].config.empty() ? ReplaceAll(LocationDisplay(b[i].path), L"&", L"&&")
+                                                       : std::wstring(L"Konfiguration"));
         AddItem(m, cmd::BookmarkFirst + (int)i, t.c_str());
     }
 }
@@ -819,52 +859,6 @@ void MainWindow::UpdateMenu(HMENU m) {
 }
 
 namespace {
-
-// Zeichnet ein Symbol auf Schwarz und auf Weiß und berechnet daraus Farbe und Deckkraft je Bildpunkt (geglättete
-// Kanten und Schrift ohne Farbsaum). px: 32-Bit-Streifen (oben beginnend), stride in Bildpunkten, x0 = Spalte der Zelle.
-void RenderAlphaCell(uint32_t* px, int stride, int x0, int sz, const std::function<void(HDC, const RECT&)>& draw) {
-    BITMAPINFO bi{};
-    bi.bmiHeader = {sizeof(BITMAPINFOHEADER), sz, -sz, 1, 32, BI_RGB};
-    void* bits[2] = {};
-    HBITMAP bmp[2] = {CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits[0], nullptr, 0),
-                      CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits[1], nullptr, 0)};
-    if (!bmp[0] || !bmp[1] || !bits[0] || !bits[1]) {
-        for (auto b : bmp)
-            if (b) DeleteObject(b);
-        return;
-    }
-    HDC dc = CreateCompatibleDC(nullptr);
-    RECT rc{0, 0, sz, sz};
-    for (int k = 0; k < 2; ++k) {
-        HGDIOBJ old = SelectObject(dc, bmp[k]);
-        FillRect(dc, &rc, (HBRUSH)GetStockObject(k == 0 ? BLACK_BRUSH : WHITE_BRUSH));
-        draw(dc, rc);
-        GdiFlush();
-        SelectObject(dc, old);
-    }
-    DeleteDC(dc);
-    auto* b = (const uint32_t*)bits[0];
-    auto* w = (const uint32_t*)bits[1];
-    for (int y = 0; y < sz; ++y)
-        for (int x = 0; x < sz; ++x) {
-            uint32_t cb = b[y * sz + x], cw = w[y * sz + x];
-            int diff = 0, ch[3];
-            for (int c = 0; c < 3; ++c) {
-                int vb = (cb >> (8 * c)) & 0xFF, vw = (cw >> (8 * c)) & 0xFF;
-                diff += vw - vb;
-                ch[c] = vb;
-            }
-            int alpha = std::clamp(255 - diff / 3, 0, 255);
-            uint32_t out = 0;
-            if (alpha > 0) {
-                for (int c = 0; c < 3; ++c) out |= (uint32_t)std::min(255, ch[c] * 255 / alpha) << (8 * c);
-                out |= (uint32_t)alpha << 24;
-            }
-            px[y * stride + x0 + x] = out;
-        }
-    DeleteObject(bmp[0]);
-    DeleteObject(bmp[1]);
-}
 
 // Papierblatt mit umgeknickter Ecke und deutlichem Buchstaben (Times New Roman, fett)
 void DrawPageLetter(HDC dc, const RECT& rc, const wchar_t* letter, COLORREF letterColor) {
@@ -1039,7 +1033,7 @@ void MainWindow::BuildToolbar() {
     // Eigene Symbole, 32 Bit mit Alpha: Papierkorb (Windows-Standardsymbol), Radiergummi, „Mit Unterverzeichnissen“,
     // Neue Datei/Textdatei, „P“ aus/ein und die Symbole der zusätzlich wählbaren Schaltflächen (Werkzeugleiste anpassen)
     int custom = -1;
-    const int cells = 27;
+    const int cells = 28;
     {
         int sz = large ? 24 : 16;
         BITMAPINFO bi{};
@@ -1174,6 +1168,7 @@ void MainWindow::BuildToolbar() {
             glyph(24, Glyph::Split);
             page(25, L"F", RGB(20, 55, 150));
             stock(26, SIID_HELP);
+            RenderAlphaCell(px, stride, 27 * sz, sz, [](HDC d, const RECT& r) { DrawConfigSymbol(d, r); });
             DeleteDC(dc);
             TBADDBITMAP ac{nullptr, (UINT_PTR)strip};
             custom = (int)SendMessageW(toolbar_, TB_ADDBITMAP, cells, (LPARAM)&ac);
@@ -1236,6 +1231,8 @@ void MainWindow::BuildToolbar() {
         {L"Funktionstasten", cmd::FunctionKeys, img(25, offStd + STD_PROPERTIES), L"Funktionstasten belegen"},
         {L"Optionen", cmd::Options, offStd + STD_PROPERTIES, L"Optionen"},
         {L"Tastenkuerzel", cmd::Shortcuts, img(26, offStd + STD_HELP), L"Tastenkürzel (F1)"},
+        {L"Konfiguration", cmd::ConfigSave, img(27, offStd + STD_FILESAVE),
+         L"Konfiguration speichern: Aufteilung, Verzeichnisse und Ansichten der Listen (als Lesezeichen)"},
         {L"PrivaterModus", cmd::PrivateMode, App::Opt().privateMode ? imgPrivateOn_ : imgPrivateOff_,
          L"Privater Modus: Verlauf nicht speichern (grün = eingeschaltet)"},
     };
@@ -1422,7 +1419,7 @@ std::vector<std::wstring> MainWindow::DefaultToolLayout() {
             L"NeueTextdatei", L"Loeschen", L"EndgueltigLoeschen", L"Radieren", L"Rueckgaengig", L"-", L"Anzeigen",
             L"Bearbeiten", L"Eigenschaften", L"-", L"Suchen", L"VerzeichnisseVergleichen", L"Synchronisieren", L"-",
             L"Details", L"Liste", L"Symbole", L"Miniaturen", L"MitUnterverzeichnissen", L"-", L"ZweiListen",
-            L"Schnellansicht", L"-", L"LesezeichenHinzufuegen", L"Optionen", L"-", L"PrivaterModus"};
+            L"Schnellansicht", L"-", L"LesezeichenHinzufuegen", L"Optionen", L"-", L"Konfiguration", L"PrivaterModus"};
 }
 
 // Schaltflächen nach toolLayout_ (leer = Standard) neu aufbauen
@@ -2119,6 +2116,91 @@ void MainWindow::OnPaneEnlargeButton(FilePane* p) {
 
 // Lesezeichen öffnen: ein aktiver Filter der Liste wird ausgeschaltet; ein mit dem Lesezeichen gespeicherter Filter
 // wird eingeschaltet (mit Sortiervorgabe in der Ansicht „Details“)
+// ===================== Konfigurationen =====================
+
+std::wstring MainWindow::CaptureConfiguration() const {
+    LayoutConfig c;
+    c.twoPanes = twoPanes_;
+    c.split[0] = split_[0];
+    c.split[1] = split_[1];
+    c.colRatio = colRatio_;
+    c.rowRatio[0] = rowRatio_[0];
+    c.rowRatio[1] = rowRatio_[1];
+    c.active = active_;
+    // Eine Dateianzeige (F11/Schnellansicht) zählt nicht: maßgeblich ist die Liste darunter
+    for (int i = 0; i < 4; ++i) {
+        if (!PaneVisible(i) || panes_[i]->Dir().empty()) continue;
+        c.panes[i].used = true;
+        c.panes[i].dir = panes_[i]->Dir();
+        c.panes[i].view = (int)panes_[i]->View();
+    }
+    return c.ToString();
+}
+
+void MainWindow::SaveConfiguration() {
+    std::wstring name;
+    for (;;) {
+        if (!InputBox(hwnd_, L"Konfiguration speichern", L"Name der Konfiguration:", name,
+                      L"Gespeichert werden die Aufteilung der Listen sowie deren Verzeichnisse und Ansichten. "
+                      L"Die Konfiguration erscheint in der Lesezeichenliste."))
+            return;
+        name = Trim(name);
+        if (!name.empty()) break;
+    }
+    std::wstring data = CaptureConfiguration();
+    int existing = bookmarks_.FindConfig(name);
+    if (existing >= 0) {
+        if (!MsgConfirm(hwnd_, L"Die Konfiguration „" + name + L"“ ist bereits vorhanden.\n\nSoll sie ersetzt werden?"))
+            return;
+        bookmarks_.SetConfig(existing, data);
+    } else {
+        bookmarks_.AppendConfig(name, data);
+    }
+}
+
+void MainWindow::ApplyConfiguration(const std::wstring& data) {
+    LayoutConfig c;
+    if (!LayoutConfig::FromString(data, c)) {
+        MsgInfo(hwnd_, L"Die Konfiguration ist unvollständig und kann nicht hergestellt werden.");
+        return;
+    }
+    if (quickView_) SetQuickView(false, false);   // Dateianzeige beenden
+    twoPanes_ = c.twoPanes;
+    split_[0] = c.split[0];
+    split_[1] = c.split[1];
+    colRatio_ = c.colRatio;
+    rowRatio_[0] = c.rowRatio[0];
+    rowRatio_[1] = c.rowRatio[1];
+    ApplyPaneVisibility();
+    // Verzeichnisse wie einzeln in der jeweiligen Liste gewählt (Verlauf, zuletzt besuchte Verzeichnisse)
+    for (int i = 0; i < 4; ++i) {
+        if (!PaneVisible(i)) continue;
+        FilePane& p = *panes_[i];
+        const LayoutConfig::Pane& pc = c.panes[i];
+        if (!pc.used || pc.dir.empty()) {
+            if (p.Dir().empty()) p.Navigate(panes_[i % 2]->Dir(), L"", true, false);
+            continue;
+        }
+        if (!EqualsI(p.Dir(), pc.dir)) {
+            p.ClearFilter(false);
+            if (!p.Navigate(pc.dir)) continue;
+        }
+        if (p.View() != (PaneView)pc.view) p.SetView((PaneView)pc.view);
+    }
+    int act = PaneVisible(c.active) ? c.active : 0;
+    Layout();
+    SetActive(act, true);
+    UpdateViewButtons();
+}
+
+// Doppelklick auf die Ansicht „Details“ (Werkzeugleiste): Details in der aktiven Liste, Spalten optimiert
+void MainWindow::OptimizeDetails() {
+    lastDetailsOptimize_ = GetTickCount();
+    if (FocusedArchiveView()) return;
+    Active().OptimizeDetailsColumns();
+    UpdateViewButtons();
+}
+
 bool MainWindow::OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter, int sort) {
     bool hadFilter = pane.Filter().active;
     pane.ClearFilter(false);
@@ -3004,7 +3086,7 @@ bool MainWindow::HandleVirtualCommand(int id) {
     case cmd::ToggleCommandLine: case cmd::ToggleStatusBar: case cmd::SelectAll: case cmd::SelectNone:
     case cmd::InvertSelection: case cmd::SelectGroup: case cmd::DeselectGroup: case cmd::SelectSameExt:
     case cmd::CopyPaths: case cmd::CopyNames: case cmd::BookmarkAdd: case cmd::BookmarkNewRemote: case cmd::BookmarkSort:
-    case cmd::BookmarkAddCloud: case cmd::BookmarkFavorites: case cmd::PrivateMode: case cmd::ClearHistory:
+    case cmd::BookmarkAddCloud: case cmd::BookmarkFavorites: case cmd::PrivateMode: case cmd::ClearHistory: case cmd::ConfigSave:
     case cmd::ShowRecycleBin: case cmd::RecycleEmpty:
     case cmd::FunctionKeys:
     case cmd::Options: case cmd::Shortcuts: case cmd::About: case cmd::Exit: case cmd::ClearCompareMarks: case cmd::OpLog:
@@ -3119,6 +3201,10 @@ void MainWindow::OnCommand(int id) {
         size_t i = (size_t)(id - cmd::BookmarkFirst);
         if (i < bookmarks_.Get().size()) {
             Bookmark b = bookmarks_.Get()[i];
+            if (!b.config.empty()) {
+                ApplyConfiguration(b.config);
+                return;
+            }
             OpenBookmarkIn(a, b.path, b.filter, b.sort);
             a.FocusList();
         }
@@ -3380,6 +3466,7 @@ void MainWindow::OnCommand(int id) {
         break;
     }
     case cmd::QuickView: SetQuickView(!quickView_); break;
+    case cmd::ConfigSave: SaveConfiguration(); break;
     case cmd::ViewDetails:
     case cmd::ViewList:
     case cmd::ViewIcons:
@@ -3912,7 +3999,16 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_COMMAND:
         if (lp) {
             // Nur die Werkzeugleiste sendet Befehle; Benachrichtigungen anderer Steuerelemente ignorieren
-            if ((HWND)lp == toolbar_) OnCommand(LOWORD(wp));
+            if ((HWND)lp == toolbar_) {
+                OnCommand(LOWORD(wp));
+                // Doppelklick auf „Details“ (zwei Klicks kurz nacheinander): Spalten optimieren
+                if (LOWORD(wp) == cmd::ViewDetails) {
+                    DWORD now = GetTickCount();
+                    bool dbl = lastDetailsClick_ && now - lastDetailsClick_ <= GetDoubleClickTime();
+                    lastDetailsClick_ = dbl ? 0 : now;
+                    if (dbl && now - lastDetailsOptimize_ > GetDoubleClickTime()) OptimizeDetails();
+                }
+            }
             return 0;
         }
         OnCommand(LOWORD(wp));
@@ -3921,6 +4017,10 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         auto* nm = (NMHDR*)lp;
         if (nm->hwndFrom == tree_.Hwnd()) return tree_.OnNotify(nm);
         if (nm->hwndFrom == bookmarks_.Hwnd()) return bookmarks_.OnNotify(nm);
+        if (nm->hwndFrom == toolbar_ && nm->code == NM_DBLCLK && ((NMMOUSE*)lp)->dwItemSpec == (DWORD_PTR)cmd::ViewDetails) {
+            OptimizeDetails();   // Doppelklick auf „Details“
+            return TRUE;
+        }
         if (nm->hwndFrom == toolbar_ && nm->code == NM_RCLICK) {
             // Rechtsklick auf die Werkzeugleiste: anpassen bzw. ausblenden
             HMENU m = CreatePopupMenu();
