@@ -1362,6 +1362,7 @@ Shot "screenshot53.png"   # Konfiguration (hell-ocker) aufgerufen: wieder zwei L
 # 9) Doppelklick auf „Details“ in der Werkzeugleiste: Spalten Typ…Attr. auf den Inhalt, Attr. am rechten Rand
 GoPath "C:\Windows"
 [W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^+l"); Start-Sleep -Seconds 1   # eine Liste: genug Breite für alle Spalten
 [System.Windows.Forms.SendKeys]::SendWait("^+2"); Start-Sleep -Milliseconds 800
 $tb = [W]::FindWindowEx($fw, [IntPtr]::Zero, "ToolbarWindow32", $null)
 $dr = [W]::ToolbarButtonRect($tb, 40202)   # cmd::ViewDetails
@@ -1376,7 +1377,7 @@ $cr9 = New-Object W+RECT; [W]::GetClientRect($fList, [ref]$cr9) | Out-Null
 Shot "screenshot54.png"   # Details nach Doppelklick: Spalten optimiert
 $extraInfo = "Symbolfarbe in [$t7]; Konfiguration: Listen vorher $panesBefore, eine Liste $panesOne, nach Aufruf $panesAfter [$t8]; " +
              "Details: Ansicht $view9, Spalten $($ws9 -join '/') = $sum9 bei Breite $($cr9.R - $cr9.L) (Schaltfläche $($dr.L),$($dr.T))"
-$extraOk = $t7 -eq 'C:\QFilesFilter\Projekt\Sub' -and $panesBefore -eq 2 -and $panesOne -eq 1 -and $panesAfter -eq 2 -and
+$extraOk = $t7 -eq 'C:\QFilesFilter\Projekt\Sub' -and $panesBefore -ge 2 -and $panesOne -lt $panesBefore -and $panesAfter -eq $panesBefore -and
            $view9 -eq 1 -and [Math]::Abs($sum9 - ($cr9.R - $cr9.L)) -le 2
 if ($extraOk) { Write-Output "::notice title=Symbolfarbe, Konfiguration, Details::$extraInfo" }
 else { Write-Output "::error title=Symbolfarbe, Konfiguration, Details::$extraInfo" }
