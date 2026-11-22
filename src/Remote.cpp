@@ -445,7 +445,8 @@ RemoteAccess LoadRemoteAccess(const std::wstring& url) {
 
 bool HasSavedRemoteLogin(const std::wstring& url) {
     RemoteAccess a = LoadRemoteAccess(url);
-    // anonym: FTP ohne Benutzer bzw. WebDAV ohne Benutzer
+    // anonym: FTP ohne Benutzer bzw. WebDAV ohne Benutzer; Geräte (MTP) brauchen keine Anmeldung
+    if (IsMtpUrl(url)) return true;
     return !a.password.empty() || !a.keyFile.empty() || a.url.user.empty();
 }
 
@@ -1192,7 +1193,7 @@ bool RemoteProperties(HWND owner, const std::wstring& dirUrl, const std::vector<
     if (entries.empty()) return false;
     RemoteUrl u;
     if (!ParseRemoteUrl(dirUrl, u)) return false;
-    bool dav = u.proto == RemoteProto::WebDav || u.proto == RemoteProto::WebDavs;
+    bool dav = u.proto == RemoteProto::WebDav || u.proto == RemoteProto::WebDavs || u.proto == RemoteProto::Mtp;
     RemotePropsDlg dlg;
     dlg.supported = !dav;
     // Angaben

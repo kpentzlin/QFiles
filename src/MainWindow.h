@@ -123,6 +123,7 @@ private:
     HACCEL accel_ = nullptr;
     DirTree tree_;
     BookmarkList bookmarks_;
+    int devicePolls_ = 0;   // Geräte (MTP) nach WM_DEVICECHANGE noch so oft neu einlesen
     std::array<std::unique_ptr<FilePane>, 4> panes_;
 
     int active_ = 0;

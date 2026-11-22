@@ -200,10 +200,11 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
     `…\AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar`) **hellblau** (beim Sortieren
     bei den Standardverzeichnissen), Cloud-Speicher (Dropbox, Google Drive,
     OneDrive) **lila**, FTP/SFTP-Zugänge **hellgrün**, WebDAV-Zugänge **noch etwas heller grün**,
-    Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**.
+    Netzwerkpfade (UNC-Pfade, Netzwerk, Rechner, Netzlaufwerke) **hellrot**, Smartphones, Tablets und Kameras (MTP)
+    in einem **etwas dunkleren Hellrot**.
   - **Lesezeichen → Sortieren…** (nach Rückfrage): zuerst „Netzwerk“, dann die Standardverzeichnisse, die
-    Cloud-Speicher, die FTP/SFTP/WebDAV-Zugänge (gemeinsam), die übrigen Netzwerkpfade und zuletzt die lokalen
-    Verzeichnisse – jeweils alphabetisch.
+    Cloud-Speicher, die FTP/SFTP/WebDAV-Zugänge (gemeinsam), die übrigen Netzwerkpfade, die Geräte (MTP) und zuletzt
+    die lokalen Verzeichnisse – jeweils alphabetisch.
   - **Lesezeichen → Cloud-Speicher hinzufügen…** findet die Ordner der Desktop-Programme von Dropbox, Google Drive und
     Microsoft OneDrive (auch mehrere Konten, z. B. „OneDrive – Firma“) und legt sie als Lesezeichen an.
   - Vorgegeben ist das Lesezeichen **Netzwerk**: Es zeigt die oberste Netzwerkebene (siehe unten).
@@ -450,6 +451,26 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - FTP und WebDAV über HTTP übertragen Kennwort und Daten unverschlüsselt (Hinweis in der Statuszeile);
   FTP-Dateinamen in UTF-8.
 
+### Smartphones, Tablets und Kameras (MTP)
+
+- Per USB angeschlossene Smartphones, Tablets und Kameras, die Windows als „tragbares Gerät“ (MTP/PTP, Windows
+  Portable Devices) einbindet, erscheinen **rechts neben den Laufwerken** in der Kopfzeile jeder Liste (Telefon- bzw.
+  Kamerasymbol und Kurzname; Tooltip mit vollem Namen und Beschreibung) und **im Verzeichnisbaum** unter den
+  Laufwerken. Ein Klick öffnet das Gerät: oben die Speicher (z. B. „Interner Speicher“, „SD-Karte“), darunter die
+  Ordner wie DCIM, Download oder Pictures. Ein- und Ausstecken wird automatisch erkannt.
+- Adressen: `mtp://Gerätename/Speicher/Ordner/Datei` – auch direkt im Verzeichnisfeld.
+- Wie bei FTP/SFTP: Kopieren und Verschieben in beide Richtungen (Tasten, Zwischenablage, Ziehen auf die Liste) mit
+  Fortschrittsanzeige, Löschen, Umbenennen, Ordner anlegen, Anzeigen und Bearbeiten über eine temporäre Kopie. Beim
+  Herunterladen erhält die Datei das Änderungsdatum vom Gerät; beim Hochladen wird das Änderungsdatum mitgegeben,
+  soweit das Gerät es annimmt. Eine gleichnamige Datei auf dem Gerät wird ersetzt.
+- Lesezeichen: Das Lesezeichensymbol bzw. Strg+D legt für ein Geräteverzeichnis ein normales Lesezeichen an
+  (Hintergrund etwas dunkleres Hellrot, beim Sortieren eine eigene Gruppe hinter den Netzwerkpfaden). Ist das Gerät
+  nicht angeschlossen, zeigt der Tooltip „(Gerät nicht angeschlossen)“. *Pfad ändern…* bearbeitet die Adresse.
+- Voraussetzung auf dem Gerät: entsperrt und im USB-Modus **Dateiübertragung** (Android) bzw. „Diesem Computer
+  vertrauen“ bestätigt (iPhone/iPad: nur Fotos und Videos, lesend). Zeigt das Gerät keinen Speicher, meldet QFiles
+  das; nach dem Entsperren mit F5 aktualisieren.
+- USB-Sticks und Speicherkarten mit Laufwerksbuchstaben erscheinen weiterhin als Laufwerke, nicht als Gerät.
+
 ### Cloud-Speicher
 
 Dropbox, Google Drive und OneDrive werden über die Ordner ihrer Windows-Programme eingebunden (Dropbox-Ordner,
@@ -644,6 +665,7 @@ den öffentlichen Testserver test.rebex.net) und ein Oberflächentest mit Bildsc
 | `src/FileOps.*`, `ShellMenu.*` | Dateioperationen mit Rückgängig, Zwischenablage, Kontextmenü, Drag & Drop |
 | `src/Location.*`, `Network.*` | Netzwerk-, FTP- und WebDAV-Adressen, Suche nach Rechnern und Freigaben |
 | `src/Remote.*`, `RemoteFs.h`, `FtpClient.cpp`, `SftpClient.cpp`, `WebDavClient.cpp`, `RemoteCommon.cpp` | FTP/SFTP/WebDAV: Zugänge, Verbindungen, Übertragungen |
+| `src/Mtp.h`, `MtpClient.cpp` | Smartphones, Tablets, Kameras über Windows Portable Devices (Geräteliste, Dateizugriff) |
 | `src/Cloud.*` | Erkennen der Cloud-Speicher-Ordner (Dropbox, Google Drive, OneDrive) |
 | `src/Viewer.cpp`, `MediaPreview.*`, `HexView.*` | Anzeige (Text, Bild, Hex, Vorschauhandler, PDF-Seiten, Video-Einzelbilder), Hex-Editor |
 | `src/ProgramInfo.*` | Eigenschaften von Programmdateien (Versionsressource, PE-Kopf, Signatur, Shell-Eigenschaften) |
@@ -699,6 +721,9 @@ Standard-Kontextmenü der Shell einmal an.
 - Für FTP/SFTP/WebDAV-Verzeichnisse stehen nicht alle Werkzeuge zur Verfügung (z. B. Vergleichen, Synchronisieren,
   Suchen, Ziehen aus der Liste heraus, Rückgängig); QFiles meldet das. Dateien lassen sich aber auf eine
   FTP/SFTP/WebDAV-Liste ziehen (hochladen).
+- Geräte (MTP): Verschieben innerhalb des Geräts nur, wenn das Gerät es unterstützt; Unix-Rechte und Erstellungsdatum
+  lassen sich nicht setzen. Ob sich das Änderungsdatum beim Hochladen übernehmen lässt, hängt vom Gerät ab.
+  Gleichnamige Einträge in einem Geräteordner (bei MTP möglich) zeigt QFiles nur einmal.
 - WebDAV: Umbenennen und Verschieben auf dem Server über MOVE; Server, die Ordner nicht per PROPFIND auflisten
   (reine HTTP-Downloadseiten), werden nicht unterstützt.
 - Cloud-Speicher nur über die installierten Desktop-Programme der Anbieter (siehe oben). Bei „Dateien bei Bedarf“

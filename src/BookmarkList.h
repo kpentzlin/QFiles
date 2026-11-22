@@ -31,7 +31,7 @@ public:
     void DeleteSelected();
     void RenameSelected();
     void MoveSelected(int delta);
-    // Sortieren: „Netzwerk“, Standardverzeichnisse, Cloud, FTP/SFTP/WebDAV, Netzwerkpfade, lokal – je alphabetisch
+    // Sortieren: „Netzwerk“, Standardverzeichnisse, Cloud, FTP/SFTP/WebDAV, Netzwerkpfade, Geräte (MTP), lokal – je alphabetisch
     void SortByCategory();
     LRESULT OnNotify(NMHDR* nm);
     void Resize();
@@ -39,6 +39,8 @@ public:
     void ApplyFont();
     // Eintrag „Favoriten“ ganz oben (dunkelroter Asterisk, hellgelb), nur wenn count > 0
     void SetFavoritesCount(size_t count);
+    // Geräte (MTP) angeschlossen/getrennt: Symbole neu bestimmen
+    void DevicesChanged() { Rebuild(Selected()); }
 
 private:
     void ApplyRecycleIcon();     // Symbol aus recycleFull_ setzen

@@ -2,6 +2,7 @@
 #include "Drives.h"
 #include "App.h"
 #include "Location.h"
+#include "Mtp.h"
 #include "ShellMenu.h"
 #include "Util.h"
 #include "UiaSimple.h"
@@ -87,6 +88,11 @@ void DirTree::Populate() {
         else if (!d.label.empty())
             label += L"  " + d.label;
         AddItem(TVI_ROOT, label, d.root, d.icon, d.icon, true);
+    }
+    // Smartphones, Tablets, Kameras (MTP): Klick öffnet das Gerät in der Liste (nicht aufklappbar)
+    for (const MtpDevice& d : MtpDevices()) {
+        int icon = StockIconIndex(d.camera ? SIID_DEVICECAMERA : SIID_DEVICECELLPHONE);
+        AddItem(TVI_ROOT, d.name, MtpDeviceUrl(d), icon, icon, false);
     }
     // Netzwerk (aufklappbar: Rechner, darunter deren Freigaben)
     int net = StockIconIndex(SIID_MYNETWORK);
@@ -254,6 +260,22 @@ HTREEITEM DirTree::FindChild(HTREEITEM parent, const std::wstring& name) const {
 
 void DirTree::SelectPath(const std::wstring& path) {
     if (path.empty()) return;
+    if (IsRemoteUrl(path)) {
+        // Gerät (MTP): Geräteknoten markieren; FTP/SFTP/WebDAV stehen nicht im Baum
+        const MtpDevice* d = IsMtpUrl(path) ? MtpDeviceForUrl(path) : nullptr;
+        if (!d) return;
+        std::wstring url = MtpDeviceUrl(*d);
+        for (HTREEITEM c = TreeView_GetRoot(tree_); c; c = TreeView_GetNextSibling(tree_, c)) {
+            if (ItemPath(c) == url) {
+                suppress_ = true;
+                TreeView_SelectItem(tree_, c);
+                TreeView_EnsureVisible(tree_, c);
+                suppress_ = false;
+                break;
+            }
+        }
+        return;
+    }
     if (IsNetworkRoot(path) || StartsWithI(path, L"\\\\")) {
         // Netzwerk: nur bereits gefundene Knoten markieren (keine neue Suche anstoßen)
         HTREEITEM item = NetworkNode();
@@ -355,7 +377,7 @@ std::wstring DirTree::DropDirAt(POINT screenPt) const {
     HTREEITEM item = TreeView_HitTest(tree_, &ht);
     if (!item || !(ht.flags & TVHT_ONITEM)) return L"";
     std::wstring p = ItemPath(item);
-    return IsNetworkVirtual(p) ? L"" : p;
+    return IsNetworkVirtual(p) || IsRemoteUrl(p) ? L"" : p;
 }
 
 LRESULT DirTree::OnNotify(NMHDR* nm) {
@@ -414,7 +436,7 @@ LRESULT DirTree::OnNotify(NMHDR* nm) {
         HTREEITEM item = TreeView_HitTest(tree_, &ht);
         if (item) {
             std::wstring p = ItemPath(item);
-            if (!p.empty() && !IsNetworkVirtual(p)) {
+            if (!p.empty() && !IsNetworkVirtual(p) && !IsRemoteUrl(p)) {
                 bool rename = false;
                 if (IsRootPath(p))
                     ShowShellContextMenu(GetAncestor(tree_, GA_ROOT), p, {}, pt, nullptr, &rename);

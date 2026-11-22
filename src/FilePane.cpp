@@ -446,6 +446,7 @@ void FilePane::OnDpiChanged() {
 
 void FilePane::UpdateDrives() {
     drives_ = ListDrives();   // Art und Symbol (lokal, subst, Netzwerk, CD/DVD, extern, RAM-Disk) siehe Drives.cpp
+    devices_ = MtpDevices();  // Smartphones, Tablets, Kameras (MTP); neu eingelesen bei WM_DEVICECHANGE
     BuildHitRects();
     InvalidateRect(hwnd_, &rcHeader_, FALSE);
 }
@@ -480,6 +481,13 @@ void FilePane::Layout() {
                  SWP_NOZORDER | SWP_NOACTIVATE);
     BuildHitRects();
     InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+// Kurzname eines Geräts für die Laufwerksleiste
+std::wstring FilePane::DeviceLabel(const MtpDevice& d) {
+    const size_t kMax = 12;
+    if (d.name.size() <= kMax) return d.name;
+    return Trim(d.name.substr(0, kMax - 1)) + L"…";
 }
 
 // Schrift der Laufwerksbuchstaben: etwa 20 % größer als die Oberflächenschrift und fett
@@ -518,7 +526,7 @@ void FilePane::BuildHitRects() {
     }
     // Lesezeichensymbol entfällt bei FTP/SFTP (Zugänge entstehen über „Lesezeichen → Neuer FTP/sFTP-Zugriff“) und in
     // den Favoriten (die haben ihr eigenes Lesezeichen)
-    if (!IsRemoteUrl(dir_) && !IsSpecialList()) {
+    if ((!IsRemoteUrl(dir_) || IsMtpUrl(dir_)) && !IsSpecialList()) {
         hits_.push_back({HitArea::Bookmark, -1, {x - bs, pad, x, pad + bs}});
         x -= bs + pad;
     }
@@ -534,6 +542,18 @@ void FilePane::BuildHitRects() {
         int w = ToPx(16) + ToPx(3) + sz.cx + ToPx(8);
         if (dx + w > rightLimit) break;
         hits_.push_back({HitArea::Drive, i, {dx, pad, dx + w, pad + bs}});
+        dx += w + ToPx(1);
+    }
+    // Geräte (MTP) rechts neben den Laufwerken: Symbol und Kurzname
+    SelectObject(dc, App::UIFont());
+    if (!devices_.empty()) dx += ToPx(4);
+    for (int i = 0; i < (int)devices_.size(); ++i) {
+        std::wstring label = DeviceLabel(devices_[i]);
+        SIZE sz{};
+        GetTextExtentPoint32W(dc, label.c_str(), (int)label.size(), &sz);
+        int w = ToPx(16) + ToPx(3) + sz.cx + ToPx(8);
+        if (dx + w > rightLimit) break;
+        hits_.push_back({HitArea::Device, i, {dx, pad, dx + w, pad + bs}});
         dx += w + ToPx(1);
     }
     SelectObject(dc, old);
@@ -567,6 +587,13 @@ void FilePane::UpdateTooltips() {
         std::wstring text;
         switch (h.area) {
         case HitArea::Drive: text = DriveDescription(drives_[h.drive]); break;
+        case HitArea::Device: {
+            const MtpDevice& d = devices_[h.drive];
+            text = d.name + L" – " + (d.camera ? L"Kamera" : L"Smartphone/Tablet") + L" (MTP)";
+            if (!d.description.empty() && !EqualsI(d.description, d.name)) text += L"\n" + d.description;
+            text += L"\n" + MtpDeviceUrl(d);
+            break;
+        }
         case HitArea::Split:
             text = splitButton_ == SplitButton::Split ? L"Split: Liste teilen (Strg+T)" : L"Split aufheben (Strg+T)";
             break;
@@ -704,6 +731,30 @@ void FilePane::PaintHeader(HDC dc, const RECT& rc) {
             HGDIOBJ prev = SelectObject(dc, DriveFont());
             DrawTextW(dc, letter, 1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
             SelectObject(dc, prev);
+        } else if (h.area == HitArea::Device) {
+            const MtpDevice& d = devices_[h.drive];
+            std::wstring key = MtpDeviceUrl(d);
+            key.pop_back();   // "mtp://Name"
+            bool current = IsMtpUrl(dir_) && (EqualsI(dir_, key) || StartsWithI(dir_, key + L"/"));
+            bool hot = hot_ == &h;
+            if (current || hot) {
+                COLORREF c = current ? RGB(255, 255, 255) : Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 190);
+                HBRUSH hb = CreateSolidBrush(c);
+                FillRect(dc, &h.rc, hb);
+                DeleteObject(hb);
+                HBRUSH fr = CreateSolidBrush(current ? GetSysColor(COLOR_HIGHLIGHT) : Blend(GetSysColor(COLOR_HIGHLIGHT), RGB(255, 255, 255), 80));
+                FrameRect(dc, &h.rc, fr);
+                DeleteObject(fr);
+            }
+            int iconSize = ToPx(16);
+            int iy = (h.rc.top + h.rc.bottom - iconSize) / 2;
+            ImageList_DrawEx(g_sysSmall, StockIcon(d.camera ? SIID_DEVICECAMERA : SIID_DEVICECELLPHONE), dc, h.rc.left + ToPx(3),
+                             iy, iconSize, iconSize, CLR_NONE, CLR_NONE, ILD_TRANSPARENT);
+            RECT tr = h.rc;
+            tr.left += ToPx(3) + iconSize + ToPx(3);
+            std::wstring label = DeviceLabel(d);
+            SetTextColor(dc, GetSysColor(COLOR_BTNTEXT));
+            DrawTextW(dc, label.c_str(), (int)label.size(), &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
         } else if (h.area == HitArea::Split || h.area == HitArea::Bookmark || h.area == HitArea::Filter ||
                    h.area == HitArea::Enlarge) {
             DrawGlyph(dc, h.area, h.rc, hot_ == &h && !(h.area == HitArea::Enlarge && enlargeState_ != 1));
@@ -858,6 +909,14 @@ void FilePane::OnClickArea(const HitRect& h) {
         ClearFilter(false);
         Navigate(target);
         if (changes) ResetToNameSort();
+        break;
+    }
+    case HitArea::Device: {
+        // Gerät: Wurzel (Speicher des Geräts); Filter aus, nach Name aufsteigend
+        std::wstring target = MtpDeviceUrl(devices_[h.drive]);
+        ClearFilter(false);
+        Navigate(target);
+        ResetToNameSort();
         break;
     }
     case HitArea::Split:

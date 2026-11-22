@@ -511,6 +511,20 @@ static void TestLocations() {
     CHECK(ParseRemoteUrl(L"dav://h/", u) && u.EffectivePort() == 80 && IsWebDavUrl(L"davs://h/x") && !IsWebDavUrl(L"ftp://h/"));
     CHECK(IsRemoteUrl(L"davs://h/") && IsVirtualLocation(L"dav://h/a"));
     CHECK(LocationParent(L"davs://k@h/a/b") == L"davs://k@h/a");
+    // Geräte (MTP): Gerätename bis zum ersten '/', darf ':' und '@' enthalten; kein Benutzer, kein Port
+    CHECK(ParseRemoteUrl(L"mtp://Galaxy S23: Karl@Home/Interner Speicher/DCIM/", u) && u.proto == RemoteProto::Mtp &&
+          u.host == L"Galaxy S23: Karl@Home" && u.user.empty() && u.port == 0 && u.path == L"/Interner Speicher/DCIM");
+    CHECK(u.ToString() == L"mtp://Galaxy S23: Karl@Home/Interner Speicher/DCIM");
+    CHECK(u.ServerKey() == L"mtp://Galaxy S23: Karl@Home");
+    CHECK(ParseRemoteUrl(L"MTP://Pixel", u) && u.host == L"Pixel" && u.path == L"/" && u.ToString() == L"mtp://Pixel/");
+    CHECK(!ParseRemoteUrl(L"mtp:///x", u));
+    CHECK(IsRemoteUrl(L"mtp://Pixel/") && IsMtpUrl(L"mtp://Pixel/a") && !IsMtpUrl(L"ftp://h/") && !IsWebDavUrl(L"mtp://P/"));
+    CHECK(LocationParent(L"mtp://Pixel/Interner Speicher/DCIM") == L"mtp://Pixel/Interner Speicher");
+    CHECK(LocationParent(L"mtp://Pixel/Interner Speicher") == L"mtp://Pixel/");
+    CHECK(LocationParent(L"mtp://Pixel/").empty());
+    CHECK(LocationFileName(L"mtp://Pixel/") == L"Pixel" && LocationFileName(L"mtp://Pixel/A/Camera") == L"Camera");
+    CHECK(LocationCombine(L"mtp://Pixel/", L"A") == L"mtp://Pixel/A");
+    CHECK(NormalizeSpecialLocation(L"mtp://Pixel\\A\\B") == L"mtp://Pixel/A/B");
     CHECK(LocationParent(L"sftp://k@h/a/b") == L"sftp://k@h/a");
     CHECK(LocationParent(L"sftp://k@h/a") == L"sftp://k@h/");
     CHECK(LocationParent(L"sftp://k@h/").empty());

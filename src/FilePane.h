@@ -8,6 +8,7 @@
 //   Statuszeile
 
 #include "Drives.h"
+#include "Mtp.h"
 #include "ShellMenu.h"
 #include <windows.h>
 #include <commctrl.h>
@@ -148,6 +149,7 @@ public:
     void SetActiveLook(bool active);       // aktive Liste hervorheben
     void ApplyOptions();                   // Schrift, Gitternetz, versteckte Dateien …
     void UpdateDrives();
+    static std::wstring DeviceLabel(const MtpDevice& d);
     void OnDpiChanged();
 
     // Aktionen
@@ -204,10 +206,10 @@ private:
     void OnTreeBatch(WPARAM gen);
     void OnTreeDone(WPARAM gen);
     bool AcceptEntry(const DirEntry& e, const std::wstring& fullPath) const;
-    enum class HitArea { None, Drive, Split, Enlarge, Bookmark, Filter, Back, Forward, Up, Root, Browse, Active };
+    enum class HitArea { None, Drive, Device, Split, Enlarge, Bookmark, Filter, Back, Forward, Up, Root, Browse, Active };
     struct HitRect {
         HitArea area;
-        int drive;          // Laufwerksindex bei Drive
+        int drive;          // Laufwerksindex bei Drive, Geräteindex bei Device
         RECT rc;
     };
 
@@ -295,6 +297,7 @@ private:
     std::wstring dir_;
     std::vector<Item> items_;
     std::vector<DriveDesc> drives_;
+    std::vector<MtpDevice> devices_;   // Smartphones, Tablets, Kameras (MTP) – rechts neben den Laufwerken
     std::vector<HitRect> hits_;
     const HitRect* hot_ = nullptr;
     bool tracking_ = false;

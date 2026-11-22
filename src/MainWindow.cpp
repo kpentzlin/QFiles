@@ -10,6 +10,7 @@
 #include "Glyphs.h"
 #include "HexView.h"
 #include "Location.h"
+#include "Mtp.h"
 #include "Modules.h"
 #include "Remote.h"
 #include "ShellMenu.h"
@@ -35,7 +36,8 @@ namespace {
 const wchar_t* kMainClass = L"QFilesMain";
 MainWindow* g_main = nullptr;
 
-enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3, TIMER_SAVESTATE = 4, TIMER_CLIPBOARD = 5 };
+enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3, TIMER_SAVESTATE = 4, TIMER_CLIPBOARD = 5,
+               TIMER_DEVICES = 6 };
 constexpr int kSplitterW = 5;
 constexpr int kCaptionH = 26;  // = Kopfzeile der Listen
 constexpr int kFKeyH = 26;
@@ -2142,7 +2144,7 @@ void MainWindow::OnPaneBookmarkButton(FilePane* p) {
 void MainWindow::AddBookmarkFor(FilePane& p) {
     std::wstring dir = p.Dir();
     if (dir.empty()) return;
-    if (p.IsRemote()) {
+    if (p.IsRemote() && !IsMtpUrl(dir)) {
         // FTP/SFTP: Lesezeichen über den Zugangsdialog (mit diesem Verzeichnis als Start)
         RemoteAccess a = LoadRemoteAccess(dir);
         a.name = LocationFileName(dir);
@@ -3954,6 +3956,16 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == TIMER_CLIPBOARD) {
             KillTimer(hwnd_, TIMER_CLIPBOARD);
             OnClipboardChanged();
+        } else if (wp == TIMER_DEVICES) {
+            // bis zu dreimal nachsehen (0,8 s, 2 s, 4 s), da sich Geräte nach dem Anstecken erst einrichten
+            if (--devicePolls_ <= 0) KillTimer(hwnd_, TIMER_DEVICES);
+            else SetTimer(hwnd_, TIMER_DEVICES, devicePolls_ == 2 ? 1200 : 2000, nullptr);
+            if (MtpRefreshDevices()) {
+                for (auto& p : panes_) p->UpdateDrives();
+                tree_.Populate();
+                tree_.SelectPath(Active().Dir());
+                bookmarks_.DevicesChanged();
+            }
         } else if (wp == TIMER_SAVESTATE) {
             KillTimer(hwnd_, TIMER_SAVESTATE);
             App::SaveSettings();
@@ -3991,6 +4003,12 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             for (auto& p : panes_) p->UpdateDrives();
             tree_.Populate();
             tree_.SelectPath(Active().Dir());
+        }
+        // Smartphones/Kameras (MTP) melden sich nur als DBT_DEVNODES_CHANGED; die Geräteliste gesammelt und mit
+        // etwas Verzögerung neu lesen (WPD meldet ein frisch angestecktes Gerät erst nach dem Einrichten)
+        if (MtpAvailable() && (wp == DBT_DEVNODES_CHANGED || wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE)) {
+            devicePolls_ = 3;
+            SetTimer(hwnd_, TIMER_DEVICES, 800, nullptr);
         }
         return TRUE;
     case WM_DPICHANGED: {

@@ -27,7 +27,8 @@ bool IsNetworkRoot(const std::wstring& p);
 bool IsNetworkServer(const std::wstring& p);   // "\\Server" (ohne Freigabe)
 bool IsNetworkVirtual(const std::wstring& p);  // Netzwerk oder Rechner
 bool IsUncShareRoot(const std::wstring& p);    // "\\Server\Freigabe"
-bool IsRemoteUrl(const std::wstring& p);       // ftp://, sftp://, dav://, davs://
+bool IsRemoteUrl(const std::wstring& p);       // ftp://, sftp://, dav://, davs://, mtp://
+bool IsMtpUrl(const std::wstring& p);          // mtp://Gerät/… (Smartphone, Tablet, Kamera)
 bool IsWebDavUrl(const std::wstring& p);       // dav:// oder davs://
 bool IsVirtualLocation(const std::wstring& p); // Netzwerk, Rechner oder FTP/SFTP (kein Win32-Dateisystem)
 // Netzwerkpfad: UNC, Netzwerk/Rechner oder verbundenes Netzlaufwerk (für die Farbe in der Lesezeichenliste)
@@ -46,7 +47,7 @@ bool LocationHasParent(const std::wstring& p);
 std::wstring LocationDisplay(const std::wstring& p);
 
 // ---- FTP/SFTP-Adressen ----
-enum class RemoteProto { Ftp, Sftp, WebDav, WebDavs };
+enum class RemoteProto { Ftp, Sftp, WebDav, WebDavs, Mtp };   // Mtp: host = Gerätename, ohne Benutzer/Port
 
 const wchar_t* RemoteScheme(RemoteProto p);    // "ftp", "sftp", "dav", "davs"
 int RemoteDefaultPort(RemoteProto p);          // 21, 22, 80, 443

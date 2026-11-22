@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.28"
+QF_VERSION = "0.1.29"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -101,7 +101,10 @@ DATA = [
          "QFiles und Idoswin: Papierkorb; QFiles (neu in 0.1.11): eigene Ansicht mit ursprünglichem Ort und Löschdatum, "
          "Wiederherstellen, endgültig löschen, leeren", A),
         ("Löschen in den Papierkorb rückgängig machen (Strg+Z)", "ja", "?", "?", "neu in QFiles 0.1.11", False),
-        ("Smartphones, Tablets, Kameras (MTP)", "–", "–", "ja", "", False),
+        ("Smartphones, Tablets, Kameras (MTP)", "ja", "–", "ja",
+         "QFiles (neu in 0.1.29): über Windows Portable Devices, Adressen mtp://Gerät/Speicher/Ordner; Geräte in der "
+         "Laufwerksleiste, im Verzeichnisbaum und als Lesezeichen; Kopieren/Verschieben in beide Richtungen, Löschen, "
+         "Umbenennen, Ordner anlegen; SC: über den Shell-Namensraum", A),
         ("Netzwerkübersicht (Rechner, Freigaben)", "ja", "ja", "ja", "QFiles: Suche im Hintergrund, abbrechbar", False),
         ("Netzlaufwerke verbinden/trennen", "–", "–", "ja", "", False),
         ("Zum Ziel einer Verknüpfung wechseln (.lnk, Junction, Symlink)", "–", "–", "ja", "", False),

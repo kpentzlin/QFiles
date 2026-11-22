@@ -51,8 +51,10 @@ bool IsUncShareRoot(const std::wstring& p) {
 }
 
 bool IsRemoteUrl(const std::wstring& p) {
-    return StartsWithI(p, L"ftp://") || StartsWithI(p, L"sftp://") || IsWebDavUrl(p);
+    return StartsWithI(p, L"ftp://") || StartsWithI(p, L"sftp://") || IsWebDavUrl(p) || IsMtpUrl(p);
 }
+
+bool IsMtpUrl(const std::wstring& p) { return StartsWithI(p, L"mtp://"); }
 
 bool IsWebDavUrl(const std::wstring& p) { return StartsWithI(p, L"dav://") || StartsWithI(p, L"davs://"); }
 
@@ -61,6 +63,7 @@ const wchar_t* RemoteScheme(RemoteProto p) {
     case RemoteProto::Sftp: return L"sftp";
     case RemoteProto::WebDav: return L"dav";
     case RemoteProto::WebDavs: return L"davs";
+    case RemoteProto::Mtp: return L"mtp";
     default: return L"ftp";
     }
 }
@@ -70,6 +73,7 @@ int RemoteDefaultPort(RemoteProto p) {
     case RemoteProto::Sftp: return 22;
     case RemoteProto::WebDav: return 80;
     case RemoteProto::WebDavs: return 443;
+    case RemoteProto::Mtp: return 0;
     default: return 21;
     }
 }
@@ -79,6 +83,7 @@ const wchar_t* RemoteProtoName(RemoteProto p) {
     case RemoteProto::Sftp: return L"SFTP";
     case RemoteProto::WebDav: return L"WebDAV (HTTP, unverschlüsselt)";
     case RemoteProto::WebDavs: return L"WebDAV (HTTPS)";
+    case RemoteProto::Mtp: return L"Gerät (MTP)";
     default: return L"FTP (unverschlüsselt)";
     }
 }
@@ -179,6 +184,7 @@ std::wstring NormalizeRemotePath(const std::wstring& path) {
 
 std::wstring RemoteUrl::ServerKey() const {
     std::wstring s = std::wstring(RemoteScheme(proto)) + L"://";
+    if (proto == RemoteProto::Mtp) return s + host;   // Gerätename unverändert (darf ':' und '@' enthalten)
     if (!user.empty()) s += ReplaceAll(ReplaceAll(user, L"%", L"%25"), L"@", L"%40") + L"@";
     s += host.find(L':') != std::wstring::npos ? (L"[" + host + L"]") : host;
     if (port && port != RemoteDefaultPort(proto)) s += L":" + std::to_wstring(port);
@@ -191,6 +197,18 @@ bool ParseRemoteUrl(const std::wstring& s, RemoteUrl& out) {
     std::wstring t = Trim(s);
     RemoteUrl u;
     size_t start;
+    if (StartsWithI(t, L"mtp://")) {
+        // mtp://Gerätename/Speicher/Ordner – der Gerätename reicht bis zum ersten '/'
+        u.proto = RemoteProto::Mtp;
+        for (auto& c : t)
+            if (c == L'\\') c = L'/';
+        size_t slash = t.find(L'/', 6);
+        u.host = Trim(t.substr(6, slash == std::wstring::npos ? std::wstring::npos : slash - 6));
+        if (u.host.empty()) return false;
+        u.path = NormalizeRemotePath(slash == std::wstring::npos ? L"/" : t.substr(slash));
+        out = u;
+        return true;
+    }
     if (StartsWithI(t, L"sftp://")) {
         u.proto = RemoteProto::Sftp;
         start = 7;

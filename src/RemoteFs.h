@@ -79,6 +79,7 @@ private:
 std::unique_ptr<RemoteFs> CreateFtpFs();
 std::unique_ptr<RemoteFs> CreateSftpFs();
 std::unique_ptr<RemoteFs> CreateWebDavFs();
+std::unique_ptr<RemoteFs> CreateMtpFs();   // Smartphones/Kameras über WPD (MtpClient.cpp)
 // Passender Client für das Protokoll
 std::unique_ptr<RemoteFs> CreateRemoteFs(RemoteProto proto);
 

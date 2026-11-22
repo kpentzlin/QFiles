@@ -102,6 +102,7 @@ std::unique_ptr<RemoteFs> CreateRemoteFs(RemoteProto proto) {
     case RemoteProto::Sftp: return CreateSftpFs();
     case RemoteProto::WebDav:
     case RemoteProto::WebDavs: return CreateWebDavFs();
+    case RemoteProto::Mtp: return CreateMtpFs();
     default: return CreateFtpFs();
     }
 }

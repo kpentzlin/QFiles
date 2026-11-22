@@ -5,6 +5,7 @@
 #include "Favorites.h"
 #include "Glyphs.h"
 #include "Location.h"
+#include "Mtp.h"
 #include "Network.h"
 #include "Remote.h"
 #include "ShellMenu.h"
@@ -30,13 +31,14 @@ int StockIndex(SHSTOCKICONID id) {
 
 // Hintergrundfarben der Lesezeichenliste
 // (deutlich heller als die blaue Kopfzeile der aktiven Liste)
-const COLORREF kNetworkBack = RGB(255, 228, 228);   // hellrot: Netzwerkpfade
+const COLORREF kNetworkBack = RGB(255, 233, 233);   // hellrot: Netzwerkpfade
+const COLORREF kMtpBack = RGB(250, 212, 212);       // etwas dunkleres Hellrot: Smartphones, Tablets, Kameras (MTP)
 const COLORREF kRemoteBack = RGB(220, 244, 220);    // hellgrün: FTP/SFTP
 const COLORREF kWebDavBack = RGB(234, 250, 234);    // noch heller grün: WebDAV
 const COLORREF kStandardBack = RGB(228, 240, 253);  // hellblau: Windows-Standardverzeichnisse
 const COLORREF kCloudBack = RGB(226, 210, 248);     // hell-lila: Dropbox, Google Drive, OneDrive
 
-enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3, KindWebDav = 4, KindCloud = 5 };
+enum Kind { KindLocal = 0, KindNetwork = 1, KindRemote = 2, KindStandard = 3, KindWebDav = 4, KindCloud = 5, KindMtp = 6 };
 
 // Windows-Standardverzeichnisse (Benutzerordner, öffentliche Ordner, Systemordner)
 const std::vector<std::wstring>& StandardFolders() {
@@ -64,6 +66,7 @@ const std::vector<std::wstring>& StandardFolders() {
 
 int KindOf(const std::wstring& p) {
     if (IsRecycleBinLocation(p)) return KindStandard;   // Papierkorb: bei den Windows-Standardverzeichnissen
+    if (IsMtpUrl(p)) return KindMtp;
     if (IsWebDavUrl(p)) return KindWebDav;
     if (IsRemoteUrl(p)) return KindRemote;
     if (IsNetworkPath(p)) return KindNetwork;
@@ -88,6 +91,7 @@ COLORREF KindColor(int k) {
     case KindWebDav: return kWebDavBack;
     case KindStandard: return kStandardBack;
     case KindCloud: return kCloudBack;
+    case KindMtp: return kMtpBack;
     }
     return CLR_DEFAULT;
 }
@@ -265,7 +269,10 @@ void BookmarkList::Rebuild(int select) {
         const std::wstring& p = items_[i].path;
         int icon = folder;
         kinds_[i] = KindOf(p);
-        if (kinds_[i] == KindRemote || kinds_[i] == KindWebDav) {
+        if (kinds_[i] == KindMtp) {
+            const MtpDevice* d = MtpDeviceForUrl(p);
+            icon = StockIndex(d && d->camera ? SIID_DEVICECAMERA : SIID_DEVICECELLPHONE);
+        } else if (kinds_[i] == KindRemote || kinds_[i] == KindWebDav) {
             icon = StockIndex(SIID_WORLD);
         } else if (kinds_[i] == KindNetwork) {
             icon = IsNetworkRoot(p) ? StockIndex(SIID_MYNETWORK)
@@ -348,7 +355,7 @@ void BookmarkList::Append(const std::wstring& name, const std::wstring& path, co
 
 void BookmarkList::SortByCategory() {
     // Reihenfolge: „Netzwerk“, Standardverzeichnisse (blau), Cloud (lila), FTP/SFTP/WebDAV (grün),
-    // übrige Netzwerkpfade (rot), lokal; innerhalb jeder Gruppe alphabetisch nach Namen
+    // übrige Netzwerkpfade (hellrot), Geräte/MTP (etwas dunkleres Hellrot), lokal; innerhalb jeder Gruppe alphabetisch nach Namen
     auto rank = [](const Bookmark& b) {
         if (IsNetworkRoot(b.path)) return 0;
         switch (KindOf(b.path)) {
@@ -357,7 +364,8 @@ void BookmarkList::SortByCategory() {
         case KindRemote:
         case KindWebDav: return 3;
         case KindNetwork: return 4;
-        default: return 5;
+        case KindMtp: return 5;
+        default: return 6;
         }
     };
     int sel = Selected();
@@ -442,6 +450,20 @@ void BookmarkList::ContextMenu(POINT pt) {
     case MenuRename: RenameSelected(); break;
     case MenuChangePath: {
         if (i < 0) break;
+        if (IsMtpUrl(items_[i].path)) {
+            // Gerät: Adresse bearbeiten (keine Zugangsdaten)
+            std::wstring v = items_[i].path;
+            if (InputBox(GetAncestor(list_, GA_ROOT), L"Lesezeichen ändern",
+                         L"Adresse für „" + items_[i].name + L"“ (mtp://Gerät/Speicher/Ordner):", v)) {
+                RemoteUrl u;
+                if (ParseRemoteUrl(v, u) && u.proto == RemoteProto::Mtp) {
+                    items_[i].path = u.ToString();
+                    Rebuild(i);
+                    if (cb_.changed) cb_.changed();
+                }
+            }
+            break;
+        }
         if (IsRemoteUrl(items_[i].path)) {
             // FTP/SFTP: Zugangsdialog
             RemoteAccess a = LoadRemoteAccess(items_[i].path);
@@ -556,7 +578,11 @@ LRESULT BookmarkList::OnNotify(NMHDR* nm) {
         } else if (k >= 0 && k < (int)items_.size()) {
             std::wstring s = LocationDisplay(items_[k].path);
             // Netzwerk und FTP nicht prüfen (nicht erreichbare Server würden die Oberfläche blockieren)
-            if (kinds_.size() > (size_t)k && (kinds_[k] == KindRemote || kinds_[k] == KindWebDav))
+            if (kinds_.size() > (size_t)k && kinds_[k] == KindMtp) {
+                const MtpDevice* d = MtpDeviceForUrl(s);
+                s += d ? (L"\nGerät: " + (d->description.empty() ? d->name : d->description))
+                       : std::wstring(L"\n(Gerät nicht angeschlossen)");
+            } else if (kinds_.size() > (size_t)k && (kinds_[k] == KindRemote || kinds_[k] == KindWebDav))
             {
                 RemoteUrl u;
                 if (ParseRemoteUrl(s, u)) s += L"\nZugang: " + std::wstring(RemoteProtoName(u.proto));
