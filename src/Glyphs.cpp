@@ -307,9 +307,11 @@ void RenderAlphaCell(uint32_t* px, int stride, int x0, int sz, const std::functi
 void DrawConfigSymbol(HDC dc, const RECT& rc) {
     int sz = std::min(rc.right - rc.left, rc.bottom - rc.top);
     int x0 = rc.left + (rc.right - rc.left - sz) / 2, y0 = rc.top + (rc.bottom - rc.top - sz) / 2;
+    // quadratisch: oben/unten und links/rechts gleicher Rand
     int lw = std::max(1, sz / 16);
-    int l = x0 + lw / 2, r = x0 + sz - (lw + 1) / 2;
-    int t = y0 + sz / 8, b = y0 + sz - sz / 8;
+    int m = sz / 8;
+    int l = x0 + m, r = x0 + sz - m - 1;
+    int t = y0 + m, b = y0 + sz - m - 1;
     const COLORREF line = RGB(70, 60, 45), title = RGB(200, 150, 62), active = RGB(205, 228, 250);
     HBRUSH white = CreateSolidBrush(RGB(255, 255, 255)), tb = CreateSolidBrush(title), ab = CreateSolidBrush(active);
     RECT all{l, t, r, b};

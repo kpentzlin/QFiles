@@ -1180,6 +1180,11 @@ void FilePane::OnTreeDone(WPARAM gen) {
         ApplyMark(*pm);
     }
     pendingMark_.reset();
+    // Doppelklick auf „Mit Unterverzeichnissen“ während des Einlesens: jetzt mit allen Einträgen anpassen
+    if (pendingOptimize_) {
+        pendingOptimize_ = false;
+        if (!walkCancelled_ && view_ == PaneView::Recursive) FitColumnsToContent();
+    }
 }
 
 void FilePane::SortItems() {
@@ -1253,6 +1258,7 @@ void FilePane::FillList(const std::wstring& focusName, const std::vector<std::ws
 }
 
 bool FilePane::Navigate(const std::wstring& rawDir, const std::wstring& focusName, bool addHistory, bool showErrors) {
+    pendingOptimize_ = false;   // Spaltenanpassung nach dem Einlesen gilt nur für das bisherige Verzeichnis
     std::wstring special = NormalizeSpecialLocation(rawDir);
     std::wstring dir = special.empty() ? NormalizeDir(rawDir) : special;
     if (dir.empty()) return false;
@@ -1756,10 +1762,17 @@ std::wstring FilePane::ColumnText(Item& it, int colId) {
 
 // Doppelklick auf „Details“: Ansicht Details; von rechts nach links Attr., Erstellt/Geändert, Größe und Typ genau so
 // breit wie ihr breitester Eintrag (alle Zeilen, auch die erst nach dem Blättern sichtbaren), Attr. schließt am rechten
-// Rand ab, der Name erhält die übrige Breite
-void FilePane::OptimizeDetailsColumns() {
-    if (view_ != PaneView::Details) SetView(PaneView::Details);
-    if (view_ != PaneView::Details || !list_) return;
+// Rand ab, der Name erhält die übrige Breite. Doppelklick auf „Mit Unterverzeichnissen“: ebenso, Dateiname und
+// Verzeichnis teilen sich die übrige Breite gleichmäßig; läuft das Einlesen noch, wird nach dessen Ende erneut angepasst.
+void FilePane::OptimizeDetailsColumns(bool recursive) {
+    PaneView target = recursive ? PaneView::Recursive : PaneView::Details;
+    if (view_ != target) SetView(target);
+    if (view_ != target || !list_) return;
+    pendingOptimize_ = recursive && walkRunning_;
+    FitColumnsToContent();
+}
+
+void FilePane::FitColumnsToContent() {
     HWND header = ListView_GetHeader(list_);
     int n = Header_GetItemCount(header);
     HDC dc = GetDC(list_);
@@ -1771,7 +1784,7 @@ void FilePane::OptimizeDetailsColumns() {
         return (int)sz.cx;
     };
     const int pad = ToPx(14);   // Innenabstand der Zellen links und rechts
-    int total = 0, nameCol = -1;
+    int total = 0, nameCol = -1, subCol = -1;
     for (int c = 0; c < n; ++c) {
         LVCOLUMNW col{};
         col.mask = LVCF_SUBITEM;
@@ -1779,6 +1792,10 @@ void FilePane::OptimizeDetailsColumns() {
         int id = col.iSubItem;
         if (id == ColName) {
             nameCol = c;
+            continue;
+        }
+        if (id == ColSubdir) {
+            subCol = c;
             continue;
         }
         int w = 0;
@@ -1799,15 +1816,28 @@ void FilePane::OptimizeDetailsColumns() {
     }
     SelectObject(dc, oldFont);
     ReleaseDC(list_, dc);
-    if (nameCol >= 0) {
+    // Name (und Verzeichnis, gleich breit) füllen den Rest
+    auto fill = [&]() {
         RECT rc{};
         GetClientRect(list_, &rc);
-        ListView_SetColumnWidth(list_, nameCol, std::max<int>(ToPx(60), rc.right - rc.left - total));
+        int rest = rc.right - rc.left - total;
+        if (subCol >= 0 && nameCol >= 0) {
+            int half = std::max<int>(ToPx(60), rest / 2);
+            ListView_SetColumnWidth(list_, nameCol, half);
+            ListView_SetColumnWidth(list_, subCol, std::max<int>(ToPx(60), rest - half));
+        } else if (nameCol >= 0) {
+            ListView_SetColumnWidth(list_, nameCol, std::max<int>(ToPx(60), rest));
+        }
+        return rc.right;
+    };
+    if (nameCol >= 0) {
+        int right = fill();
         // Falls sich dadurch die senkrechte Bildlaufleiste ein- oder ausgeblendet hat: erneut anpassen
         RECT rc2{};
         GetClientRect(list_, &rc2);
-        if (rc2.right != rc.right) ListView_SetColumnWidth(list_, nameCol, std::max<int>(ToPx(60), rc2.right - rc2.left - total));
+        if (rc2.right != right) fill();
     }
+    fittedName_ = fittedSub_ = -1;   // die angepassten Breiten gelten als gewählt
     CaptureColumnWidths();
 }
 

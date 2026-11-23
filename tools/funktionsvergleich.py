@@ -20,7 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
-QF_VERSION = "0.1.30"
+QF_VERSION = "0.1.31"
 ID_VERSION = "5.8 (Build 766, 2018)"
 SC_VERSION = "22.30 (Juli 2026)"
 
@@ -128,7 +128,7 @@ DATA = [
          "Idoswin: eigene Miniaturen für Bilder, Text, PDF", False),
         ("Ansicht „Mit Unterverzeichnissen“ (alle Dateien mit Teilpfad)", "ja", "–", "?", "", False),
         ("Spaltenbreiten auf einen Klick an den Inhalt anpassen", "ja", "?", "ja",
-         "QFiles (neu in 0.1.30): Doppelklick auf „Details“, Name füllt den Rest", False),
+         "QFiles (neu in 0.1.30/0.1.31): Doppelklick auf „Details“ bzw. „Mit Unterverzeichnissen“, Name (und Verzeichnis) füllen den Rest", False),
         ("Spalten frei wählen (Explorer- und Metadatenspalten)", "teilw.", "ja", "ja",
          "QFiles: nur Typ, Attribute, Erstellt zuschaltbar", A),
         ("Metadaten-Spalten (Bildgröße, Dauer, Bitrate …)", "–", "ja", "ja", "", False),

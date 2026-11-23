@@ -66,6 +66,7 @@ FIGURES = {
         ("screenshot52.png", "Konfiguration speichern: Abfrage des Namens", WIN),
         ("screenshot53.png", "Konfiguration aufgerufen; sie steht hell-ocker am Ende der Lesezeichenliste", WIN),
         ("screenshot54.png", "Nach einem Doppelklick auf „Details“: Spalten Typ bis Attr. passend, Attr. am rechten Rand", WIN),
+        ("screenshot56.png", "Nach einem Doppelklick auf „Mit Unterverzeichnissen“: Dateiname und Verzeichnis gleich breit", WIN),
         ("screenshot55.png", "Start nach geänderter Bildschirmanordnung: Hauptbildschirm, zentriert, volle Höhe", FULL),
     ],
     "Favoriten": [

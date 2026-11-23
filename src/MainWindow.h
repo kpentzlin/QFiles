@@ -99,9 +99,11 @@ private:
     void SaveConfiguration();
     std::wstring CaptureConfiguration() const;
     void ApplyConfiguration(const std::wstring& config);
-    // Doppelklick auf „Details“: Ansicht Details, Spalten Typ…Attr. auf den Inhalt, Name füllt den Rest
-    void OptimizeDetails();
-    DWORD lastDetailsClick_ = 0;   // Zeitpunkt des letzten Klicks auf „Details“ (Doppelklick erkennen)
+    // Doppelklick auf „Details“ bzw. „Mit Unterverzeichnissen“: diese Ansicht, Spalten Typ…Attr. auf den Inhalt,
+    // Name (und Verzeichnis, gleich breit) füllen den Rest
+    void OptimizeDetails(bool recursive = false);
+    DWORD lastDetailsClick_ = 0;   // Zeitpunkt des letzten Klicks auf „Details“/„Mit Unterverzeichnissen“
+    UINT lastDetailsCmd_ = 0;
     DWORD lastDetailsOptimize_ = 0;
     void RunCommandLine();
     void CopyOrMove(bool move);

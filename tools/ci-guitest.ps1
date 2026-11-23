@@ -1375,10 +1375,27 @@ $sum9 = 0; $ws9 = @()
 for ($k = 0; $k -lt $n9; $k++) { $w = ([W]::SendMessage($fList, 0x101D, [IntPtr]$k, [IntPtr]::Zero)).ToInt32(); $sum9 += $w; $ws9 += $w }
 $cr9 = New-Object W+RECT; [W]::GetClientRect($fList, [ref]$cr9) | Out-Null
 Shot "screenshot54.png"   # Details nach Doppelklick: Spalten optimiert
+# 10) Doppelklick auf „Mit Unterverzeichnissen“: ebenso, Dateiname und Verzeichnis gleich breit
+GoPath "C:\QFilesFilter\Projekt"
+[W]::Click($flr.L + 60, $flr.B - 20, $false); Start-Sleep -Milliseconds 400
+$rr = [W]::ToolbarButtonRect($tb, 40206)   # cmd::ViewRecursive
+[W]::DoubleClick([int](($rr.L + $rr.R) / 2), [int](($rr.T + $rr.B) / 2)); Start-Sleep -Seconds 3
+Check-Alive "Mit Unterverzeichnissen optimieren"
+$hdr10 = [W]::SendMessage($fList, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+$n10 = ([W]::SendMessage($hdr10, 0x1200, [IntPtr]::Zero, [IntPtr]::Zero)).ToInt32()
+$sum10 = 0; $ws10 = @()
+for ($k = 0; $k -lt $n10; $k++) { $w = ([W]::SendMessage($fList, 0x101D, [IntPtr]$k, [IntPtr]::Zero)).ToInt32(); $sum10 += $w; $ws10 += $w }
+$cr10 = New-Object W+RECT; [W]::GetClientRect($fList, [ref]$cr10) | Out-Null
+Shot "screenshot56.png"   # Mit Unterverzeichnissen nach Doppelklick: Dateiname und Verzeichnis gleich breit
+$rec10Info = "Mit Unterverzeichnissen: Spalten $($ws10 -join '/') = $sum10 bei Breite $($cr10.R - $cr10.L)"
+$rec10Ok = $n10 -ge 3 -and [Math]::Abs($ws10[0] - $ws10[1]) -le 1 -and [Math]::Abs($sum10 - ($cr10.R - $cr10.L)) -le 2
+if ($rec10Ok) { Write-Output "::notice title=Mit Unterverzeichnissen optimieren::$rec10Info" }
+else { Write-Output "::error title=Mit Unterverzeichnissen optimieren::$rec10Info" }
+GoPath "C:\Windows"
 $extraInfo = "Symbolfarbe in [$t7]; Konfiguration: Listen vorher $panesBefore, eine Liste $panesOne, nach Aufruf $panesAfter [$t8]; " +
-             "Details: Ansicht $view9, Spalten $($ws9 -join '/') = $sum9 bei Breite $($cr9.R - $cr9.L) (Schaltfläche $($dr.L),$($dr.T))"
+             "Details: Ansicht $view9, Spalten $($ws9 -join '/') = $sum9 bei Breite $($cr9.R - $cr9.L) (Schaltfläche $($dr.L),$($dr.T)); $rec10Info"
 $extraOk = $t7 -eq 'C:\QFilesFilter\Projekt\Sub' -and $panesBefore -ge 2 -and $panesOne -lt $panesBefore -and $panesAfter -eq $panesBefore -and
-           $view9 -eq 1 -and [Math]::Abs($sum9 - ($cr9.R - $cr9.L)) -le 2
+           $view9 -eq 1 -and [Math]::Abs($sum9 - ($cr9.R - $cr9.L)) -le 2 -and $rec10Ok
 if ($extraOk) { Write-Output "::notice title=Symbolfarbe, Konfiguration, Details::$extraInfo" }
 else { Write-Output "::error title=Symbolfarbe, Konfiguration, Details::$extraInfo" }
 # Bedienungshilfen vereinfacht (Standard): die Dateiliste meldet sich per UI Automation als Liste ohne Einträge

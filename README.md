@@ -261,7 +261,9 @@ abgetöntem Gelb. Eine Infozeile nennt Archiv, aktuellen Ordner und Anzahl.
 - **Doppelklick auf „Details“** in der Werkzeugleiste: Die aktive Liste schaltet auf „Details“ und passt die Spalten
   an – von rechts nach links Attr., Geändert (bzw. Erstellt oder beide), Größe und Typ werden genau so breit wie ihr
   breitester Eintrag (alle Zeilen, auch die erst nach dem Blättern sichtbaren; mindestens so breit wie die
-  Überschrift), Attr. schließt am rechten Rand ab, der Name erhält die übrige Breite.
+  Überschrift), Attr. schließt am rechten Rand ab, der Name erhält die übrige Breite. Ein **Doppelklick auf „Mit
+  Unterverzeichnissen“** wirkt ebenso in dieser Ansicht; Dateiname und Verzeichnis teilen sich die übrige Breite
+  gleichmäßig (läuft das Einlesen noch, passt QFiles die Spalten nach dessen Ende erneut an).
 - Ansichten: Details, Liste, Symbole, Miniaturansicht und
   **Mit Unterverzeichnissen** (Strg+Umschalt+5): wie Details, aber statt „Name“ die Spalten „Dateiname“ und
   „Unterverzeichnis“. Gezeigt werden alle Dateien des Verzeichnisses und seiner Unterverzeichnisse; „Unterverzeichnis“

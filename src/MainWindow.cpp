@@ -2193,11 +2193,12 @@ void MainWindow::ApplyConfiguration(const std::wstring& data) {
     UpdateViewButtons();
 }
 
-// Doppelklick auf die Ansicht „Details“ (Werkzeugleiste): Details in der aktiven Liste, Spalten optimiert
-void MainWindow::OptimizeDetails() {
+// Doppelklick auf die Ansicht „Details“ bzw. „Mit Unterverzeichnissen“ (Werkzeugleiste): diese Ansicht in der
+// aktiven Liste, Spalten optimiert
+void MainWindow::OptimizeDetails(bool recursive) {
     lastDetailsOptimize_ = GetTickCount();
     if (FocusedArchiveView()) return;
-    Active().OptimizeDetailsColumns();
+    Active().OptimizeDetailsColumns(recursive);
     UpdateViewButtons();
 }
 
@@ -4001,12 +4002,14 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             // Nur die Werkzeugleiste sendet Befehle; Benachrichtigungen anderer Steuerelemente ignorieren
             if ((HWND)lp == toolbar_) {
                 OnCommand(LOWORD(wp));
-                // Doppelklick auf „Details“ (zwei Klicks kurz nacheinander): Spalten optimieren
-                if (LOWORD(wp) == cmd::ViewDetails) {
+                // Doppelklick auf „Details“ bzw. „Mit Unterverzeichnissen“ (zwei Klicks kurz nacheinander auf dieselbe
+                // Schaltfläche): Spalten optimieren
+                if (LOWORD(wp) == cmd::ViewDetails || LOWORD(wp) == cmd::ViewRecursive) {
                     DWORD now = GetTickCount();
-                    bool dbl = lastDetailsClick_ && now - lastDetailsClick_ <= GetDoubleClickTime();
+                    bool dbl = lastDetailsClick_ && lastDetailsCmd_ == LOWORD(wp) && now - lastDetailsClick_ <= GetDoubleClickTime();
                     lastDetailsClick_ = dbl ? 0 : now;
-                    if (dbl && now - lastDetailsOptimize_ > GetDoubleClickTime()) OptimizeDetails();
+                    lastDetailsCmd_ = LOWORD(wp);
+                    if (dbl && now - lastDetailsOptimize_ > GetDoubleClickTime()) OptimizeDetails(LOWORD(wp) == cmd::ViewRecursive);
                 }
             }
             return 0;
@@ -4017,8 +4020,10 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         auto* nm = (NMHDR*)lp;
         if (nm->hwndFrom == tree_.Hwnd()) return tree_.OnNotify(nm);
         if (nm->hwndFrom == bookmarks_.Hwnd()) return bookmarks_.OnNotify(nm);
-        if (nm->hwndFrom == toolbar_ && nm->code == NM_DBLCLK && ((NMMOUSE*)lp)->dwItemSpec == (DWORD_PTR)cmd::ViewDetails) {
-            OptimizeDetails();   // Doppelklick auf „Details“
+        if (nm->hwndFrom == toolbar_ && nm->code == NM_DBLCLK &&
+            (((NMMOUSE*)lp)->dwItemSpec == (DWORD_PTR)cmd::ViewDetails ||
+             ((NMMOUSE*)lp)->dwItemSpec == (DWORD_PTR)cmd::ViewRecursive)) {
+            OptimizeDetails(((NMMOUSE*)lp)->dwItemSpec == (DWORD_PTR)cmd::ViewRecursive);   // Doppelklick auf die Ansicht
             return TRUE;
         }
         if (nm->hwndFrom == toolbar_ && nm->code == NM_RCLICK) {
