@@ -158,8 +158,24 @@ void EnumThread() {
 
 const std::vector<MtpDevice>& MtpDevices() { return DeviceCache(); }
 
+namespace {
+bool g_mtpEnabled = true;
+}
+
+void MtpSetEnabled(bool on) {
+    g_mtpEnabled = on;
+    if (!on) {
+        DeviceCache().clear();
+        std::lock_guard<std::mutex> lock(g_pendingMutex);
+        g_pending.clear();
+        g_pendingReady = false;
+    }
+}
+
+bool MtpEnabled() { return g_mtpEnabled && MtpAvailable(); }
+
 void MtpRefreshDevicesAsync(void* notifyHwnd, unsigned msg) {
-    if (!MtpAvailable()) return;
+    if (!MtpEnabled()) return;
     std::lock_guard<std::mutex> lock(g_pendingMutex);
     g_notify = (HWND)notifyHwnd;
     g_notifyMsg = msg;
@@ -179,6 +195,7 @@ bool MtpTakeRefreshed() {
         g_pendingReady = false;
         now = std::move(g_pending);
     }
+    if (!g_mtpEnabled) now.clear();   // während der Suche ausgeschaltet
     bool first = !g_devicesRead;
     g_devicesRead = true;
     auto& old = DeviceCache();

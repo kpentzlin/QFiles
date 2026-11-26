@@ -207,6 +207,7 @@ void Options::Load(const Config& c) {
     dirsFirst = c.GetBool(S, L"VerzeichnisseZuerst", d.dirsFirst);
     showGridLines = c.GetBool(S, L"Gitternetz", d.showGridLines);
     grayInactive = c.GetBool(S, L"InaktiveListenGrau", d.grayInactive);
+    mtpDevices = c.GetBool(S, L"GeraeteMTP", d.mtpDevices);
     striped = c.GetBool(S, L"Gestreift", d.striped);
     showDirSizes = c.GetBool(S, L"Verzeichnisgroessen", d.showDirSizes);
     bookmarkFontName = c.Get(S, L"LesezeichenSchrift", d.bookmarkFontName);
@@ -268,6 +269,7 @@ void Options::Save(Config& c) const {
     c.SetBool(S, L"VerzeichnisseZuerst", dirsFirst);
     c.SetBool(S, L"Gitternetz", showGridLines);
     c.SetBool(S, L"InaktiveListenGrau", grayInactive);
+    c.SetBool(S, L"GeraeteMTP", mtpDevices);
     c.SetBool(S, L"Gestreift", striped);
     c.SetBool(S, L"Verzeichnisgroessen", showDirSizes);
     c.Set(S, L"LesezeichenSchrift", bookmarkFontName);

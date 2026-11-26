@@ -28,6 +28,9 @@ const std::vector<MtpDevice>& MtpDevices();
 void MtpRefreshDevicesAsync(void* notifyHwnd, unsigned msg);
 bool MtpTakeRefreshed();
 bool MtpDevicesKnown();   // mindestens einmal gelesen
+// Suche ein-/ausschalten (Option „Smartphones/Kameras (MTP) suchen“); aus: Liste leer, keine Suche
+void MtpSetEnabled(bool on);
+bool MtpEnabled();
 // Gerät zu einer Adresse ("mtp://Name/…"); nullptr = nicht angeschlossen
 const MtpDevice* MtpDeviceForUrl(const std::wstring& url);
 // "mtp://Name/"

@@ -17,6 +17,9 @@
 #include <shellapi.h>
 #include <winioctl.h>
 #include <winnetwk.h>
+#include <map>
+#include <mutex>
+#include <thread>
 
 #include <algorithm>
 #include <cwctype>
@@ -70,7 +73,9 @@ bool QueryStorage(wchar_t letter, STORAGE_BUS_TYPE& bus, bool& removableMedia, s
     return true;
 }
 
-DriveDesc Describe(wchar_t letter) {
+// full = false: ohne Zugriff auf den Datenträger (keine Bezeichnung, Standardsymbol) – damit die Laufwerksleiste beim
+// Start nicht auf schlafende Platten oder langsame Laufwerke wartet; Bezeichnung und Symbol liest DetailWorker nach
+DriveDesc Describe(wchar_t letter, bool full) {
     DriveDesc d;
     d.root = std::wstring(1, letter) + L":\\";
     d.type = GetDriveTypeW(d.root.c_str());
@@ -91,7 +96,7 @@ DriveDesc Describe(wchar_t letter) {
         }
     }
     UINT oldMode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
-    if (d.type == DRIVE_FIXED || d.type == DRIVE_RAMDISK || d.type == DRIVE_REMOVABLE || subst) {
+    if (full && (d.type == DRIVE_FIXED || d.type == DRIVE_RAMDISK || d.type == DRIVE_REMOVABLE || subst)) {
         wchar_t label[MAX_PATH + 1] = {};
         if (GetVolumeInformationW(d.root.c_str(), label, MAX_PATH + 1, nullptr, nullptr, nullptr, nullptr, 0)) d.label = label;
     }
@@ -124,7 +129,7 @@ DriveDesc Describe(wchar_t letter) {
     case DriveKind::Local: {
         // Symbol der Shell: Systemlaufwerk mit Windows-Logo, BitLocker mit Schloss
         SHFILEINFOW sfi{};
-        if (SHGetFileInfoW(d.root.c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON))
+        if (full && SHGetFileInfoW(d.root.c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX | SHGFI_SMALLICON))
             d.icon = sfi.iIcon;
         else
             d.icon = StockIndex(SIID_DRIVEFIXED);
@@ -142,16 +147,46 @@ DriveDesc Describe(wchar_t letter) {
     return d;
 }
 
+// Bezeichnung und Symbol (nachgelesen im Hintergrund)
+struct DriveDetail {
+    std::wstring label;
+    int icon = -1;
+};
+std::mutex g_detailMutex;
+std::map<wchar_t, DriveDetail> g_details;
+bool g_detailRunning = false;
+ULONGLONG g_cacheTime = 0;
+HWND g_detailNotify = nullptr;
+
+void StartDetailWorker(std::vector<wchar_t> letters) {
+    g_detailRunning = true;
+    std::thread([letters] {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        for (wchar_t l : letters) {
+            DriveDesc d = Describe(l, true);
+            std::lock_guard<std::mutex> lock(g_detailMutex);
+            g_details[l] = DriveDetail{d.label, d.kind == DriveKind::Local ? d.icon : -1};
+        }
+        if (SUCCEEDED(hr)) CoUninitialize();
+        {
+            std::lock_guard<std::mutex> lock(g_detailMutex);
+            g_detailRunning = false;
+        }
+        if (HWND h = g_detailNotify) PostMessageW(h, kDriveDetailsMessage, 0, 0);
+    }).detach();
+}
+
 } // namespace
 
 const std::vector<DriveDesc>& ListDrives() {
     static std::vector<DriveDesc> cache;
     static DWORD cacheMask = 0;
-    static ULONGLONG cacheTime = 0;
     DWORD mask = GetLogicalDrives();
     ULONGLONG now = GetTickCount64();
-    if (cacheTime != 0 && mask == cacheMask && now - cacheTime < 2000) return cache;
+    if (g_cacheTime != 0 && mask == cacheMask && now - g_cacheTime < 2000) return cache;
     cache.clear();
+    std::vector<wchar_t> missing;
+    std::lock_guard<std::mutex> lock(g_detailMutex);
     for (int i = 0; i < 26; ++i) {
         if (!(mask & (1u << i))) continue;
         wchar_t letter = (wchar_t)(L'A' + i);
@@ -159,11 +194,30 @@ const std::vector<DriveDesc>& ListDrives() {
             wchar_t root[] = {letter, L':', L'\\', 0};
             if (GetDriveTypeW(root) == DRIVE_REMOVABLE) continue;   // keine Diskettenlaufwerke
         }
-        cache.push_back(Describe(letter));
+        DriveDesc d = Describe(letter, false);
+        auto it = g_details.find(letter);
+        if (it != g_details.end()) {
+            d.label = it->second.label;
+            if (it->second.icon >= 0 && d.kind == DriveKind::Local) d.icon = it->second.icon;
+        } else {
+            missing.push_back(letter);
+        }
+        cache.push_back(d);
     }
+    if (!missing.empty() && !g_detailRunning) StartDetailWorker(missing);
     cacheMask = mask;
-    cacheTime = now;
+    g_cacheTime = now;
     return cache;
+}
+
+void SetDriveDetailsNotifyWindow(HWND h) { g_detailNotify = h; }
+
+void InvalidateDriveCache(bool details) {
+    g_cacheTime = 0;
+    if (details) {
+        std::lock_guard<std::mutex> lock(g_detailMutex);
+        g_details.clear();
+    }
 }
 
 std::wstring DriveKindText(DriveKind kind) {

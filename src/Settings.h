@@ -57,6 +57,7 @@ struct Options {
     bool dirsFirst = true;
     bool showGridLines = false;
     bool grayInactive = false;          // nicht aktive Listen hellgrau hinterlegen
+    bool mtpDevices = true;             // Smartphones, Tablets, Kameras (MTP) suchen und anzeigen
     bool striped = false;               // aktive Liste gestreift (jede zweite Zeile hellgrau)
     bool showDirSizes = false;          // Verzeichnisgrößen in den Listen automatisch berechnen und anzeigen
     std::wstring bookmarkFontName;      // Schrift der Lesezeichenliste (leer = Oberflächenschrift)

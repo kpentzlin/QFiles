@@ -29,8 +29,13 @@ struct DriveDesc {
     bool linkOverlay = false;   // Verknüpfungspfeil zeichnen (subst)
 };
 
-// Alle Laufwerke (Ergebnis wird kurz zwischengespeichert, da Listen und Baum es gleichzeitig abfragen)
+// Alle Laufwerke (Ergebnis wird kurz zwischengespeichert, da Listen und Baum es gleichzeitig abfragen). Ohne Zugriff
+// auf die Datenträger: Bezeichnung und Shell-Symbol werden im Hintergrund gelesen; danach erhält
+// DriveDetailsNotifyWindow() die Nachricht kDriveDetailsMessage (dann InvalidateDriveCache(false) und neu abfragen).
 const std::vector<DriveDesc>& ListDrives();
+void InvalidateDriveCache(bool details);   // details: auch Bezeichnungen/Symbole neu lesen (Datenträgerwechsel)
+constexpr unsigned kDriveDetailsMessage = 0x8000 + 5;   // WM_APP + 5
+void SetDriveDetailsNotifyWindow(HWND h);   // Empfänger von kDriveDetailsMessage (Hauptfenster)
 
 // Art als Text („Lokales Laufwerk“, „subst-Laufwerk“ …)
 std::wstring DriveKindText(DriveKind kind);

@@ -14,6 +14,7 @@
 #include "Remote.h"
 #include "Settings.h"
 #include "ShellMenu.h"
+#include "StartupLog.h"
 #include "Util.h"
 
 namespace qf {
@@ -26,6 +27,7 @@ using namespace qf;
 
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     App::SetInstance(hInst);
+    StartupMark(L"Programm gestartet");
     // Keine Fehlerdialoge des Systems für nicht bereite Laufwerke
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     if (FAILED(OleInitialize(nullptr))) {
@@ -44,12 +46,14 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     bool firstRun = !App::Cfg().Load(cfgPath);
     App::Cfg().SetFilePath(cfgPath);
     App::Opt().Load(App::Cfg());
+    StartupMark(L"Einstellungen geladen");
     PrefetchShellExtensionExclusion();
     {
         wchar_t exe[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, exe, MAX_PATH);
         WarmUpShellContextMenu(exe);
     }
+    StartupMark(L"Kontextmenü-Vorbereitung gestartet");
     if (firstRun) {
         // Erste Lesezeichen als Vorgabe
         std::vector<Bookmark> b;
@@ -95,6 +99,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         if (!firstRun) App::Cfg().Save();
     }
 
+    StartupMark(L"Lesezeichen-Vorgaben geprüft");
     MainWindow main;
     if (!main.Create(nCmdShow)) {
         MessageBoxW(nullptr, L"Das Hauptfenster konnte nicht erzeugt werden.", L"QFiles", MB_ICONERROR);
@@ -102,6 +107,16 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         return 1;
     }
     if (firstRun) App::SaveSettings();
+    StartupMark(L"Hauptfenster fertig");
+    // Startzeiten schreiben, sobald die ersten Nachrichten (Zeichnen) verarbeitet sind
+    {
+        static std::wstring logPath = PathCombine(PathParent(cfgPath), L"QFiles-Startzeiten.txt");
+        SetTimer(nullptr, 0, 1500, [](HWND, UINT, UINT_PTR id, DWORD) {
+            KillTimer(nullptr, id);
+            StartupMark(L"Nachrichten verarbeitet (1,5 s nach dem Hauptfenster)");
+            StartupLogWrite(logPath);
+        });
+    }
     // Hängererkennung: Aufrufstapel nach QFiles-Haenger.txt, wenn das Hauptfenster länger nicht reagiert
     StartHangWatch(PathParent(cfgPath));
     // Nur für automatische Tests: QFILES_TEST_HANG=<Sekunden> blockiert den Haupt-Thread einmal nach 3 Sekunden

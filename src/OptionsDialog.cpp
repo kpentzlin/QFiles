@@ -138,6 +138,7 @@ constexpr int kBmFontText = 1023;
 constexpr int kBmFontBtn = 1024;
 constexpr int kBmFontDefault = 1025;
 constexpr int kHotTrack = 1026;
+constexpr int kMtpDevices = 1027;
 // ---- Seite 1: Bedienung ----
 constexpr int kConfirmDelete = 1101;
 constexpr int kRecycle = 1102;
@@ -223,6 +224,7 @@ protected:
         SetCheck(kDirsFirst, opt.dirsFirst);
         SetCheck(kGridLines, opt.showGridLines);
         SetCheck(kGrayInactive, opt.grayInactive);
+        SetCheck(kMtpDevices, opt.mtpDevices);
         SetCheck(kStriped, opt.striped);
         SetCheck(kSizeBytes, opt.sizeInBytes);
         SetCheck(kFullRow, opt.fullRowSelect);
@@ -443,6 +445,7 @@ private:
         opt.dirsFirst = IsChecked(kDirsFirst);
         opt.showGridLines = IsChecked(kGridLines);
         opt.grayInactive = IsChecked(kGrayInactive);
+        opt.mtpDevices = IsChecked(kMtpDevices);
         opt.striped = IsChecked(kStriped);
         opt.sizeInBytes = IsChecked(kSizeBytes);
         opt.fullRowSelect = IsChecked(kFullRow);
@@ -535,6 +538,7 @@ bool ShowOptionsDialog(HWND owner) {
     t.Check(kGrayInactive, L"Nicht aktive Listen gra&u hinterlegen", px + 160, py + 80, 150, 10);
     t.Check(kStriped, L"Listenanzeige gest&reift", px + 160, py + 92, 150, 10);
     t.Check(kHotTrack, L"Zeile unter der Maus herv&orheben", px + 160, py + 104, 150, 10);
+    t.Check(kMtpDevices, L"Smartphones/Kameras (MT&P) suchen", px + 4, py + 104, 150, 10);
     t.Group(kDisplayGroup2, L"Schrift der Dateilisten", px - 4, py + 124, pw + 8, 34);
     t.Edit(kListFontText, px + 4, py + 138, 190, 13, ES_AUTOHSCROLL | ES_READONLY);
     t.Button(kListFontBtn, L"Sc&hriftart …", px + 200, py + 137, 70, 14);

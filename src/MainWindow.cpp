@@ -4,6 +4,7 @@
 #include "Cloud.h"
 #include "Commands.h"
 #include "Configuration.h"
+#include "StartupLog.h"
 #include "Dialog.h"
 #include "Favorites.h"
 #include "RecycleBin.h"
@@ -356,10 +357,14 @@ bool MainWindow::Create(int nCmdShow) {
                             App::Instance(), this);
     if (!hwnd_) return false;
     App::SetMainWindow(hwnd_);
+    StartupMark(Format(L"Fenster erzeugt (%d,%d %d×%d)", x, y, w, h));
+    MtpSetEnabled(App::Opt().mtpDevices);
+    SetDriveDetailsNotifyWindow(hwnd_);
 
     BuildMenu();
     BuildToolbar();
     BuildAccelerators();
+    StartupMark(L"Menü, Werkzeugleiste, Tastenkürzel");
     status_ = CreateWindowExW(0, STATUSCLASSNAMEW, L"", WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP, 0, 0, 0, 0, hwnd_,
                               (HMENU)(INT_PTR)cmd::IdStatus, App::Instance(), nullptr);
 
@@ -392,8 +397,10 @@ bool MainWindow::Create(int nCmdShow) {
     cb.activated = []() {};
     cb.currentDir = [this]() { return Active().Dir(); };
     cb.openConfig = [this](const std::wstring& config) { ApplyConfiguration(config); };
+    StartupMark(L"Verzeichnisbaum");
     bookmarks_.Create(hwnd_, cmd::IdBookmarks, cb);
     bookmarks_.Set(LoadBookmarks(App::Cfg()));
+    StartupMark(L"Lesezeichen");
     LoadFavorites(App::Cfg());
     bookmarks_.SetFavoritesCount(Favorites().size());
 
@@ -419,9 +426,11 @@ bool MainWindow::Create(int nCmdShow) {
         panes_[i] = std::make_unique<FilePane>();
         panes_[i]->Create(hwnd_, i, this);
     }
+    StartupMark(L"Befehlszeile, Listen erzeugt");
     LoadState();
     fkeyDefs_ = LoadFunctionKeys(App::Cfg());
     BuildFKeyCells();
+    StartupMark(L"Zustand geladen");
 
     // Verzeichnisse aus der Befehlszeile: QFiles.exe [Verzeichnis1] [Verzeichnis2]
     int argc = 0;
@@ -440,7 +449,9 @@ bool MainWindow::Create(int nCmdShow) {
     ShowWindow(hwnd_, maximized ? SW_SHOWMAXIMIZED : (nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow));
     EnsureWindowVisible();
     SetForegroundWindow(hwnd_);
+    StartupMark(L"Fenster angezeigt");
     UpdateWindow(hwnd_);
+    StartupMark(L"Fenster gezeichnet");
     MtpRefreshDevicesAsync(hwnd_, WM_QF_MTPDEVICES);
 
     // Startverzeichnisse
@@ -459,6 +470,7 @@ bool MainWindow::Create(int nCmdShow) {
         if (d.empty() || !panes_[i]->Navigate(d, L"", true, false)) {
             if (!panes_[i]->Navigate(defaults[i], L"", true, false)) panes_[i]->Navigate(L"C:\\", L"", true, false);
         }
+        StartupMark(L"Liste " + std::to_wstring(i + 1) + L": " + panes_[i]->Dir());
     }
 
     // Privater Modus beim Start: der gespeicherte Verlauf bleibt bis zum Ausschalten unverändert
@@ -3765,8 +3777,21 @@ void MainWindow::OnCommand(int id) {
         break;
     case cmd::Options: {
         bool wasPrivate = privActive_;
+        bool wasMtp = App::Opt().mtpDevices;
         if (ShowOptionsDialog(hwnd_)) {
             bookmarks_.Set(LoadBookmarks(App::Cfg()));   // ggf. importierte Lesezeichen
+            if (App::Opt().mtpDevices != wasMtp) {
+                // Geräte (MTP) ein-/ausgeschaltet: Liste leeren bzw. im Hintergrund suchen
+                MtpSetEnabled(App::Opt().mtpDevices);
+                if (App::Opt().mtpDevices) {
+                    MtpRefreshDevicesAsync(hwnd_, WM_QF_MTPDEVICES);
+                } else {
+                    for (auto& p : panes_) p->UpdateDrives();
+                    tree_.Populate();
+                    tree_.SelectPath(Active().Dir());
+                    bookmarks_.DevicesChanged();
+                }
+            }
             if (App::Opt().privateMode != wasPrivate) SetPrivateMode(App::Opt().privateMode);
             ApplyOptionsAll();
             Layout();
@@ -4136,13 +4161,14 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_DEVICECHANGE:
         if (wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE) {
+            InvalidateDriveCache(true);
             for (auto& p : panes_) p->UpdateDrives();
             tree_.Populate();
             tree_.SelectPath(Active().Dir());
         }
         // Smartphones/Kameras (MTP) melden sich nur als DBT_DEVNODES_CHANGED; die Geräteliste gesammelt und mit
         // etwas Verzögerung neu lesen (WPD meldet ein frisch angestecktes Gerät erst nach dem Einrichten)
-        if (MtpAvailable() && (wp == DBT_DEVNODES_CHANGED || wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE)) {
+        if (MtpEnabled() && (wp == DBT_DEVNODES_CHANGED || wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE)) {
             devicePolls_ = 3;
             SetTimer(hwnd_, TIMER_DEVICES, 800, nullptr);
         }
@@ -4164,6 +4190,12 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             if (!f || !IsChild(hwnd_, f)) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
         }
         break;
+    case kDriveDetailsMessage:
+        // Laufwerksbezeichnungen und -symbole im Hintergrund gelesen
+        InvalidateDriveCache(false);
+        for (auto& p : panes_) p->UpdateDrives();
+        tree_.RefreshDriveItems();
+        return 0;
     case WM_QF_MTPDEVICES:
         if (MtpTakeRefreshed()) {
             for (auto& p : panes_) p->UpdateDrives();

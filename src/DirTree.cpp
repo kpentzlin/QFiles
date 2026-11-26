@@ -73,22 +73,44 @@ HTREEITEM DirTree::AddItem(HTREEITEM parent, const std::wstring& text, const std
     return TreeView_InsertItem(tree_, &ins);
 }
 
+namespace {
+// Netzlaufwerk: verbundene Freigabe, subst: Zielverzeichnis, sonst Bezeichnung
+std::wstring DriveItemLabel(const DriveDesc& d) {
+    std::wstring label = d.root.substr(0, 2);
+    if (d.kind == DriveKind::Subst)
+        label += L"  → " + d.target;
+    else if (!d.target.empty())
+        label += L"  " + d.target;
+    else if (!d.label.empty())
+        label += L"  " + d.label;
+    return label;
+}
+} // namespace
+
+// Bezeichnungen und Symbole der Laufwerke nachtragen (im Hintergrund gelesen), ohne den Baum neu aufzubauen
+void DirTree::RefreshDriveItems() {
+    const auto& drives = ListDrives();
+    for (HTREEITEM c = TreeView_GetRoot(tree_); c; c = TreeView_GetNextSibling(tree_, c)) {
+        std::wstring p = ItemPath(c);
+        for (const DriveDesc& d : drives) {
+            if (!EqualsI(p, d.root)) continue;
+            std::wstring label = DriveItemLabel(d);
+            TVITEMW it{};
+            it.mask = TVIF_HANDLE | TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
+            it.hItem = c;
+            it.pszText = label.data();
+            it.iImage = it.iSelectedImage = d.icon;
+            TreeView_SetItem(tree_, &it);
+        }
+    }
+}
+
 void DirTree::Populate() {
     suppress_ = true;
     std::wstring sel = SelectedPath();
     SendMessageW(tree_, WM_SETREDRAW, FALSE, 0);
     TreeView_DeleteAllItems(tree_);
-    for (const DriveDesc& d : ListDrives()) {
-        // Netzlaufwerk: verbundene Freigabe, subst: Zielverzeichnis, sonst Bezeichnung (wie Idoswin Pro)
-        std::wstring label = d.root.substr(0, 2);
-        if (d.kind == DriveKind::Subst)
-            label += L"  → " + d.target;
-        else if (!d.target.empty())
-            label += L"  " + d.target;
-        else if (!d.label.empty())
-            label += L"  " + d.label;
-        AddItem(TVI_ROOT, label, d.root, d.icon, d.icon, true);
-    }
+    for (const DriveDesc& d : ListDrives()) AddItem(TVI_ROOT, DriveItemLabel(d), d.root, d.icon, d.icon, true);
     // Smartphones, Tablets, Kameras (MTP): Klick öffnet das Gerät in der Liste (nicht aufklappbar)
     for (const MtpDevice& d : MtpDevices()) {
         int icon = StockIconIndex(d.camera ? SIID_DEVICECAMERA : SIID_DEVICECELLPHONE);

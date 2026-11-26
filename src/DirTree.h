@@ -18,6 +18,7 @@ public:
                 std::function<void()> onActivate);
     HWND Hwnd() const { return tree_; }
     void Populate();                               // Laufwerke neu aufbauen
+    void RefreshDriveItems();                      // Laufwerksbezeichnungen/-symbole nachtragen
     void SelectPath(const std::wstring& path);     // aufklappen und markieren (ohne Navigation)
     void RefreshPath(const std::wstring& path);    // Unterverzeichnisse dieses Knotens neu lesen
     std::wstring SelectedPath() const;

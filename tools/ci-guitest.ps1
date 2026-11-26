@@ -1447,6 +1447,9 @@ Shot "screenshot55.png"   # Start nach geänderter Bildschirmanordnung: Hauptbil
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+$stLog = "C:\ProgramData\QFiles\QFiles-Startzeiten.txt"
+if (Test-Path $stLog) { Write-Output "::notice title=Startzeiten::$((Get-Content $stLog -Encoding UTF8) -join ' | ')" }
+else { Write-Output "::error title=Startzeiten::QFiles-Startzeiten.txt fehlt" }
 $posInfo = "Fenster $($wr.L),$($wr.T)–$($wr.R),$($wr.B); Arbeitsbereich $($wa.Left),$($wa.Top)–$($wa.Right),$($wa.Bottom); sichtbar nach $visMs ms"
 $cx = ($wr.L + $wr.R) / 2; $wcx = $wa.Left + $wa.Width / 2
 $posOk = $visMs -ge 0 -and $visMs -le 6000 -and $wr.T -ge $wa.Top - 16 -and $wr.B -le $wa.Bottom + 16 -and ($wr.B - $wr.T) -ge $wa.Height - 16 -and

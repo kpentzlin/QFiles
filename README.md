@@ -628,7 +628,10 @@ Gespeichert werden:
   voller Breite); Taskleisten bleiben frei. Ebenso, wenn nach dem Anzeigen die Titelleiste auf keinem Bildschirm liegt.
   Das Fenster erscheint sofort, noch bevor die Startverzeichnisse eingelesen sind (Netzwerk, FTP oder ein Gerät
   können dauern); die Liste der Geräte (MTP) wird im Hintergrund gelesen, ein Geräteverzeichnis als Startverzeichnis
-  öffnet sich, sobald das Gerät gefunden ist,
+  öffnet sich, sobald das Gerät gefunden ist. Auch Bezeichnungen und Symbole der Laufwerke werden im Hintergrund
+  gelesen (schlafende oder langsame Laufwerke halten den Start nicht auf). Die Suche nach Geräten lässt sich unter
+  *Optionen → Anzeige → „Smartphones/Kameras (MTP) suchen“* abschalten. Jeder Start schreibt die Dauer seiner
+  Schritte nach `QFiles-Startzeiten.txt` (neben der Einstellungsdatei),
 - Breiten von Baum und Lesezeichenliste,
 - Teilungsverhältnisse und Split-Zustand,
 - die zuletzt in den **vier Listenfenstern** angezeigten Verzeichnisse mit Ansicht, Sortierung, Spaltenbreiten,
