@@ -6,6 +6,8 @@
 
 #include <cstdlib>
 #include <iterator>
+#include <mutex>
+#include <thread>
 
 namespace qf {
 
@@ -72,14 +74,17 @@ void DetectDropbox(std::vector<CloudFolder>& out) {
 
 // Google Drive für den Desktop: eigenes Laufwerk mit der Bezeichnung „Google Drive“ (darin „Meine Ablage“/„My Drive“);
 // ältere Version (Backup and Sync): Ordner „Google Drive“ im Benutzerprofil
-void DetectGoogleDrive(std::vector<CloudFolder>& out) {
-    DWORD mask = GetLogicalDrives();
+// scanVolumes: Laufwerk „Google Drive“ an der Volumebezeichnung erkennen. Das fragt jedes Laufwerk ab (weckt schlafende
+// Platten, wartet auf langsame Laufwerke) und läuft deshalb nur im Hintergrund bzw. auf ausdrücklichen Wunsch.
+// Netzlaufwerke werden übersprungen (Google Drive für Desktop bindet ein lokales Laufwerk ein).
+void DetectGoogleDrive(std::vector<CloudFolder>& out, bool scanVolumes) {
+    DWORD mask = scanVolumes ? GetLogicalDrives() : 0;
     UINT oldMode = SetErrorMode(SEM_FAILCRITICALERRORS);
     for (int i = 2; i < 26; ++i) {
         if (!(mask & (1u << i))) continue;
         std::wstring root = std::wstring(1, (wchar_t)(L'A' + i)) + L":\\";
         UINT type = GetDriveTypeW(root.c_str());
-        if (type != DRIVE_FIXED && type != DRIVE_REMOTE && type != DRIVE_REMOVABLE) continue;
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE) continue;
         wchar_t label[MAX_PATH + 1] = {}, fs[MAX_PATH + 1] = {};
         if (!GetVolumeInformationW(root.c_str(), label, MAX_PATH + 1, nullptr, nullptr, nullptr, fs, MAX_PATH + 1)) continue;
         if (!EqualsI(label, L"Google Drive")) continue;
@@ -123,19 +128,75 @@ void DetectOneDrive(std::vector<CloudFolder>& out) {
     AddFolder(out, L"OneDrive", L"OneDrive", GetKnownFolder(FOLDERID_SkyDrive));
 }
 
-} // namespace
-
-const std::vector<CloudFolder>& DetectCloudFolders(bool refresh) {
-    static std::vector<CloudFolder> list;
-    static bool done = false;
-    if (done && !refresh) return list;
-    done = true;
-    list.clear();
+std::vector<CloudFolder> Detect(bool scanVolumes) {
+    std::vector<CloudFolder> list;
     DetectDropbox(list);
-    DetectGoogleDrive(list);
+    DetectGoogleDrive(list, scanVolumes);
     DetectOneDrive(list);
     return list;
 }
+
+std::vector<CloudFolder> g_list;
+bool g_done = false;
+std::mutex g_bgMutex;
+std::vector<CloudFolder> g_bgResult;
+bool g_bgReady = false, g_bgStarted = false;
+HWND g_notify = nullptr;
+UINT g_notifyMsg = 0;
+
+} // namespace
+
+// Erster Aufruf: schnelle Erkennung (ohne Laufwerksabfrage) und Suche nach dem Google-Drive-Laufwerk im Hintergrund
+// (Ergebnis über CloudTakeDetected); refresh: vollständig und sofort (Befehl „Cloud-Lesezeichen hinzufügen“)
+const std::vector<CloudFolder>& DetectCloudFolders(bool refresh) {
+    if (refresh) {
+        g_list = Detect(true);
+        g_done = true;
+        return g_list;
+    }
+    if (g_done) return g_list;
+    g_done = true;
+    g_list = Detect(false);
+    std::lock_guard<std::mutex> lock(g_bgMutex);
+    if (!g_bgStarted) {
+        g_bgStarted = true;
+        std::thread([] {
+            std::vector<CloudFolder> full = Detect(true);
+            HWND h;
+            UINT m;
+            {
+                std::lock_guard<std::mutex> lock(g_bgMutex);
+                g_bgResult = std::move(full);
+                g_bgReady = true;
+                h = g_notify;
+                m = g_notifyMsg;
+            }
+            if (h) PostMessageW(h, m, 0, 0);
+        }).detach();
+    }
+    return g_list;
+}
+
+void SetCloudNotifyWindow(void* hwnd, unsigned msg) {
+    std::lock_guard<std::mutex> lock(g_bgMutex);
+    g_notify = (HWND)hwnd;
+    g_notifyMsg = msg;
+}
+
+bool CloudTakeDetected() {
+    std::vector<CloudFolder> full;
+    {
+        std::lock_guard<std::mutex> lock(g_bgMutex);
+        if (!g_bgReady) return false;
+        g_bgReady = false;
+        full = std::move(g_bgResult);
+    }
+    bool changed = full.size() != g_list.size();
+    for (size_t i = 0; !changed && i < full.size(); ++i) changed = !EqualsI(full[i].path, g_list[i].path);
+    g_list = std::move(full);
+    return changed;
+}
+
 
 bool IsCloudPath(const std::wstring& path) {
     if (path.size() < 3 || path[1] != L':') return false;

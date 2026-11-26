@@ -41,6 +41,7 @@ MainWindow* g_main = nullptr;
 enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3, TIMER_SAVESTATE = 4, TIMER_CLIPBOARD = 5,
                TIMER_DEVICES = 6 };
 constexpr UINT WM_QF_MTPDEVICES = WM_APP + 4;   // Geräteliste (MTP) im Hintergrund gelesen
+constexpr UINT WM_QF_CLOUD = WM_APP + 6;        // Cloud-Ordner (Google-Drive-Laufwerk) im Hintergrund gesucht
 constexpr int kSplitterW = 5;
 constexpr int kCaptionH = 26;  // = Kopfzeile der Listen
 constexpr int kFKeyH = 26;
@@ -360,6 +361,7 @@ bool MainWindow::Create(int nCmdShow) {
     StartupMark(Format(L"Fenster erzeugt (%d,%d %d×%d)", x, y, w, h));
     MtpSetEnabled(App::Opt().mtpDevices);
     SetDriveDetailsNotifyWindow(hwnd_);
+    SetCloudNotifyWindow(hwnd_, WM_QF_CLOUD);
 
     BuildMenu();
     BuildToolbar();
@@ -399,8 +401,9 @@ bool MainWindow::Create(int nCmdShow) {
     cb.openConfig = [this](const std::wstring& config) { ApplyConfiguration(config); };
     StartupMark(L"Verzeichnisbaum");
     bookmarks_.Create(hwnd_, cmd::IdBookmarks, cb);
+    StartupMark(L"Lesezeichenliste erzeugt");
     bookmarks_.Set(LoadBookmarks(App::Cfg()));
-    StartupMark(L"Lesezeichen");
+    StartupMark(L"Lesezeichen eingetragen");
     LoadFavorites(App::Cfg());
     bookmarks_.SetFavoritesCount(Favorites().size());
 
@@ -4190,6 +4193,9 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             if (!f || !IsChild(hwnd_, f)) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
         }
         break;
+    case WM_QF_CLOUD:
+        if (CloudTakeDetected()) bookmarks_.DevicesChanged();   // Farben/Gruppen der Lesezeichen neu bestimmen
+        return 0;
     case kDriveDetailsMessage:
         // Laufwerksbezeichnungen und -symbole im Hintergrund gelesen
         InvalidateDriveCache(false);

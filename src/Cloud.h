@@ -17,8 +17,12 @@ struct CloudFolder {
     std::wstring path;
 };
 
-// Gefundene Cloud-Ordner (zwischengespeichert; refresh = neu suchen)
+// Gefundene Cloud-Ordner (zwischengespeichert; refresh = neu und vollständig suchen). Ohne refresh zunächst ohne
+// Abfrage der Laufwerke (Google-Drive-Laufwerk); die vollständige Suche läuft im Hintergrund, danach erhält das
+// Fenster aus SetCloudNotifyWindow die Nachricht, und CloudTakeDetected() übernimmt das Ergebnis (true = geändert).
 const std::vector<CloudFolder>& DetectCloudFolders(bool refresh = false);
+void SetCloudNotifyWindow(void* hwnd, unsigned msg);
+bool CloudTakeDetected();
 // Liegt der Pfad in einem Cloud-Ordner (oder ist er einer)?
 bool IsCloudPath(const std::wstring& path);
 

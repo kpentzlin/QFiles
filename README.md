@@ -629,7 +629,8 @@ Gespeichert werden:
   Das Fenster erscheint sofort, noch bevor die Startverzeichnisse eingelesen sind (Netzwerk, FTP oder ein Gerät
   können dauern); die Liste der Geräte (MTP) wird im Hintergrund gelesen, ein Geräteverzeichnis als Startverzeichnis
   öffnet sich, sobald das Gerät gefunden ist. Auch Bezeichnungen und Symbole der Laufwerke werden im Hintergrund
-  gelesen (schlafende oder langsame Laufwerke halten den Start nicht auf). Die Suche nach Geräten lässt sich unter
+  gelesen (schlafende oder langsame Laufwerke halten den Start nicht auf), ebenso die Suche nach dem
+  Google-Drive-Laufwerk für die Farbe der Cloud-Lesezeichen. Die Suche nach Geräten lässt sich unter
   *Optionen → Anzeige → „Smartphones/Kameras (MTP) suchen“* abschalten. Jeder Start schreibt die Dauer seiner
   Schritte nach `QFiles-Startzeiten.txt` (neben der Einstellungsdatei),
 - Breiten von Baum und Lesezeichenliste,
