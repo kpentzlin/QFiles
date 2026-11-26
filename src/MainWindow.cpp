@@ -39,6 +39,7 @@ MainWindow* g_main = nullptr;
 
 enum : UINT_PTR { TIMER_FKEYMODE = 1, TIMER_QUICKVIEW = 2, TIMER_REMOTEEDIT = 3, TIMER_SAVESTATE = 4, TIMER_CLIPBOARD = 5,
                TIMER_DEVICES = 6 };
+constexpr UINT WM_QF_MTPDEVICES = WM_APP + 4;   // Geräteliste (MTP) im Hintergrund gelesen
 constexpr int kSplitterW = 5;
 constexpr int kCaptionH = 26;  // = Kopfzeile der Listen
 constexpr int kFKeyH = 26;
@@ -433,6 +434,15 @@ bool MainWindow::Create(int nCmdShow) {
     }
     if (argv) LocalFree(argv);
 
+    // Fenster sofort zeigen – vor dem Einlesen der Startverzeichnisse (Netzwerk, FTP, Geräte können dauern)
+    ApplyPaneVisibility();
+    bool maximized = c.GetBool(L"Fenster", L"Max", false);
+    ShowWindow(hwnd_, maximized ? SW_SHOWMAXIMIZED : (nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow));
+    EnsureWindowVisible();
+    SetForegroundWindow(hwnd_);
+    UpdateWindow(hwnd_);
+    MtpRefreshDevicesAsync(hwnd_, WM_QF_MTPDEVICES);
+
     // Startverzeichnisse
     std::wstring defaults[4] = {L"C:\\", GetKnownFolder(FOLDERID_Documents), GetKnownFolder(FOLDERID_Profile),
                                 GetKnownFolder(FOLDERID_Downloads)};
@@ -441,6 +451,11 @@ bool MainWindow::Create(int nCmdShow) {
         if (i < 2 && i < (int)dirs.size()) d = dirs[i];
         // FTP/SFTP beim Start nur mit gespeicherter Anmeldung (keine Kennwortabfrage beim Programmstart)
         if (IsRemoteUrl(d) && !HasSavedRemoteLogin(d)) d.clear();
+        // Geräte (MTP): erst öffnen, wenn die Geräteliste im Hintergrund gelesen ist (WM_QF_MTPDEVICES)
+        if (IsMtpUrl(d)) {
+            startMtpDir_[i] = d;
+            d.clear();
+        }
         if (d.empty() || !panes_[i]->Navigate(d, L"", true, false)) {
             if (!panes_[i]->Navigate(defaults[i], L"", true, false)) panes_[i]->Navigate(L"C:\\", L"", true, false);
         }
@@ -454,11 +469,7 @@ bool MainWindow::Create(int nCmdShow) {
     }
 
     ApplyPaneVisibility();
-    WINDOWPLACEMENT wp{sizeof(wp)};
-    bool maximized = c.GetBool(L"Fenster", L"Max", false);
-    ShowWindow(hwnd_, maximized ? SW_SHOWMAXIMIZED : nCmdShow);
-    (void)wp;
-    UpdateWindow(hwnd_);
+    EnsureWindowVisible();
     SetActive(active_, true);
     SetTimer(hwnd_, TIMER_FKEYMODE, 150, nullptr);
     SetTimer(hwnd_, TIMER_REMOTEEDIT, 2000, nullptr);
@@ -2116,6 +2127,31 @@ void MainWindow::OnPaneEnlargeButton(FilePane* p) {
 
 // Lesezeichen öffnen: ein aktiver Filter der Liste wird ausgeschaltet; ein mit dem Lesezeichen gespeicherter Filter
 // wird eingeschaltet (mit Sortiervorgabe in der Ansicht „Details“)
+// Das Fenster muss nach dem Start sichtbar sein: Liegt die Titelleiste auf keinem Bildschirm (Arbeitsbereich), wird
+// es wie bei geänderter Bildschirmanordnung auf den Hauptbildschirm gesetzt (zentriert, volle Höhe, höchstens 4:3)
+void MainWindow::EnsureWindowVisible() {
+    if (!hwnd_ || IsIconic(hwnd_)) return;
+    RECT wr{};
+    GetWindowRect(hwnd_, &wr);
+    int cap = GetSystemMetricsForDpi(SM_CYCAPTION, GetDpiForWindow(hwnd_));
+    // drei Punkte der Titelleiste (links, Mitte, rechts) – mindestens einer muss in einem Arbeitsbereich liegen
+    bool visible = false;
+    for (int k = 1; k <= 3 && !visible; ++k) {
+        POINT pt{wr.left + (wr.right - wr.left) * k / 4, wr.top + std::max(8, cap / 2 + 8)};
+        HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONULL);
+        MONITORINFO mi{sizeof(mi)};
+        visible = mon && GetMonitorInfoW(mon, &mi) && PtInRect(&mi.rcWork, pt);
+    }
+    if (visible && wr.right - wr.left >= 200 && wr.bottom - wr.top >= 150) return;
+    MONITORINFO pmi{sizeof(pmi)};
+    if (!GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &pmi)) return;
+    const RECT wa = pmi.rcWork;
+    int waW = wa.right - wa.left, waH = wa.bottom - wa.top;
+    int h = waH, w = std::min(waW, h * 4 / 3);
+    if (IsZoomed(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    SetWindowPos(hwnd_, nullptr, wa.left + (waW - w) / 2, wa.top, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 // ===================== Konfigurationen =====================
 
 std::wstring MainWindow::CaptureConfiguration() const {
@@ -4065,12 +4101,7 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             // bis zu dreimal nachsehen (0,8 s, 2 s, 4 s), da sich Geräte nach dem Anstecken erst einrichten
             if (--devicePolls_ <= 0) KillTimer(hwnd_, TIMER_DEVICES);
             else SetTimer(hwnd_, TIMER_DEVICES, devicePolls_ == 2 ? 1200 : 2000, nullptr);
-            if (MtpRefreshDevices()) {
-                for (auto& p : panes_) p->UpdateDrives();
-                tree_.Populate();
-                tree_.SelectPath(Active().Dir());
-                bookmarks_.DevicesChanged();
-            }
+            MtpRefreshDevicesAsync(hwnd_, WM_QF_MTPDEVICES);
         } else if (wp == TIMER_SAVESTATE) {
             KillTimer(hwnd_, TIMER_SAVESTATE);
             App::SaveSettings();
@@ -4133,6 +4164,21 @@ LRESULT MainWindow::Proc(UINT msg, WPARAM wp, LPARAM lp) {
             if (!f || !IsChild(hwnd_, f)) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
         }
         break;
+    case WM_QF_MTPDEVICES:
+        if (MtpTakeRefreshed()) {
+            for (auto& p : panes_) p->UpdateDrives();
+            tree_.Populate();
+            tree_.SelectPath(Active().Dir());
+            bookmarks_.DevicesChanged();
+        }
+        // Beim Start zurückgestellte Geräteverzeichnisse (mtp://) öffnen, sobald die Geräte bekannt sind
+        for (int i = 0; i < 4; ++i) {
+            if (startMtpDir_[i].empty()) continue;
+            std::wstring d = std::move(startMtpDir_[i]);
+            startMtpDir_[i].clear();
+            if (MtpDeviceForUrl(d)) panes_[i]->Navigate(d, L"", true, false);
+        }
+        return 0;
     case WM_APP + 2:
         UpdateViewButtons();
         return 0;

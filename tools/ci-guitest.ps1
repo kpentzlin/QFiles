@@ -1429,21 +1429,27 @@ else {
 # Fensterlage: gespeicherte Lage außerhalb aller Bildschirme -> Hauptbildschirm, volle Höhe, zentriert
 $iniPos = Get-Content "C:\ProgramData\QFiles\QFiles.ini" -Raw -Encoding UTF8
 $iniPos = $iniPos -replace '(?m)^X=-?\d+', 'X=9000' -replace '(?m)^Y=-?\d+', 'Y=9000'
+# zusätzlich: Startverzeichnis auf einem nicht angeschlossenen Gerät – das Fenster muss trotzdem sofort erscheinen
+$iniPos = $iniPos -replace '(?m)^(\[Liste1\][^\[]*?)^Verzeichnis=.*$', '$1Verzeichnis=mtp://Testgeraet/Interner Speicher'
 [System.IO.File]::WriteAllText("C:\ProgramData\QFiles\QFiles.ini", $iniPos, (New-Object System.Text.UTF8Encoding($true)))
+$swStart = [System.Diagnostics.Stopwatch]::StartNew()
 $script:p = Start-Process -FilePath $Exe -PassThru
-Start-Sleep -Seconds 6
+$pw = [IntPtr]::Zero; $visMs = -1
+for ($t = 0; $t -lt 80 -and $visMs -lt 0; $t++) {
+  $pw = [W]::FindWindow("QFilesMain", [NullString]::Value)
+  if ($pw -ne [IntPtr]::Zero -and [W]::IsWindowVisible($pw)) { $visMs = $swStart.ElapsedMilliseconds } else { Start-Sleep -Milliseconds 100 }
+}
+Start-Sleep -Seconds 4
 Check-Alive "Start (Fensterlage)"
-$pw = [IntPtr]::Zero
-for ($t = 0; $t -lt 20 -and $pw -eq [IntPtr]::Zero; $t++) { $pw = [W]::FindWindow("QFilesMain", [NullString]::Value); if ($pw -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
 $wr = New-Object W+RECT; [W]::GetWindowRect($pw, [ref]$wr) | Out-Null
 $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 Shot "screenshot55.png"   # Start nach geänderter Bildschirmanordnung: Hauptbildschirm, volle Höhe, zentriert
 $p.CloseMainWindow() | Out-Null
 Start-Sleep -Seconds 3
 if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
-$posInfo = "Fenster $($wr.L),$($wr.T)–$($wr.R),$($wr.B); Arbeitsbereich $($wa.Left),$($wa.Top)–$($wa.Right),$($wa.Bottom)"
+$posInfo = "Fenster $($wr.L),$($wr.T)–$($wr.R),$($wr.B); Arbeitsbereich $($wa.Left),$($wa.Top)–$($wa.Right),$($wa.Bottom); sichtbar nach $visMs ms"
 $cx = ($wr.L + $wr.R) / 2; $wcx = $wa.Left + $wa.Width / 2
-$posOk = $wr.T -ge $wa.Top - 16 -and $wr.B -le $wa.Bottom + 16 -and ($wr.B - $wr.T) -ge $wa.Height - 16 -and
+$posOk = $visMs -ge 0 -and $visMs -le 6000 -and $wr.T -ge $wa.Top - 16 -and $wr.B -le $wa.Bottom + 16 -and ($wr.B - $wr.T) -ge $wa.Height - 16 -and
          [Math]::Abs($cx - $wcx) -le 16 -and ($wr.R - $wr.L) -le [Math]::Min($wa.Width, $wa.Height * 4 / 3) + 32
 if ($posOk) { Write-Output "::notice title=Fensterlage::$posInfo" }
 else {

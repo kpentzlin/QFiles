@@ -21,10 +21,13 @@ struct MtpDevice {
     bool camera = false;        // Kamera (anderes Symbol)
 };
 
-// Angeschlossene Geräte (zwischengespeichert; MtpRefreshDevices liest neu)
+// Angeschlossene Geräte (letzter im Hintergrund gelesener Stand; vor dem ersten Einlesen leer)
 const std::vector<MtpDevice>& MtpDevices();
-// Neu einlesen; Rückgabe true, wenn sich die Liste geändert hat
-bool MtpRefreshDevices();
+// Geräteliste im Hintergrund neu lesen; danach erhält notify die Nachricht msg. Im UI-Thread übernimmt
+// MtpTakeRefreshed() das Ergebnis (true = Liste geändert bzw. erstmals gelesen).
+void MtpRefreshDevicesAsync(void* notifyHwnd, unsigned msg);
+bool MtpTakeRefreshed();
+bool MtpDevicesKnown();   // mindestens einmal gelesen
 // Gerät zu einer Adresse ("mtp://Name/…"); nullptr = nicht angeschlossen
 const MtpDevice* MtpDeviceForUrl(const std::wstring& url);
 // "mtp://Name/"

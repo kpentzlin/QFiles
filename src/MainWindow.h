@@ -97,6 +97,8 @@ private:
     bool OpenBookmarkIn(FilePane& pane, const std::wstring& path, const std::wstring& filter, int sort = 0);
     // Konfigurationen: Aufteilung, Verzeichnisse und Ansichten der sichtbaren Listen speichern bzw. herstellen
     void SaveConfiguration();
+    void EnsureWindowVisible();          // Titelleiste auf keinem Bildschirm: auf den Hauptbildschirm setzen
+    std::wstring startMtpDir_[4];        // beim Start zurückgestellte Geräteverzeichnisse (mtp://)
     std::wstring CaptureConfiguration() const;
     void ApplyConfiguration(const std::wstring& config);
     // Doppelklick auf „Details“ bzw. „Mit Unterverzeichnissen“: diese Ansicht, Spalten Typ…Attr. auf den Inhalt,

@@ -625,7 +625,10 @@ Gespeichert werden:
 - Fensterposition und -größe. Passt das Fenster beim Start nicht mehr vollständig auf einen der angeschlossenen
   Bildschirme (z. B. nach dem Abstecken eines Bildschirms oder einer geänderten Auflösung), öffnet QFiles es auf dem
   Hauptbildschirm zentriert in voller Höhe, höchstens vier Drittel so breit wie hoch (auf schmaleren Bildschirmen in
-  voller Breite); Taskleisten bleiben frei,
+  voller Breite); Taskleisten bleiben frei. Ebenso, wenn nach dem Anzeigen die Titelleiste auf keinem Bildschirm liegt.
+  Das Fenster erscheint sofort, noch bevor die Startverzeichnisse eingelesen sind (Netzwerk, FTP oder ein Gerät
+  können dauern); die Liste der Geräte (MTP) wird im Hintergrund gelesen, ein Geräteverzeichnis als Startverzeichnis
+  öffnet sich, sobald das Gerät gefunden ist,
 - Breiten von Baum und Lesezeichenliste,
 - Teilungsverhältnisse und Split-Zustand,
 - die zuletzt in den **vier Listenfenstern** angezeigten Verzeichnisse mit Ansicht, Sortierung, Spaltenbreiten,

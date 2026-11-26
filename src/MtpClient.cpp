@@ -11,6 +11,8 @@
 #include "RemoteFs.h"
 
 #include <algorithm>
+#include <mutex>
+#include <thread>
 
 #if (defined(_MSC_VER) || defined(QF_WPD_SYNTAX_CHECK)) && __has_include(<PortableDeviceApi.h>)
 #define QF_HAVE_WPD 1
@@ -122,23 +124,71 @@ std::vector<MtpDevice> Enumerate() { return {}; }
 
 bool MtpAvailable() { return QF_HAVE_WPD != 0; }
 
-const std::vector<MtpDevice>& MtpDevices() {
-    if (!g_devicesRead) {
-        g_devicesRead = true;
-        DeviceCache() = Enumerate();
+// Die Geräteliste wird nur im Hintergrund gelesen (WPD kann bei angeschlossenen, gesperrten Geräten – etwa einem
+// iPhone, das auf „Vertrauen“ wartet – Sekunden brauchen); die Oberfläche arbeitet mit dem letzten Stand.
+namespace {
+std::mutex g_pendingMutex;
+std::vector<MtpDevice> g_pending;
+bool g_pendingReady = false, g_enumRunning = false, g_enumAgain = false;
+HWND g_notify = nullptr;
+UINT g_notifyMsg = 0;
+
+void EnumThread() {
+    for (;;) {
+        std::vector<MtpDevice> now = Enumerate();
+        HWND notify;
+        UINT msg;
+        {
+            std::lock_guard<std::mutex> lock(g_pendingMutex);
+            g_pending = std::move(now);
+            g_pendingReady = true;
+            notify = g_notify;
+            msg = g_notifyMsg;
+            if (!g_enumAgain) {
+                g_enumRunning = false;
+                if (notify) PostMessageW(notify, msg, 0, 0);
+                return;
+            }
+            g_enumAgain = false;
+        }
+        if (notify) PostMessageW(notify, msg, 0, 0);
     }
-    return DeviceCache();
+}
+} // namespace
+
+const std::vector<MtpDevice>& MtpDevices() { return DeviceCache(); }
+
+void MtpRefreshDevicesAsync(void* notifyHwnd, unsigned msg) {
+    if (!MtpAvailable()) return;
+    std::lock_guard<std::mutex> lock(g_pendingMutex);
+    g_notify = (HWND)notifyHwnd;
+    g_notifyMsg = msg;
+    if (g_enumRunning) {
+        g_enumAgain = true;
+        return;
+    }
+    g_enumRunning = true;
+    std::thread(EnumThread).detach();
 }
 
-bool MtpRefreshDevices() {
-    std::vector<MtpDevice> now = Enumerate();
+bool MtpTakeRefreshed() {
+    std::vector<MtpDevice> now;
+    {
+        std::lock_guard<std::mutex> lock(g_pendingMutex);
+        if (!g_pendingReady) return false;
+        g_pendingReady = false;
+        now = std::move(g_pending);
+    }
+    bool first = !g_devicesRead;
     g_devicesRead = true;
     auto& old = DeviceCache();
     bool changed = now.size() != old.size();
     for (size_t i = 0; !changed && i < now.size(); ++i) changed = now[i].id != old[i].id || now[i].name != old[i].name;
     old = std::move(now);
-    return changed;
+    return changed || first;
 }
+
+bool MtpDevicesKnown() { return g_devicesRead; }
 
 const MtpDevice* MtpDeviceForUrl(const std::wstring& url) {
     std::wstring name = DeviceNameOfUrl(url);
