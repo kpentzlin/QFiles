@@ -105,6 +105,7 @@ jobs:
             build/Release/QFiles.exe
             build/Release/QFiles.pdb
             QFiles-x64.zip
+          retention-days: 2
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -114,6 +115,7 @@ jobs:
             screenshot*.png
             QFiles-Absturz.*
           if-no-files-found: ignore
+          retention-days: 2
 
       - name: Bildschirmfoto in Zweig ci-screenshot
         if: always() && github.event_name == 'workflow_dispatch' && inputs.screenshot_branch
